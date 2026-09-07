@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "RentalSpouse",
+    "slug": "rentalspouse-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "backgroundColor": "#ffffff"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
