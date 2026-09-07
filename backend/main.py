@@ -23,13 +23,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configuração de CORS para permitir que o frontend acesse a API
+# Origens explícitas: "*" é inválido com allow_credentials=True (spec CORS).
+# Adicione aqui as origens de staging/produção conforme necessário.
+ALLOW_ORIGINS = [
+    "http://localhost:3000",   # Next.js dev server
+    "http://localhost",        # Generics / mobile via localhost
+    "http://10.0.2.2",         # Android Emulator -> host machine
+    "http://10.0.2.2:8000",    # Android Emulator full URL
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOW_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 

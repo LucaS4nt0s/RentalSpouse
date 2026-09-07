@@ -15,8 +15,9 @@ export default function Home() {
   const fetchStatus = async () => {
     setLoading(true);
     setError(null);
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
     try {
-      const res = await fetch('http://localhost:8000/api/hello');
+      const res = await fetch(`${apiUrl}/api/hello`);
       if (!res.ok) {
         throw new Error(`Erro na requisição: ${res.status} ${res.statusText}`);
       }
@@ -26,7 +27,7 @@ export default function Home() {
       setError(
         err instanceof Error
           ? err.message
-          : 'Não foi possível conectar ao backend em http://localhost:8000'
+          : `Não foi possível conectar ao backend em ${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}`
       );
     } finally {
       setLoading(false);

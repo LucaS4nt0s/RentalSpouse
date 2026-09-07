@@ -6,25 +6,22 @@ Estratégia de isolamento:
   do PostgreSQL do Docker durante os testes.
 - O `get_db` do app é sobrescrito via `dependency_overrides` do FastAPI,
   garantindo que cada sessão de teste opere em um banco limpo e isolado.
+- O `lifespan` do app é desabilitado via `TestClient(app, raise_server_exceptions=True)`
+  com o engine substituído antes da criação do cliente, garantindo que nenhuma
+  conexão real com o PostgreSQL ocorra.
 """
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-# Ajuste de path: permite importar os módulos do backend sem instalar o pacote.
 import sys
 import os
 
+# Ajuste de path: permite importar os módulos do backend sem instalar o pacote.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from database import Base, get_db
-from main import app
-
-# ---------------------------------------------------------------------------
-# Configuração do banco de testes (SQLite em memória)
-# ---------------------------------------------------------------------------
+# IMPORTANTE: Sobrescreve o engine ANTES de importar o app, para que o lifespan
+# use o SQLite em vez de tentar conectar no PostgreSQL.
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+import database
 
 TEST_DATABASE_URL = "sqlite:///:memory:"
 
@@ -33,7 +30,21 @@ test_engine = create_engine(
     connect_args={"check_same_thread": False},  # Necessário para SQLite + threading
 )
 
+# Substitui o engine global do módulo database antes de qualquer import do app
+database.engine = test_engine
+
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+import pytest
+from fastapi.testclient import TestClient
+
+from database import Base, get_db
+from main import app
+
+
+# ---------------------------------------------------------------------------
+# Dependency override: substitui get_db por sessão SQLite
+# ---------------------------------------------------------------------------
 
 
 def override_get_db():
@@ -55,6 +66,10 @@ def setup_test_db():
     """
     Cria todas as tabelas antes de cada teste e as destrói após,
     garantindo isolamento total entre os casos de teste.
+
+    O engine já foi substituído no nível do módulo `database`, portanto
+    o `Base.metadata.create_all` opera sobre o SQLite em memória,
+    nunca sobre o PostgreSQL de desenvolvimento ou produção.
     """
     Base.metadata.create_all(bind=test_engine)
     app.dependency_overrides[get_db] = override_get_db
@@ -65,8 +80,13 @@ def setup_test_db():
 
 @pytest.fixture
 def client():
-    """Retorna um TestClient configurado para a app FastAPI."""
-    return TestClient(app)
+    """
+    Retorna um TestClient configurado para a app FastAPI.
+
+    O parâmetro `raise_server_exceptions=True` mantém o comportamento padrão
+    de propagar exceções do servidor nos testes.
+    """
+    return TestClient(app, raise_server_exceptions=True)
 
 
 # ---------------------------------------------------------------------------
