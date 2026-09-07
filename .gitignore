@@ -1,4 +1,11 @@
 backend/venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+.next/
+.expo/
 
 # Variáveis de ambiente — nunca versionar o .env real
 .env
