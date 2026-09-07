@@ -1,1 +1,6 @@
 backend/venv/
+
+# Variáveis de ambiente — nunca versionar o .env real
+.env
+*.env
+!.env.example
