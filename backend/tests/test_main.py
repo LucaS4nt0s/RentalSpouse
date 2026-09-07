@@ -2,13 +2,15 @@
 Testes automatizados para a rota GET /api/hello.
 
 Estratégia de isolamento:
-- Usa SQLite em memória como banco de dados, eliminando a dependência
-  do PostgreSQL do Docker durante os testes.
-- O `get_db` do app é sobrescrito via `dependency_overrides` do FastAPI,
-  garantindo que cada sessão de teste opere em um banco limpo e isolado.
-- O `lifespan` do app é desabilitado via `TestClient(app, raise_server_exceptions=True)`
-  com o engine substituído antes da criação do cliente, garantindo que nenhuma
-  conexão real com o PostgreSQL ocorra.
+- Usa SQLite em memória com StaticPool (sqlalchemy.pool), que força uma única
+  conexão compartilhada para todo o processo. Sem isso, cada connect() abre um
+  banco novo e vazio, fazendo o lifespan criar tabelas numa conexão diferente
+  da sessão dos testes — causando 'no such table'.
+- O `get_db` do app é sobrescrito via `dependency_overrides` do FastAPI.
+- O engine do módulo `database` é substituído antes de importar o app, para que
+  o lifespan nunca tente conectar no PostgreSQL real.
+- Cada teste recebe tabelas criadas (create_all) e destruídas (drop_all) pela
+  fixture autouse, garantindo isolamento total entre os casos de teste.
 """
 
 import sys
@@ -21,13 +23,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 # use o SQLite em vez de tentar conectar no PostgreSQL.
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 import database
+import models
 
 TEST_DATABASE_URL = "sqlite:///:memory:"
 
+# StaticPool: garante que TODAS as operações (lifespan, sessões, fixtures)
+# compartilhem a mesma conexão em memória. Sem isso, cada connect() abre um
+# banco vazio diferente e as tabelas criadas pelo lifespan não são visíveis
+# pelas sessões dos testes.
 test_engine = create_engine(
     TEST_DATABASE_URL,
-    connect_args={"check_same_thread": False},  # Necessário para SQLite + threading
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
 )
 
 # Substitui o engine global do módulo database antes de qualquer import do app
@@ -64,18 +73,20 @@ def override_get_db():
 @pytest.fixture(autouse=True)
 def setup_test_db():
     """
-    Cria todas as tabelas antes de cada teste e as destrói após,
-    garantindo isolamento total entre os casos de teste.
+    Setup/teardown executado antes e depois de CADA teste:
+    - create_all: cria a tabela 'status' (e demais) no SQLite em memória.
+    - dependency_overrides: substitui get_db pela sessão de teste.
+    - drop_all: destrói as tabelas ao final, garantindo estado limpo.
 
-    O engine já foi substituído no nível do módulo `database`, portanto
-    o `Base.metadata.create_all` opera sobre o SQLite em memória,
-    nunca sobre o PostgreSQL de desenvolvimento ou produção.
+    O create_all aqui é explícito e independente do lifespan do app,
+    evitando qualquer condição de corrida entre a inicialização do FastAPI
+    e a execução da fixture.
     """
-    Base.metadata.create_all(bind=test_engine)
+    models.Base.metadata.create_all(bind=test_engine)
     app.dependency_overrides[get_db] = override_get_db
     yield
     app.dependency_overrides.clear()
-    Base.metadata.drop_all(bind=test_engine)
+    models.Base.metadata.drop_all(bind=test_engine)
 
 
 @pytest.fixture
