@@ -1,12 +1,10 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
 
-import models
-from database import Base, engine, get_db
-from schemas import StatusRead
+from database import Base, engine
+from routes.hello import router as hello_router
 
 
 @asynccontextmanager
@@ -40,19 +38,5 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization"],
 )
 
-
-@app.get("/api/hello", response_model=StatusRead, tags=["Status"])
-def hello(db: Session = Depends(get_db)):
-    """
-    Retorna a primeira mensagem da tabela Status.
-    Caso a tabela esteja vazia, insere 'Olá Mundo do Banco de Dados!' e a retorna.
-    """
-    status = db.query(models.Status).first()
-
-    if status is None:
-        status = models.Status(message="Olá Mundo do Banco de Dados!")
-        db.add(status)
-        db.commit()
-        db.refresh(status)
-
-    return status
+# Registrar routers modulares
+app.include_router(hello_router)

@@ -7,7 +7,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 # Fallback para desenvolvimento local sem Docker.
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://rentalspouse:rentalspouse_pass@localhost:5432/rentalspouse_db",
+    "postgresql://rentalspouse:troque_esta_senha_forte@localhost:5432/rentalspouse_db",
 )
 
 engine = create_engine(DATABASE_URL)

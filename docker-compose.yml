@@ -35,5 +35,22 @@ services:
     volumes:
       - ./backend:/app
 
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: rentalspouse_web
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+      - /app/.next
+
 volumes:
   postgres_data:

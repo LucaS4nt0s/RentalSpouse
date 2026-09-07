@@ -94,7 +94,7 @@ export default function Home() {
           )}
 
           {!loading && !error && data && (
-            <div className="flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-300">
+            <div className="flex flex-col items-center gap-4 transition-all duration-300">
               <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-inner">
                 <svg
                   className="w-6 h-6"
