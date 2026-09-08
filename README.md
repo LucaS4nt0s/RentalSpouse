@@ -34,6 +34,7 @@ Conectando clientes e prestadores de serviços de forma **ágil**, **segura** e 
   - [Manual / Desenvolvedor](#-método-2-manual--desenvolvedor)
 - [Testes Automatizados](#-testes-automatizados)
 - [API](#-api)
+- [Equipe](#-equipe)
 - [Governança e Contribuição](#-governança-e-contribuição)
 
 ---
@@ -240,6 +241,23 @@ Retorna a mensagem armazenada no banco (inserindo-a automaticamente caso a tabel
 ```
 
 > 📄 A documentação interativa completa (Swagger UI) fica em `http://localhost:8000/docs`.
+
+---
+
+## 👥 Equipe
+
+Projeto desenvolvido por:
+
+| Integrante                        |
+|-----------------------------------|
+| Maria Eduarda Batista             |
+| Carlos Felipe Barbosa             |
+| Luca Samuel dos Santos            |
+| João Guilherme Garcia Mangueira   |
+| João Victor Borges Carvalho       |
+| Eduardo Tenório Nunes             |
+| Gustavo Rodrigues De Souza        |
+| Kauan Felipe Simão                |
 
 ---
 
