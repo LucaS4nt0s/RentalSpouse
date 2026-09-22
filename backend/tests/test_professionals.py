@@ -227,6 +227,20 @@ class TestUpdateAndRemoveProfessional:
         assert response.status_code == 400
         assert "em uso" in response.json()["detail"]
 
+    def test_update_professional_not_found(self, client: TestClient):
+        """Deve retornar 404 ao tentar atualizar profissional inexistente."""
+        response = client.put("/api/professionals/99999", json={"bio": "Bio nova para profissional inexistente."})
+        assert response.status_code == 404
+        assert "não encontrado" in response.json()["detail"]
+
+    def test_update_professional_blank_specialties(self, client: TestClient):
+        """Deve retornar 422 ao tentar atualizar especialidades para lista vazia."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        prof_id = created["id"]
+
+        response = client.put(f"/api/professionals/{prof_id}", json={"specialties": ["   "]})
+        assert response.status_code == 422
+
     def test_delete_professional_success(self, client: TestClient):
         """Deve remover profissional da base (HTTP 204) e não encontrá-lo depois (HTTP 404)."""
         created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
@@ -237,3 +251,15 @@ class TestUpdateAndRemoveProfessional:
 
         get_resp = client.get(f"/api/professionals/{prof_id}")
         assert get_resp.status_code == 404
+
+    def test_delete_professional_not_found(self, client: TestClient):
+        """Deve retornar 404 ao tentar remover profissional inexistente."""
+        response = client.delete("/api/professionals/99999")
+        assert response.status_code == 404
+        assert "não encontrado" in response.json()["detail"]
+
+    def test_professional_update_specialties_none(self):
+        """Valida que ProfessionalUpdate aceita specialties=None."""
+        from schemas import ProfessionalUpdate
+        update = ProfessionalUpdate(specialties=None)
+        assert update.specialties is None
