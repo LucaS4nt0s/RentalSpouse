@@ -3,14 +3,24 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import Base, engine
+from database import Base, SessionLocal, engine
+from routes.admins import router as admins_router
+from routes.auth import router as auth_router
 from routes.hello import router as hello_router
+from security import seed_initial_admin
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Cria todas as tabelas no banco de dados ao iniciar a aplicação."""
+    """Cria todas as tabelas no banco de dados e semeia o admin inicial ao iniciar a aplicação."""
     Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        seed_initial_admin(db)
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
     yield
 
 
@@ -40,3 +50,6 @@ app.add_middleware(
 
 # Registrar routers modulares
 app.include_router(hello_router)
+app.include_router(auth_router)
+app.include_router(admins_router)
+
