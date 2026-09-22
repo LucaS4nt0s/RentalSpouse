@@ -1,8 +1,11 @@
 backend/venv/
+backend/.venv/
 venv/
+.venv/
 __pycache__/
 *.pyc
 .pytest_cache/
+.coverage
 node_modules/
 .next/
 .expo/

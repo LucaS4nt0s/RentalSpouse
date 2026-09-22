@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import Base, engine
+from routes.clientes import router as clientes_router
 from routes.hello import router as hello_router
 
 
@@ -40,3 +41,4 @@ app.add_middleware(
 
 # Registrar routers modulares
 app.include_router(hello_router)
+app.include_router(clientes_router)
