@@ -48,3 +48,26 @@ O sistema **RentalSpouse** adota a arquitetura de **Monorepo Modularizado**, sep
 | :--- | :--- | :--- | :--- |
 | `id` | Integer | Primary Key, Auto Increment | Identificador único do registro |
 | `message` | String | Not Null | Mensagem armazenada no banco de dados |
+
+### Tabela: `users`
+| Coluna | Tipo | Restrições | Descrição |
+| :--- | :--- | :--- | :--- |
+| `id` | Integer | Primary Key, Auto Increment | Identificador único do usuário |
+| `name` | String(255) | Not Null | Nome completo do usuário |
+| `email` | String(255) | Unique, Index, Not Null | E-mail do usuário/administrador |
+| `hashed_password` | String(255) | Not Null | Hash de senha protegido com Bcrypt |
+| `role` | String(50) | Not Null, Default: 'admin' | Papel no sistema (`admin`, `client`, `professional`) |
+| `is_active` | Boolean | Not Null, Default: True | Flag de ativação da conta |
+| `created_at` | DateTime | Not Null, Default: UTC Now | Data e hora do cadastro |
+
+---
+
+## 4. Endpoints Principais de Administrador e Autenticação
+
+| Método | Rota | Autenticação | Descrição |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/admins` | Bearer Token (`admin`) | Cadastra um novo administrador no sistema |
+| `GET` | `/api/admins` | Bearer Token (`admin`) | Lista todos os administradores cadastrados |
+| `POST` | `/api/auth/login` | Pública | Realiza login e gera o token de acesso JWT |
+| `GET` | `/api/auth/me` | Bearer Token (qualquer) | Retorna o perfil do usuário autenticado |
+
