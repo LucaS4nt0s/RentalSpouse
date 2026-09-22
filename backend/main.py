@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database import Base, engine
 from routes.hello import router as hello_router
+from routes.professionals import router as professionals_router
 
 
 @asynccontextmanager
@@ -40,3 +41,4 @@ app.add_middleware(
 
 # Registrar routers modulares
 app.include_router(hello_router)
+app.include_router(professionals_router)

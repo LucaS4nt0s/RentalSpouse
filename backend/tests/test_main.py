@@ -146,3 +146,20 @@ class TestHelloRoute:
         """O Content-Type da resposta deve ser application/json."""
         response = client.get("/api/hello")
         assert "application/json" in response.headers["content-type"]
+
+    def test_get_db_yields_session(self):
+        """Testa o generator get_db do módulo database."""
+        db_gen = database.get_db()
+        db_session = next(db_gen)
+        assert db_session is not None
+        try:
+            next(db_gen)
+        except StopIteration:
+            pass
+
+    @pytest.mark.asyncio
+    async def test_lifespan_event(self):
+        """Testa o contextmanager lifespan da aplicação."""
+        from main import lifespan
+        async with lifespan(app):
+            pass

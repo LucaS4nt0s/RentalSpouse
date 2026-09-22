@@ -48,3 +48,20 @@ O sistema **RentalSpouse** adota a arquitetura de **Monorepo Modularizado**, sep
 | :--- | :--- | :--- | :--- |
 | `id` | Integer | Primary Key, Auto Increment | Identificador único do registro |
 | `message` | String | Not Null | Mensagem armazenada no banco de dados |
+
+### Tabela: `professionals`
+| Coluna | Tipo | Restrições | Descrição |
+| :--- | :--- | :--- | :--- |
+| `id` | Integer | Primary Key, Auto Increment | Identificador único do profissional |
+| `name` | String(100) | Not Null | Nome completo do profissional |
+| `email` | String(255) | Unique, Index, Not Null | E-mail exclusivo de contato |
+| `phone` | String(20) | Nullable | Telefone / WhatsApp do profissional |
+| `bio` | Text | Not Null | Biografia e apresentação do profissional |
+| `service_radius_km` | Float | Not Null (>= 1.0) | Raio máximo de atendimento em km |
+| `specialties` | JSON | Not Null | Lista de especialidades e habilidades atendidas |
+| `city` | String(100) | Nullable | Cidade base de atendimento |
+| `state` | String(2) | Nullable | Unidade Federativa (UF) |
+| `is_active` | Boolean | Default True, Not Null | Status de ativação na plataforma |
+| `created_at` | DateTime | Default UTC Now, Not Null | Timestamp de cadastro |
+| `updated_at` | DateTime | Default UTC Now, Auto Update | Timestamp da última alteração |
+
