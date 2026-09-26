@@ -1,6 +1,9 @@
 import hashlib
 import secrets
 
+# Recomendação OWASP para PBKDF2-HMAC-SHA256 (>= 600.000 iterações)
+ITERACOES_PBKDF2 = 600_000
+
 
 def hash_senha(senha: str) -> str:
     """
@@ -12,7 +15,7 @@ def hash_senha(senha: str) -> str:
         "sha256",
         senha.encode("utf-8"),
         salt.encode("utf-8"),
-        iterations=100_000,
+        iterations=ITERACOES_PBKDF2,
     )
     return f"{salt}${key.hex()}"
 
@@ -27,8 +30,8 @@ def verificar_senha(senha: str, senha_hash: str) -> bool:
             "sha256",
             senha.encode("utf-8"),
             salt.encode("utf-8"),
-            iterations=100_000,
+            iterations=ITERACOES_PBKDF2,
         )
         return secrets.compare_digest(key.hex(), key_hex)
-    except Exception:
+    except (ValueError, AttributeError):
         return False

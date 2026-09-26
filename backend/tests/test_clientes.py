@@ -1,33 +1,11 @@
-import sys
-import os
-
-# Permitir importação dos módulos do backend
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 from datetime import date
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 
-from database import Base, get_db
-from main import app
-from tests.test_main import test_engine, TestingSessionLocal, override_get_db
 from security import hash_senha, verificar_senha
-
-
-@pytest.fixture(autouse=True)
-def setup_clientes_db():
-    """Garante tabelas criadas e limpas para cada teste."""
-    Base.metadata.create_all(bind=test_engine)
-    app.dependency_overrides[get_db] = override_get_db
-    yield
-    app.dependency_overrides.clear()
-    Base.metadata.drop_all(bind=test_engine)
-
-
-@pytest.fixture
-def client():
-    """Retorna um TestClient para a aplicação."""
-    return TestClient(app, raise_server_exceptions=True)
 
 
 def payload_cliente_valido(**kwargs):
@@ -77,6 +55,10 @@ class TestSeguranca:
 
     def test_verificacao_com_hash_invalido(self):
         assert verificar_senha("qualquer_coisa", "hash_invalido_sem_cifrao") is False
+
+    def test_verificacao_com_tipo_invalido(self):
+        # Dispara AttributeError quando split não puder ser chamado
+        assert verificar_senha("senha", None) is False  # type: ignore
 
 
 # ===========================================================================
@@ -171,6 +153,15 @@ class TestValidacoesSenha:
         assert response.status_code == 422
         assert "no mínimo 8 caracteres" in response.text
 
+    def test_rejeita_senha_longa(self, client: TestClient):
+        senha_longa = "A1" + "a" * 127
+        payload = payload_cliente_valido(
+            senha=senha_longa,
+            confirmar_senha=senha_longa,
+        )
+        response = client.post("/api/clientes", json=payload)
+        assert response.status_code == 422
+
     def test_rejeita_senha_sem_numeros(self, client: TestClient):
         payload = payload_cliente_valido(
             senha="ApenasLetrasAqui",
@@ -224,6 +215,11 @@ class TestValidacoesCPF:
         assert response.status_code == 422
         assert "exatamente 11 dígitos" in response.text
 
+    def test_rejeita_cpf_com_mais_de_14_caracteres(self, client: TestClient):
+        payload = payload_cliente_valido(cpf="123.456.789-0123")
+        response = client.post("/api/clientes", json=payload)
+        assert response.status_code == 422
+
 
 # ===========================================================================
 # Testes de Validações de E-mail
@@ -241,6 +237,11 @@ class TestValidacoesEmail:
             "usuario@.com",
             "usuario@dominio",
             "usuario@@duplo.com",
+            "a@b.com.",
+            "a@b..com",
+            "a..b@example.com",
+            ".user@example.com",
+            "user.@example.com",
         ],
     )
     def test_rejeita_formatos_email_invalidos(self, client: TestClient, email_invalido: str):
@@ -254,6 +255,12 @@ class TestValidacoesEmail:
         response = client.post("/api/clientes", json=payload)
         assert response.status_code == 201
         assert response.json()["email"] == "cliente.teste@example.com"
+
+    def test_rejeita_email_estouro_max_length(self, client: TestClient):
+        long_email = ("a" * 250) + "@ex.com"  # > 255 chars
+        payload = payload_cliente_valido(email=long_email)
+        response = client.post("/api/clientes", json=payload)
+        assert response.status_code == 422
 
 
 # ===========================================================================
@@ -288,7 +295,7 @@ class TestValidacoesDataNascimento:
 
 
 # ===========================================================================
-# Testes de Validações de Nome e Endereço
+# Testes de Validações de Nome, Endereço e Limites de Tamanho (max_length)
 # ===========================================================================
 
 
@@ -307,6 +314,11 @@ class TestValidacoesNomeEndereco:
         assert response.status_code == 422
         assert "deve conter letras" in response.text
 
+    def test_rejeita_nome_estouro_max_length(self, client: TestClient):
+        payload = payload_cliente_valido(nome="A" * 256)
+        response = client.post("/api/clientes", json=payload)
+        assert response.status_code == 422
+
     def test_rejeita_cep_invalido(self, client: TestClient):
         endereco = payload_cliente_valido()["endereco"].copy()
         endereco["cep"] = "123"
@@ -314,6 +326,13 @@ class TestValidacoesNomeEndereco:
         response = client.post("/api/clientes", json=payload)
         assert response.status_code == 422
         assert "8 dígitos" in response.text
+
+    def test_rejeita_cep_estouro_max_length(self, client: TestClient):
+        endereco = payload_cliente_valido()["endereco"].copy()
+        endereco["cep"] = "01001-00000"
+        payload = payload_cliente_valido(endereco=endereco)
+        response = client.post("/api/clientes", json=payload)
+        assert response.status_code == 422
 
     def test_rejeita_estado_invalido(self, client: TestClient):
         endereco = payload_cliente_valido()["endereco"].copy()
@@ -323,6 +342,13 @@ class TestValidacoesNomeEndereco:
         assert response.status_code == 422
         assert "Estado 'XX' inválido" in response.text
 
+    def test_rejeita_estado_tamanho_invalido(self, client: TestClient):
+        endereco = payload_cliente_valido()["endereco"].copy()
+        endereco["estado"] = "SÃO"
+        payload = payload_cliente_valido(endereco=endereco)
+        response = client.post("/api/clientes", json=payload)
+        assert response.status_code == 422
+
     @pytest.mark.parametrize("campo", ["logradouro", "numero", "bairro", "cidade"])
     def test_rejeita_campo_endereco_vazio(self, client: TestClient, campo: str):
         endereco = payload_cliente_valido()["endereco"].copy()
@@ -331,6 +357,25 @@ class TestValidacoesNomeEndereco:
         response = client.post("/api/clientes", json=payload)
         assert response.status_code == 422
         assert f"'{campo}' não pode ser vazio" in response.text
+
+    @pytest.mark.parametrize(
+        ("campo", "tamanho_maximo"),
+        [
+            ("logradouro", 255),
+            ("numero", 50),
+            ("complemento", 255),
+            ("bairro", 100),
+            ("cidade", 100),
+        ],
+    )
+    def test_rejeita_campos_endereco_estouro_max_length(
+        self, client: TestClient, campo: str, tamanho_maximo: int
+    ):
+        endereco = payload_cliente_valido()["endereco"].copy()
+        endereco[campo] = "X" * (tamanho_maximo + 1)
+        payload = payload_cliente_valido(endereco=endereco)
+        response = client.post("/api/clientes", json=payload)
+        assert response.status_code == 422
 
 
 # ===========================================================================
@@ -375,45 +420,13 @@ class TestUnicidadeCliente:
         assert resp2.status_code == 409
         assert "CPF já cadastrado" in resp2.json()["detail"]
 
-
-# ===========================================================================
-# Testes de Busca e Listagem (GET /api/clientes)
-# ===========================================================================
-
-
-class TestConsultasCliente:
-    """Testes dos endpoints de leitura e busca."""
-
-    def test_obter_cliente_por_id_existente(self, client: TestClient):
-        payload = payload_cliente_valido()
-        criado = client.post("/api/clientes", json=payload).json()
-        cliente_id = criado["id"]
-
-        response = client.get(f"/api/clientes/{cliente_id}")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["id"] == cliente_id
-        assert data["nome"] == payload["nome"]
-        assert data["email"] == payload["email"]
-
-    def test_obter_cliente_por_id_inexistente(self, client: TestClient):
-        response = client.get("/api/clientes/99999")
-        assert response.status_code == 404
-        assert "Cliente não encontrado" in response.json()["detail"]
-
-    def test_listar_clientes(self, client: TestClient):
-        # Banco inicialmente vazio para clientes
-        resp_vazio = client.get("/api/clientes")
-        assert resp_vazio.status_code == 200
-        assert resp_vazio.json() == []
-
-        # Cadastra 2 clientes
-        client.post("/api/clientes", json=payload_cliente_valido(email="c1@example.com", cpf="12345678909"))
-        client.post("/api/clientes", json=payload_cliente_valido(email="c2@example.com", cpf="98765432100"))
-
-        response = client.get("/api/clientes")
-        assert response.status_code == 200
-        lista = response.json()
-        assert len(lista) == 2
-        assert lista[0]["email"] == "c1@example.com"
-        assert lista[1]["email"] == "c2@example.com"
+    def test_rejeita_conflito_por_integrity_error_no_commit(self, client: TestClient):
+        """Simula condição de corrida onde db.commit() estoura IntegrityError."""
+        payload = payload_cliente_valido(
+            email="corrida@example.com",
+            cpf="12345678909",
+        )
+        with patch("sqlalchemy.orm.Session.commit", side_effect=IntegrityError("statement", "params", "orig")):
+            response = client.post("/api/clientes", json=payload)
+            assert response.status_code == 409
+            assert "E-mail ou CPF já cadastrado" in response.json()["detail"]

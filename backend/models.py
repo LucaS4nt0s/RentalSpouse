@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Date, DateTime, Integer, String
 
 from database import Base
@@ -34,7 +34,7 @@ class Cliente(Base):
     cidade = Column(String(100), nullable=False)
     estado = Column(String(2), nullable=False)
 
-    criado_em = Column(DateTime, default=datetime.utcnow, nullable=False)
+    criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     @property
     def endereco(self):

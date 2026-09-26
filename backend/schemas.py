@@ -2,7 +2,7 @@ from datetime import date, datetime
 import re
 from typing import Optional
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Conjunto de Unidades Federativas válidas do Brasil
 UFS_VALIDAS = {
@@ -11,7 +11,10 @@ UFS_VALIDAS = {
     "RS", "RO", "RR", "SC", "SP", "SE", "TO"
 }
 
-EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+# Regex rigoroso para e-mail: impede pontos consecutivos, ponto final no domínio ou no nome, e exige TLD >= 2 letras
+EMAIL_REGEX = re.compile(
+    r"^(?!.*\.\.)[a-zA-Z0-9_+-]+(?:\.[a-zA-Z0-9_+-]+)*@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}$"
+)
 
 
 class StatusBase(BaseModel):
@@ -42,13 +45,13 @@ class StatusRead(StatusBase):
 class EnderecoSchema(BaseModel):
     """Schema com os dados do endereço estruturado do cliente."""
 
-    cep: str
-    logradouro: str
-    numero: str
-    complemento: Optional[str] = None
-    bairro: str
-    cidade: str
-    estado: str
+    cep: str = Field(..., max_length=9, description="CEP do endereço (com ou sem pontuação)")
+    logradouro: str = Field(..., max_length=255, description="Logradouro / Rua / Avenida")
+    numero: str = Field(..., max_length=50, description="Número residencial")
+    complemento: Optional[str] = Field(None, max_length=255, description="Complemento do endereço")
+    bairro: str = Field(..., max_length=100, description="Bairro")
+    cidade: str = Field(..., max_length=100, description="Cidade")
+    estado: str = Field(..., min_length=2, max_length=2, description="Sigla da UF (2 caracteres)")
 
     model_config = {"from_attributes": True}
 
@@ -94,9 +97,9 @@ class EnderecoSchema(BaseModel):
 class ClienteBase(BaseModel):
     """Campos base do cliente."""
 
-    nome: str
-    email: str
-    cpf: str
+    nome: str = Field(..., max_length=255, description="Nome completo do cliente")
+    email: str = Field(..., max_length=255, description="E-mail único do cliente")
+    cpf: str = Field(..., max_length=14, description="CPF com ou sem formatação")
     data_nascimento: date
     endereco: EnderecoSchema
 
@@ -165,8 +168,8 @@ class ClienteBase(BaseModel):
 class ClienteCreate(ClienteBase):
     """Schema para cadastro de um novo cliente, incluindo senha e confirmação."""
 
-    senha: str
-    confirmar_senha: str
+    senha: str = Field(..., max_length=128, description="Senha de acesso")
+    confirmar_senha: str = Field(..., max_length=128, description="Confirmação de senha")
 
     @field_validator("senha")
     @classmethod

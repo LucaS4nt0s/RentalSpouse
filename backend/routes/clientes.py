@@ -1,6 +1,5 @@
-from typing import List
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -66,45 +65,16 @@ def cadastrar_cliente(cliente_in: ClienteCreate, db: Session = Depends(get_db)):
         estado=cliente_in.endereco.estado,
     )
 
-    db.add(db_cliente)
-    db.commit()
+    try:
+        db.add(db_cliente)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="E-mail ou CPF já cadastrado na plataforma.",
+        )
+
     db.refresh(db_cliente)
 
     return db_cliente
-
-
-@router.get(
-    "/{cliente_id}",
-    response_model=ClienteRead,
-    summary="Obter dados de um cliente",
-    description="Retorna os dados públicos de um cliente cadastrado pelo seu identificador único.",
-)
-def obter_cliente(cliente_id: int, db: Session = Depends(get_db)):
-    """Busca um cliente cadastrado pelo ID."""
-    db_cliente = (
-        db.query(models.Cliente)
-        .filter(models.Cliente.id == cliente_id)
-        .first()
-    )
-    if not db_cliente:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Cliente não encontrado.",
-        )
-    return db_cliente
-
-
-@router.get(
-    "",
-    response_model=List[ClienteRead],
-    summary="Listar clientes",
-    description="Retorna a lista paginada de clientes cadastrados na plataforma.",
-)
-def listar_clientes(
-    skip: int = Query(0, ge=0, description="Número de registros a pular"),
-    limit: int = Query(20, ge=1, le=100, description="Limite de registros a retornar"),
-    db: Session = Depends(get_db),
-):
-    """Lista clientes cadastrados com paginação."""
-    clientes = db.query(models.Cliente).offset(skip).limit(limit).all()
-    return clientes
