@@ -32,11 +32,11 @@ import { cleanDigits, formatDateToISO } from '../../../utils/formatters';
 
 interface SuccessResponseData {
   id: number;
-  nome_completo: string;
+  nome: string;
   email: string;
   cpf: string;
   data_nascimento: string;
-  created_at?: string;
+  criado_em?: string;
 }
 
 export default function CadastroClientePage() {
@@ -154,6 +154,7 @@ export default function CadastroClientePage() {
       const message = item.msg || 'Valor inválido.';
       switch (field) {
         case 'nome_completo':
+        case 'nome':
           nextPersonalErrors.nomeCompleto = message;
           break;
         case 'email':
@@ -167,6 +168,10 @@ export default function CadastroClientePage() {
           break;
         case 'senha':
           nextPasswordErrors.senha = message;
+          break;
+        case 'confirmar_senha':
+        case 'body':
+          nextPasswordErrors.confirmacaoSenha = message;
           break;
         case 'cep':
           nextAddressErrors.cep = message;
@@ -187,6 +192,7 @@ export default function CadastroClientePage() {
           nextAddressErrors.cidade = message;
           break;
         case 'estado_uf':
+        case 'estado':
           nextAddressErrors.estado_uf = message;
           break;
         default:
@@ -292,11 +298,12 @@ export default function CadastroClientePage() {
     setIsSubmitting(true);
 
     const payload = {
-      nome_completo: personalData.nomeCompleto.trim(),
+      nome: personalData.nomeCompleto.trim(),
       email: personalData.email.trim().toLowerCase(),
       cpf: cleanDigits(personalData.cpf),
       data_nascimento: formatDateToISO(personalData.dataNascimento),
       senha: passwordData.senha,
+      confirmar_senha: passwordData.confirmacaoSenha,
       endereco: {
         cep: cleanDigits(addressData.cep),
         logradouro: addressData.logradouro.trim(),
@@ -304,14 +311,14 @@ export default function CadastroClientePage() {
         complemento: addressData.complemento.trim() || undefined,
         bairro: addressData.bairro.trim(),
         cidade: addressData.cidade.trim(),
-        estado_uf: addressData.estado_uf.trim().toUpperCase(),
+        estado: addressData.estado_uf.trim().toUpperCase(),
       },
     };
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
     try {
-      const response = await fetch(`${apiUrl}/api/v1/clients`, {
+      const response = await fetch(`${apiUrl}/api/clientes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -405,7 +412,7 @@ export default function CadastroClientePage() {
             <p className="text-sm text-[#626970] dark:text-[#bab195] max-w-md mx-auto leading-relaxed">
               Cadastro realizado com sucesso,{' '}
               <strong className="text-[#947728] dark:text-[#e8d18e] font-semibold">
-                {successData.nome_completo}
+                {successData.nome}
               </strong>
               ! Sua conta está pronta para uso imediato.
             </p>

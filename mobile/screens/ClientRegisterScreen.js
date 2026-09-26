@@ -207,18 +207,22 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
       const field = loc[loc.length - 1];
       const message = item.msg || 'Valor inválido.';
       switch (field) {
-        case 'nome_completo': nextPersonal.nomeCompleto = message; break;
+        case 'nome_completo':
+        case 'nome': nextPersonal.nomeCompleto = message; break;
         case 'email': nextPersonal.email = message; break;
         case 'cpf': nextPersonal.cpf = message; break;
         case 'data_nascimento': nextPersonal.dataNascimento = message; break;
         case 'senha': nextPassword.senha = message; break;
+        case 'confirmar_senha':
+        case 'body': nextPassword.confirmacaoSenha = message; break;
         case 'cep': nextAddress.cep = message; break;
         case 'logradouro': nextAddress.logradouro = message; break;
         case 'numero': nextAddress.numero = message; break;
         case 'complemento': nextAddress.complemento = message; break;
         case 'bairro': nextAddress.bairro = message; break;
         case 'cidade': nextAddress.cidade = message; break;
-        case 'estado_uf': nextAddress.estado_uf = message; break;
+        case 'estado_uf':
+        case 'estado': nextAddress.estado_uf = message; break;
         default: if (!unmapped) unmapped = message;
       }
     });
@@ -246,11 +250,12 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
     setIsSubmitting(true);
 
     const payload = {
-      nome_completo: personalData.nomeCompleto.trim(),
+      nome: personalData.nomeCompleto.trim(),
       email: personalData.email.trim().toLowerCase(),
       cpf: cleanDigits(personalData.cpf),
       data_nascimento: formatDateToISO(personalData.dataNascimento),
       senha: passwordData.senha,
+      confirmar_senha: passwordData.confirmacaoSenha,
       endereco: {
         cep: cleanDigits(addressData.cep),
         logradouro: addressData.logradouro.trim(),
@@ -258,12 +263,12 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
         complemento: addressData.complemento.trim() || undefined,
         bairro: addressData.bairro.trim(),
         cidade: addressData.cidade.trim(),
-        estado_uf: addressData.estado_uf.trim().toUpperCase(),
+        estado: addressData.estado_uf.trim().toUpperCase(),
       },
     };
 
     try {
-      const response = await fetch(`${BASE_API_URL}/api/v1/clients`, {
+      const response = await fetch(`${BASE_API_URL}/api/clientes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -337,7 +342,7 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
           <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
             Olá,{' '}
             <Text style={[styles.goldText, { color: isDark ? colors.gold : '#6e581c' }]}>
-              {successData.nome_completo}
+              {successData.nome}
             </Text>
             ! Sua conta está pronta para solicitar manutenções e reparos.
           </Text>
