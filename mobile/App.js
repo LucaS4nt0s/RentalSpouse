@@ -12,6 +12,7 @@ import {
 import { ThemeProvider, useAppTheme } from './theme/ThemeContext';
 import { ThemeToggle } from './components/ui/ThemeToggle';
 import { ClientRegisterScreen } from './screens/ClientRegisterScreen';
+import { ProfessionalRegisterScreen } from './screens/ProfessionalRegisterScreen';
 
 const API_URL =
   Platform.OS === 'android'
@@ -52,6 +53,10 @@ function MainApp() {
 
   if (currentScreen === 'register') {
     return <ClientRegisterScreen onNavigateBack={() => setCurrentScreen('home')} />;
+  }
+
+  if (currentScreen === 'professional') {
+    return <ProfessionalRegisterScreen onNavigateBack={() => setCurrentScreen('home')} />;
   }
 
   return (
@@ -148,6 +153,20 @@ function MainApp() {
           >
             <Text style={styles.registerButtonText}>
               Ir para Cadastro de Cliente →
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.registerButton,
+              styles.professionalButton,
+              { borderColor: colors.gold },
+            ]}
+            onPress={() => setCurrentScreen('professional')}
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.professionalButtonText, { color: colors.gold }]}>
+              Sou Profissional → Cadastrar Perfil
             </Text>
           </TouchableOpacity>
 
@@ -331,6 +350,17 @@ const styles = StyleSheet.create({
     color: '#11091a',
     fontSize: 14,
     fontWeight: '800',
+  },
+  professionalButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    marginTop: 10,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  professionalButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   footer: {
     marginTop: 16,
