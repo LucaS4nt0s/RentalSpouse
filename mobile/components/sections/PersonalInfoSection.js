@@ -4,6 +4,7 @@ import { FormFieldWrapper } from '../ui/FormFieldWrapper';
 import { TextInput } from '../ui/TextInput';
 import { MaskedInput } from '../ui/MaskedInput';
 import { Colors } from '../../theme/colors';
+import { useAppTheme } from '../../theme/ThemeContext';
 
 export const PersonalInfoSection = ({
   data,
@@ -12,15 +13,26 @@ export const PersonalInfoSection = ({
   onBlur,
   disabled = false,
 }) => {
+  const { colors } = useAppTheme();
+
   return (
-    <View style={styles.card}>
-      <View style={styles.header}>
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: colors.surfaceGlass, borderColor: colors.borderGlass },
+      ]}
+    >
+      <View style={[styles.header, { borderBottomColor: colors.borderGlass }]}>
         <View style={styles.badgeIcon}>
           <Text style={styles.iconText}>👤</Text>
         </View>
         <View>
-          <Text style={styles.title}>1. Dados Pessoais</Text>
-          <Text style={styles.subtitle}>Identificação para orçamentos e chamados</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>
+            1. Dados Pessoais
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Identificação para orçamentos e chamados
+          </Text>
         </View>
       </View>
 

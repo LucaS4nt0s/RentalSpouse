@@ -5,6 +5,7 @@ import { PasswordInput } from '../ui/PasswordInput';
 import { PasswordStrengthMeter } from '../ui/PasswordStrengthMeter';
 import { usePasswordStrength } from '../../hooks/usePasswordStrength';
 import { Colors } from '../../theme/colors';
+import { useAppTheme } from '../../theme/ThemeContext';
 
 export const PasswordSection = ({
   data,
@@ -13,6 +14,7 @@ export const PasswordSection = ({
   onBlur,
   disabled = false,
 }) => {
+  const { colors } = useAppTheme();
   const passwordEvaluation = usePasswordStrength(data.senha);
 
   const hasConfirmation = Boolean(data.confirmacaoSenha);
@@ -23,14 +25,23 @@ export const PasswordSection = ({
     errors.confirmacaoSenha || (passwordsMismatch ? 'As senhas não coincidem.' : undefined);
 
   return (
-    <View style={styles.card}>
-      <View style={styles.header}>
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: colors.surfaceGlass, borderColor: colors.borderGlass },
+      ]}
+    >
+      <View style={[styles.header, { borderBottomColor: colors.borderGlass }]}>
         <View style={styles.badgeIcon}>
           <Text style={styles.iconText}>🔒</Text>
         </View>
         <View>
-          <Text style={styles.title}>3. Segurança & Senha</Text>
-          <Text style={styles.subtitle}>Credencial exclusiva de acesso à sua conta</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>
+            3. Segurança & Senha
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Credencial exclusiva de acesso à sua conta
+          </Text>
         </View>
       </View>
 
@@ -76,7 +87,9 @@ export const PasswordSection = ({
 
         {passwordsMatch && (
           <View style={styles.matchBadge}>
-            <Text style={styles.matchText}>✓ Senhas coincidem</Text>
+            <Text style={[styles.matchText, { color: colors.success }]}>
+              ✓ Senhas coincidem
+            </Text>
           </View>
         )}
       </View>

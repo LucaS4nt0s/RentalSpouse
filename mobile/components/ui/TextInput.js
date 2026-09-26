@@ -5,6 +5,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Colors } from '../../theme/colors';
+import { useAppTheme } from '../../theme/ThemeContext';
 
 export const TextInput = forwardRef(
   (
@@ -21,6 +22,7 @@ export const TextInput = forwardRef(
     },
     ref
   ) => {
+    const { colors } = useAppTheme();
     const [isFocused, setIsFocused] = useState(false);
 
     const handleFocus = (e) => {
@@ -37,6 +39,10 @@ export const TextInput = forwardRef(
       <View
         style={[
           styles.container,
+          {
+            backgroundColor: colors.inputBg,
+            borderColor: colors.borderGlass,
+          },
           isFocused && styles.focusedContainer,
           hasError && styles.errorContainer,
           hasSuccess && styles.successContainer,
@@ -47,9 +53,10 @@ export const TextInput = forwardRef(
 
         <RNTextInput
           ref={ref}
-          placeholderTextColor={Colors.muted}
+          placeholderTextColor={colors.muted}
           style={[
             styles.input,
+            { color: colors.textPrimary },
             leftIcon && styles.inputWithLeftIcon,
             rightIcon && styles.inputWithRightIcon,
             style,

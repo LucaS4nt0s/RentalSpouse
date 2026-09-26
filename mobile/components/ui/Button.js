@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import { Colors } from '../../theme/colors';
+import { useAppTheme } from '../../theme/ThemeContext';
 
 export const Button = ({
   children,
@@ -19,6 +20,7 @@ export const Button = ({
   style,
   textStyle,
 }) => {
+  const { colors } = useAppTheme();
   const isPrimary = variant === 'primary';
   const isGlass = variant === 'glass';
   const isOutline = variant === 'outline';
@@ -30,6 +32,7 @@ export const Button = ({
     size === 'lg' && styles.sizeLg,
     isPrimary && styles.primaryBtn,
     isGlass && styles.glassBtn,
+    isGlass && { backgroundColor: colors.surfaceGlass, borderColor: colors.borderGlass },
     isOutline && styles.outlineBtn,
     (disabled || isLoading) && styles.disabledBtn,
     style,
@@ -41,8 +44,11 @@ export const Button = ({
     size === 'md' && styles.textMd,
     size === 'lg' && styles.textLg,
     isPrimary && styles.primaryText,
+    isPrimary && { color: colors.textDark },
     isGlass && styles.glassText,
+    isGlass && { color: colors.textPrimary },
     isOutline && styles.outlineText,
+    isOutline && { color: colors.gold },
     textStyle,
   ];
 
@@ -57,7 +63,7 @@ export const Button = ({
         <View style={styles.loadingRow}>
           <ActivityIndicator
             size="small"
-            color={isPrimary ? Colors.textDark : Colors.gold}
+            color={isPrimary ? colors.textDark : colors.gold}
           />
           <Text style={[...textStyles, styles.loadingTextMargin]}>
             {loadingText || children}

@@ -26,6 +26,7 @@ import {
   evaluatePasswordStrength,
   validatePasswordMatch,
   validateCEP,
+  VALID_UFS,
 } from '../utils/validators';
 import { cleanDigits, formatDateToISO } from '../utils/formatters';
 
@@ -34,6 +35,7 @@ const BASE_API_URL =
 
 export const ClientRegisterScreen = ({ onNavigateBack }) => {
   const scrollRef = useRef(null);
+  const { isDark, colors } = useAppTheme();
 
   // Estados dos Dados
   const [personalData, setPersonalData] = useState({
@@ -114,6 +116,13 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
     if (field === 'cep' && addressData.cep) {
       const res = validateCEP(addressData.cep);
       if (!res.isValid) setAddressErrors((prev) => ({ ...prev, cep: res.message }));
+    } else if (field === 'estado_uf' && addressData.estado_uf) {
+      if (!VALID_UFS.includes(addressData.estado_uf.toUpperCase())) {
+        setAddressErrors((prev) => ({
+          ...prev,
+          estado_uf: 'UF inválida. Use uma sigla válida (ex: SP).',
+        }));
+      }
     }
   };
 
@@ -163,6 +172,9 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
     if (!addressData.estado_uf) {
       newAddress.estado_uf = 'Informe a UF.';
       hasError = true;
+    } else if (!VALID_UFS.includes(addressData.estado_uf.toUpperCase())) {
+      newAddress.estado_uf = 'UF inválida. Use uma sigla válida (ex: SP, RJ).';
+      hasError = true;
     }
     setAddressErrors(newAddress);
 
@@ -181,6 +193,40 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
     setPasswordErrors(newPassword);
 
     return !hasError;
+  };
+
+  // Mapeia os erros de validação (HTTP 422) do backend para os campos do formulário
+  const mapBackendValidationErrors = (detail) => {
+    const nextPersonal = {};
+    const nextAddress = {};
+    const nextPassword = {};
+    let unmapped = '';
+
+    (Array.isArray(detail) ? detail : []).forEach((item) => {
+      const loc = item.loc || [];
+      const field = loc[loc.length - 1];
+      const message = item.msg || 'Valor inválido.';
+      switch (field) {
+        case 'nome_completo': nextPersonal.nomeCompleto = message; break;
+        case 'email': nextPersonal.email = message; break;
+        case 'cpf': nextPersonal.cpf = message; break;
+        case 'data_nascimento': nextPersonal.dataNascimento = message; break;
+        case 'senha': nextPassword.senha = message; break;
+        case 'cep': nextAddress.cep = message; break;
+        case 'logradouro': nextAddress.logradouro = message; break;
+        case 'numero': nextAddress.numero = message; break;
+        case 'complemento': nextAddress.complemento = message; break;
+        case 'bairro': nextAddress.bairro = message; break;
+        case 'cidade': nextAddress.cidade = message; break;
+        case 'estado_uf': nextAddress.estado_uf = message; break;
+        default: if (!unmapped) unmapped = message;
+      }
+    });
+
+    setPersonalErrors(nextPersonal);
+    setAddressErrors(nextAddress);
+    setPasswordErrors(nextPassword);
+    return unmapped;
   };
 
   // Envio do Cadastro
@@ -245,10 +291,11 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
 
       if (response.status === 422) {
         const errorJson = await response.json();
-        const msg = errorJson.detail?.[0]?.msg || 'Dados inválidos fornecidos.';
+        const unmapped = mapBackendValidationErrors(errorJson.detail);
         setGlobalError({
           type: 'validation',
-          message: `Erro de validação: ${msg}`,
+          message:
+            unmapped || 'Alguns campos foram rejeitados pelo servidor. Revise os destaques.',
         });
         scrollRef.current?.scrollTo({ y: 0, animated: true });
         return;
@@ -270,8 +317,11 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
   // Render do Estado 3: Sucesso
   if (successData) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.bg }]}>
+        <StatusBar
+          barStyle={isDark ? 'light-content' : 'dark-content'}
+          backgroundColor={colors.bg}
+        />
         <View style={styles.successContainer}>
           <View style={styles.successIconBox}>
             <Text style={styles.successCheckIcon}>✓</Text>
@@ -281,20 +331,34 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
             <Text style={styles.successBadgeText}>Cadastro Realizado com Sucesso</Text>
           </View>
 
-          <Text style={styles.successTitle}>Bem-vindo ao RentalSpouse!</Text>
-          <Text style={styles.successSubtitle}>
-            Olá, <Text style={styles.goldText}>{successData.nome_completo}</Text>! Sua conta
-            está pronta para solicitar manutenções e reparos.
+          <Text style={[styles.successTitle, { color: colors.textPrimary }]}>
+            Bem-vindo ao RentalSpouse!
+          </Text>
+          <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
+            Olá,{' '}
+            <Text style={[styles.goldText, { color: isDark ? colors.gold : '#6e581c' }]}>
+              {successData.nome_completo}
+            </Text>
+            ! Sua conta está pronta para solicitar manutenções e reparos.
           </Text>
 
-          <View style={styles.successInfoCard}>
+          <View
+            style={[
+              styles.successInfoCard,
+              { backgroundColor: colors.surfaceGlass, borderColor: colors.borderGlass },
+            ]}
+          >
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>ID do Cliente:</Text>
-              <Text style={styles.infoValue}>#{successData.id}</Text>
+              <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
+                #{successData.id}
+              </Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>E-mail:</Text>
-              <Text style={styles.infoValue}>{successData.email}</Text>
+              <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
+                {successData.email}
+              </Text>
             </View>
             <View style={styles.infoRowNoBorder}>
               <Text style={styles.infoLabel}>Status:</Text>
@@ -326,8 +390,6 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
       </SafeAreaView>
     );
   }
-
-  const { isDark, colors } = useAppTheme();
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.bg }]}>
@@ -374,7 +436,9 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
           <View style={styles.header}>
             <View style={styles.brandBadge}>
               <View style={styles.badgeDot} />
-              <Text style={styles.brandBadgeText}>RentalSpouse Mobile</Text>
+              <Text style={[styles.brandBadgeText, { color: isDark ? colors.gold : '#6e581c' }]}>
+                RentalSpouse Mobile
+              </Text>
             </View>
 
             <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>
@@ -395,7 +459,9 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
                   ? 'Falha de Conexão'
                   : 'Atenção ao Preenchimento'}
               </Text>
-              <Text style={styles.errorBannerMessage}>{globalError.message}</Text>
+              <Text style={[styles.errorBannerMessage, { color: colors.textPrimary }]}>
+                {globalError.message}
+              </Text>
               {globalError.type === 'network' && (
                 <TouchableOpacity
                   onPress={handleSubmit}

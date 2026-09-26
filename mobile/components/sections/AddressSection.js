@@ -5,6 +5,7 @@ import { TextInput } from '../ui/TextInput';
 import { MaskedInput } from '../ui/MaskedInput';
 import { useAddressLookup } from '../../hooks/useAddressLookup';
 import { Colors } from '../../theme/colors';
+import { useAppTheme } from '../../theme/ThemeContext';
 
 export const AddressSection = ({
   data,
@@ -13,6 +14,7 @@ export const AddressSection = ({
   onBlur,
   disabled = false,
 }) => {
+  const { colors } = useAppTheme();
   const numeroRef = useRef(null);
 
   const { isLoading: isLoadingCep, error: cepLookupError } = useAddressLookup(
@@ -34,14 +36,23 @@ export const AddressSection = ({
   const displayCepError = errors.cep || cepLookupError;
 
   return (
-    <View style={styles.card}>
-      <View style={styles.header}>
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: colors.surfaceGlass, borderColor: colors.borderGlass },
+      ]}
+    >
+      <View style={[styles.header, { borderBottomColor: colors.borderGlass }]}>
         <View style={styles.badgeIcon}>
           <Text style={styles.iconText}>📍</Text>
         </View>
         <View>
-          <Text style={styles.title}>2. Endereço Principal</Text>
-          <Text style={styles.subtitle}>Local onde os serviços serão realizados</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>
+            2. Endereço Principal
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Local onde os serviços serão realizados
+          </Text>
         </View>
       </View>
 
@@ -64,7 +75,7 @@ export const AddressSection = ({
           maxLength={9}
           rightIcon={
             isLoadingCep ? (
-              <ActivityIndicator size="small" color={Colors.gold} />
+              <ActivityIndicator size="small" color={colors.gold} />
             ) : null
           }
         />

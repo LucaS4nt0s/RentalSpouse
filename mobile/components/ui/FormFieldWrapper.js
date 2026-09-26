@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '../../theme/colors';
+import { useAppTheme } from '../../theme/ThemeContext';
 
 export const FormFieldWrapper = ({
   label,
@@ -10,14 +11,16 @@ export const FormFieldWrapper = ({
   children,
   style,
 }) => {
+  const { colors } = useAppTheme();
+
   return (
     <View style={[styles.container, style]}>
       {label && (
         <View style={styles.labelRow}>
-          <Text style={styles.label}>
-            {label} {required && <Text style={styles.requiredStar}>*</Text>}
+          <Text style={[styles.label, { color: colors.textSecondary }]}>
+            {label} {required && <Text style={[styles.requiredStar, { color: colors.error }]}>*</Text>}
           </Text>
-          {hint && !error && <Text style={styles.hint}>{hint}</Text>}
+          {hint && !error && <Text style={[styles.hint, { color: colors.muted }]}>{hint}</Text>}
         </View>
       )}
 
@@ -26,7 +29,7 @@ export const FormFieldWrapper = ({
       {error && (
         <View style={styles.errorRow}>
           <Text style={styles.errorIcon}>⚠️</Text>
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
         </View>
       )}
     </View>

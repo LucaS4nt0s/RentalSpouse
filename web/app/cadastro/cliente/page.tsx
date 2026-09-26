@@ -139,6 +139,67 @@ export default function CadastroClientePage() {
     }
   };
 
+  // Mapeia os erros de validação (HTTP 422) do backend para os campos do formulário
+  const mapBackendValidationErrors = (
+    detail: Array<{ loc?: (string | number)[]; msg?: string }>
+  ): string => {
+    const nextPersonalErrors: PersonalInfoErrors = {};
+    const nextAddressErrors: AddressErrors = {};
+    const nextPasswordErrors: PasswordErrors = {};
+    let unmappedMessage = '';
+
+    detail.forEach((item) => {
+      const loc = item.loc ?? [];
+      const field = loc[loc.length - 1];
+      const message = item.msg || 'Valor inválido.';
+      switch (field) {
+        case 'nome_completo':
+          nextPersonalErrors.nomeCompleto = message;
+          break;
+        case 'email':
+          nextPersonalErrors.email = message;
+          break;
+        case 'cpf':
+          nextPersonalErrors.cpf = message;
+          break;
+        case 'data_nascimento':
+          nextPersonalErrors.dataNascimento = message;
+          break;
+        case 'senha':
+          nextPasswordErrors.senha = message;
+          break;
+        case 'cep':
+          nextAddressErrors.cep = message;
+          break;
+        case 'logradouro':
+          nextAddressErrors.logradouro = message;
+          break;
+        case 'numero':
+          nextAddressErrors.numero = message;
+          break;
+        case 'complemento':
+          nextAddressErrors.complemento = message;
+          break;
+        case 'bairro':
+          nextAddressErrors.bairro = message;
+          break;
+        case 'cidade':
+          nextAddressErrors.cidade = message;
+          break;
+        case 'estado_uf':
+          nextAddressErrors.estado_uf = message;
+          break;
+        default:
+          if (!unmappedMessage) unmappedMessage = message;
+      }
+    });
+
+    setPersonalErrors(nextPersonalErrors);
+    setAddressErrors(nextAddressErrors);
+    setPasswordErrors(nextPasswordErrors);
+    return unmappedMessage;
+  };
+
   // Validação completa antes do envio
   const validateForm = (): boolean => {
     let hasError = false;
@@ -282,10 +343,13 @@ export default function CadastroClientePage() {
 
       if (response.status === 422) {
         const errorData = await response.json();
-        const firstError = errorData.detail?.[0]?.msg || 'Dados inválidos fornecidos no formulário.';
+        const detail = Array.isArray(errorData.detail) ? errorData.detail : [];
+        const unmappedMessage = mapBackendValidationErrors(detail);
         setGlobalError({
           type: 'validation',
-          message: `Erro de validação: ${firstError}`,
+          message:
+            unmappedMessage ||
+            'Alguns campos foram rejeitados pelo servidor. Revise os itens destacados.',
         });
         window.scrollTo({ top: 80, behavior: 'smooth' });
         return;

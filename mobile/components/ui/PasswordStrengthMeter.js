@@ -1,9 +1,14 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '../../theme/colors';
+import { useAppTheme } from '../../theme/ThemeContext';
 
 export const PasswordStrengthMeter = ({ evaluation }) => {
+  const { isDark, colors } = useAppTheme();
   const { score, criteria, label, color } = evaluation;
+
+  const trackColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(47, 47, 77, 0.12)';
+  const emptySegmentColor = isDark ? 'rgba(98, 105, 112, 0.25)' : 'rgba(47, 47, 77, 0.15)';
 
   let activeSegments = 0;
   if (score >= 5) activeSegments = 3;
@@ -19,16 +24,31 @@ export const PasswordStrengthMeter = ({ evaluation }) => {
   ];
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.surfaceGlassSubtle,
+          borderColor: colors.borderGlass,
+        },
+      ]}
+    >
       {/* Barra de Força Segmentada */}
       <View style={styles.headerRow}>
-        <Text style={styles.headerLabel}>Força da senha:</Text>
-        <Text style={[styles.statusText, { color: score === 0 ? Colors.muted : color }]}>
+        <Text style={[styles.headerLabel, { color: colors.textSecondary }]}>
+          Força da senha:
+        </Text>
+        <Text
+          style={[
+            styles.statusText,
+            { color: score === 0 ? colors.muted : color },
+          ]}
+        >
           {score === 0 ? 'Digite sua senha' : label}
         </Text>
       </View>
 
-      <View style={styles.track}>
+      <View style={[styles.track, { backgroundColor: trackColor }]}>
         {[1, 2, 3].map((seg) => {
           const isFilled = seg <= activeSegments;
           return (
@@ -36,7 +56,7 @@ export const PasswordStrengthMeter = ({ evaluation }) => {
               key={seg}
               style={[
                 styles.segment,
-                { backgroundColor: isFilled ? color : 'rgba(98, 105, 112, 0.25)' },
+                { backgroundColor: isFilled ? color : emptySegmentColor },
               ]}
             />
           );
@@ -44,8 +64,10 @@ export const PasswordStrengthMeter = ({ evaluation }) => {
       </View>
 
       {/* Checklist dos 5 Critérios */}
-      <View style={styles.checklistContainer}>
-        <Text style={styles.checklistTitle}>Requisitos Obrigatórios</Text>
+      <View style={[styles.checklistContainer, { borderTopColor: colors.borderGlass }]}>
+        <Text style={[styles.checklistTitle, { color: colors.muted }]}>
+          Requisitos Obrigatórios
+        </Text>
         <View style={styles.checklistGrid}>
           {checklist.map((item) => (
             <View key={item.id} style={styles.checkItem}>
@@ -60,7 +82,9 @@ export const PasswordStrengthMeter = ({ evaluation }) => {
               <Text
                 style={[
                   styles.itemText,
-                  item.ok ? styles.itemTextOk : styles.itemTextPending,
+                  item.ok
+                    ? [styles.itemTextOk, { color: colors.textPrimary }]
+                    : [styles.itemTextPending, { color: colors.muted }],
                 ]}
               >
                 {item.label}
