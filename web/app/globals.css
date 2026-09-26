@@ -1,3 +1,170 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer utilities {
+  /* =========================================================================
+     TEMA ESCURO (Dark Mode - Padrão Oficial RentalSpouse)
+     ========================================================================= */
+  .dark .glass-panel,
+  :root:not(.light) .glass-panel {
+    background: rgba(47, 47, 77, 0.45);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    color: #F3F4F6;
+  }
+
+  .dark .glass-panel-elevated,
+  :root:not(.light) .glass-panel-elevated {
+    background: rgba(47, 47, 77, 0.65);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(232, 209, 142, 0.15);
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
+    color: #F3F4F6;
+  }
+
+  .dark .glass-card-subtle,
+  :root:not(.light) .glass-card-subtle {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: #F3F4F6;
+  }
+
+  .dark .glass-input,
+  :root:not(.light) .glass-input {
+    background: rgba(17, 9, 26, 0.65) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(98, 105, 112, 0.35);
+    color: #F3F4F6 !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .dark .glass-input:hover,
+  :root:not(.light) .glass-input:hover {
+    border-color: rgba(186, 177, 149, 0.4);
+    background: rgba(17, 9, 26, 0.75) !important;
+  }
+
+  .dark .glass-input:focus,
+  :root:not(.light) .glass-input:focus {
+    outline: none;
+    border-color: #e8d18e;
+    box-shadow: 0 0 16px -2px rgba(232, 209, 142, 0.35);
+    background: rgba(17, 9, 26, 0.85) !important;
+    color: #F3F4F6 !important;
+  }
+
+  .dark .glass-input-error,
+  :root:not(.light) .glass-input-error {
+    background: rgba(17, 9, 26, 0.75) !important;
+    border-color: #EF4444 !important;
+    color: #F3F4F6 !important;
+    box-shadow: 0 0 12px -2px rgba(239, 68, 68, 0.35) !important;
+  }
+
+  .dark .glass-input-error:focus,
+  :root:not(.light) .glass-input-error:focus {
+    background: rgba(17, 9, 26, 0.9) !important;
+    border-color: #EF4444 !important;
+    box-shadow: 0 0 16px -1px rgba(239, 68, 68, 0.5) !important;
+    color: #F3F4F6 !important;
+  }
+
+  /* =========================================================================
+     TEMA CLARO (Light Mode - Visual Glass translúcido de alta legibilidade)
+     ========================================================================= */
+  .light .glass-panel {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(47, 47, 77, 0.12);
+    box-shadow: 0 12px 36px 0 rgba(47, 47, 77, 0.08);
+    color: #11091a;
+  }
+
+  .light .glass-panel-elevated {
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(232, 209, 142, 0.45);
+    box-shadow: 0 16px 48px 0 rgba(47, 47, 77, 0.12);
+    color: #11091a;
+  }
+
+  .light .glass-card-subtle {
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(47, 47, 77, 0.08);
+    color: #11091a;
+  }
+
+  .light .glass-input {
+    background: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(47, 47, 77, 0.22) !important;
+    color: #11091a !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .light .glass-input:hover {
+    border-color: rgba(47, 47, 77, 0.45) !important;
+    background: #ffffff !important;
+  }
+
+  .light .glass-input:focus {
+    outline: none;
+    border-color: #2f2f4d !important;
+    box-shadow: 0 0 14px -2px rgba(232, 209, 142, 0.5) !important;
+    background: #ffffff !important;
+    color: #11091a !important;
+  }
+
+  .light .glass-input-error {
+    background: #fff5f5 !important;
+    border-color: #EF4444 !important;
+    color: #b91c1c !important;
+    box-shadow: 0 0 12px -2px rgba(239, 68, 68, 0.25) !important;
+  }
+
+  .light .glass-input-error:focus {
+    background: #ffffff !important;
+    border-color: #EF4444 !important;
+    box-shadow: 0 0 16px -1px rgba(239, 68, 68, 0.4) !important;
+    color: #b91c1c !important;
+  }
+
+  .glass-input-success {
+    border-color: #10B981 !important;
+    box-shadow: 0 0 12px -2px rgba(16, 185, 129, 0.3) !important;
+  }
+
+  /* =========================================================================
+     AUTOFILL CONTROLS
+     ========================================================================= */
+  .dark input:-webkit-autofill,
+  .dark input:-webkit-autofill:hover, 
+  .dark input:-webkit-autofill:focus,
+  :root:not(.light) input:-webkit-autofill {
+    -webkit-text-fill-color: #F3F4F6 !important;
+    -webkit-box-shadow: 0 0 0 1000px #1a1224 inset !important;
+    box-shadow: 0 0 0 1000px #1a1224 inset !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
+  .light input:-webkit-autofill,
+  .light input:-webkit-autofill:hover, 
+  .light input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #11091a !important;
+    -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+    box-shadow: 0 0 0 1000px #ffffff inset !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+}
