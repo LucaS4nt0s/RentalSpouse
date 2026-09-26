@@ -5,6 +5,7 @@ venv/
 __pycache__/
 *.pyc
 .pytest_cache/
+.coverage
 node_modules/
 .next/
 .expo/

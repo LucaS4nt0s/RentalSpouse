@@ -1,23 +1,24 @@
-"""
-Schemas Pydantic da API RentalSpouse.
-Define as DTOs e os contratos de dados de entrada e saída.
-
-A equipe de desenvolvimento do backend deve utilizar os modelos ClientCreateRequest
-e AddressCreate para receber os dados trafegados pelos clientes Web e Mobile.
-"""
-
-from datetime import datetime
+from datetime import date, datetime
+import re
 from typing import Optional
-from pydantic import BaseModel, EmailStr, Field
 
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-# ============================================================================
-# Status (Endpoint de verificação de integridade)
-# ============================================================================
+# Conjunto de Unidades Federativas válidas do Brasil
+UFS_VALIDAS = {
+    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
+    "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
+    "RS", "RO", "RR", "SC", "SP", "SE", "TO"
+}
+
+# Regex rigoroso para e-mail: impede pontos consecutivos, ponto final no domínio ou no nome, e exige TLD >= 2 letras
+EMAIL_REGEX = re.compile(
+    r"^(?!.*\.\.)[a-zA-Z0-9_+-]+(?:\.[a-zA-Z0-9_+-]+)*@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}$"
+)
 
 
 class StatusBase(BaseModel):
-    """Campos compartilhados entre criação e leitura de status."""
+    """Campos compartilhados entre criação e leitura."""
 
     message: str
 
@@ -36,166 +37,162 @@ class StatusRead(StatusBase):
     model_config = {"from_attributes": True}
 
 
-# ============================================================================
-# Modelo de Dados: Endereço (Address)
-# ============================================================================
+# ---------------------------------------------------------------------------
+# Schemas de Endereço
+# ---------------------------------------------------------------------------
 
 
-class AddressCreate(BaseModel):
-    """
-    Modelo de dados de endereço enviado pelo frontend (Web e Mobile).
-    Os campos numéricos (CEP) chegam sanitizados (apenas dígitos).
-    """
+class EnderecoSchema(BaseModel):
+    """Schema com os dados do endereço estruturado do cliente."""
 
-    cep: str = Field(
-        ...,
-        min_length=8,
-        max_length=8,
-        description="CEP sanitizado contendo exatamente 8 dígitos numéricos (sem hífen)",
-        examples=["01001000"],
-    )
-    logradouro: str = Field(
-        ...,
-        min_length=3,
-        max_length=200,
-        description="Nome do logradouro (Rua, Avenida, Praça, etc.)",
-        examples=["Praça da Sé"],
-    )
-    numero: str = Field(
-        ...,
-        min_length=1,
-        max_length=10,
-        description="Número do imóvel ou S/N",
-        examples=["100"],
-    )
-    complemento: Optional[str] = Field(
-        None,
-        max_length=60,
-        description="Complemento opcional (apartamento, bloco, conjunto)",
-        examples=["Apto 42"],
-    )
-    bairro: str = Field(
-        ...,
-        min_length=2,
-        max_length=100,
-        description="Bairro do endereço",
-        examples=["Sé"],
-    )
-    cidade: str = Field(
-        ...,
-        min_length=2,
-        max_length=100,
-        description="Cidade do endereço",
-        examples=["São Paulo"],
-    )
-    estado_uf: str = Field(
-        ...,
-        min_length=2,
-        max_length=2,
-        description="Sigla com 2 letras da Unidade Federativa (UF)",
-        examples=["SP"],
-    )
+    cep: str = Field(..., max_length=9, description="CEP do endereço (com ou sem pontuação)")
+    logradouro: str = Field(..., max_length=255, description="Logradouro / Rua / Avenida")
+    numero: str = Field(..., max_length=50, description="Número residencial")
+    complemento: Optional[str] = Field(None, max_length=255, description="Complemento do endereço")
+    bairro: str = Field(..., max_length=100, description="Bairro")
+    cidade: str = Field(..., max_length=100, description="Cidade")
+    estado: str = Field(..., min_length=2, max_length=2, description="Sigla da UF (2 caracteres)")
+
+    model_config = {"from_attributes": True}
+
+    @field_validator("cep")
+    @classmethod
+    def validar_cep(cls, valor: str) -> str:
+        digitos = "".join(filter(str.isdigit, valor or ""))
+        if len(digitos) != 8:
+            raise ValueError("O CEP deve conter exatamente 8 dígitos numéricos.")
+        return digitos
+
+    @field_validator("logradouro", "numero", "bairro", "cidade")
+    @classmethod
+    def validar_campos_obrigatorios(cls, valor: str, info) -> str:
+        campo = info.field_name
+        limpo = valor.strip() if valor else ""
+        if not limpo:
+            raise ValueError(f"O campo '{campo}' não pode ser vazio.")
+        return limpo
+
+    @field_validator("estado")
+    @classmethod
+    def validar_estado(cls, valor: str) -> str:
+        uf = (valor or "").strip().upper()
+        if uf not in UFS_VALIDAS:
+            raise ValueError(f"Estado '{valor}' inválido. Deve ser uma sigla de UF brasileira válida.")
+        return uf
+
+    @field_validator("complemento")
+    @classmethod
+    def validar_complemento(cls, valor: Optional[str]) -> Optional[str]:
+        if valor is not None:
+            limpo = valor.strip()
+            return limpo if limpo else None
+        return None
 
 
-class AddressRead(AddressCreate):
-    """Schema para retorno de dados de endereço persistido."""
+# ---------------------------------------------------------------------------
+# Schemas de Cliente
+# ---------------------------------------------------------------------------
+
+
+class ClienteBase(BaseModel):
+    """Campos base do cliente."""
+
+    nome: str = Field(..., max_length=255, description="Nome completo do cliente")
+    email: str = Field(..., max_length=255, description="E-mail único do cliente")
+    cpf: str = Field(..., max_length=14, description="CPF com ou sem formatação")
+    data_nascimento: date
+    endereco: EnderecoSchema
+
+    @field_validator("nome")
+    @classmethod
+    def validar_nome(cls, valor: str) -> str:
+        limpo = (valor or "").strip()
+        if len(limpo) < 3:
+            raise ValueError("O nome deve ter no mínimo 3 caracteres.")
+        if not any(c.isalpha() for c in limpo):
+            raise ValueError("O nome deve conter letras.")
+        return limpo
+
+    @field_validator("email")
+    @classmethod
+    def validar_email(cls, valor: str) -> str:
+        limpo = (valor or "").strip().lower()
+        if not EMAIL_REGEX.match(limpo):
+            raise ValueError("E-mail com formato inválido.")
+        return limpo
+
+    @field_validator("cpf")
+    @classmethod
+    def validar_cpf(cls, valor: str) -> str:
+        digitos = "".join(filter(str.isdigit, str(valor or "")))
+        if len(digitos) != 11:
+            raise ValueError("O CPF deve conter exatamente 11 dígitos numéricos.")
+
+        # Rejeita CPFs com todos os dígitos repetidos (ex: 111.111.111-11)
+        if digitos == digitos[0] * 11:
+            raise ValueError("CPF inválido.")
+
+        # Validação do primeiro dígito verificador
+        soma_1 = sum(int(d) * peso for d, peso in zip(digitos[:9], range(10, 1, -1)))
+        resto_1 = (soma_1 * 10) % 11
+        d1 = 0 if resto_1 >= 10 else resto_1
+        if d1 != int(digitos[9]):
+            raise ValueError("Dígito verificador do CPF inválido.")
+
+        # Validação do segundo dígito verificador
+        soma_2 = sum(int(d) * peso for d, peso in zip(digitos[:10], range(11, 1, -1)))
+        resto_2 = (soma_2 * 10) % 11
+        d2 = 0 if resto_2 >= 10 else resto_2
+        if d2 != int(digitos[10]):
+            raise ValueError("Dígito verificador do CPF inválido.")
+
+        return digitos
+
+    @field_validator("data_nascimento")
+    @classmethod
+    def validar_data_nascimento(cls, valor: date) -> date:
+        hoje = date.today()
+        if valor > hoje:
+            raise ValueError("A data de nascimento não pode ser no futuro.")
+
+        # Cálculo preciso da idade considerando dia e mês
+        idade = hoje.year - valor.year - ((hoje.month, hoje.day) < (valor.month, valor.day))
+        if idade < 18:
+            raise ValueError("O cliente deve ter no mínimo 18 anos.")
+        if idade > 120:
+            raise ValueError("Data de nascimento inválida.")
+
+        return valor
+
+
+class ClienteCreate(ClienteBase):
+    """Schema para cadastro de um novo cliente, incluindo senha e confirmação."""
+
+    senha: str = Field(..., max_length=128, description="Senha de acesso")
+    confirmar_senha: str = Field(..., max_length=128, description="Confirmação de senha")
+
+    @field_validator("senha")
+    @classmethod
+    def validar_senha(cls, valor: str) -> str:
+        if len(valor or "") < 8:
+            raise ValueError("A senha deve conter no mínimo 8 caracteres.")
+        if not any(c.isalpha() for c in valor):
+            raise ValueError("A senha deve conter pelo menos uma letra.")
+        if not any(c.isdigit() for c in valor):
+            raise ValueError("A senha deve conter pelo menos um número.")
+        return valor
+
+    @model_validator(mode="after")
+    def validar_confirmacao_senha(self):
+        if self.senha != self.confirmar_senha:
+            raise ValueError("A confirmação de senha não confere com a senha informada.")
+        return self
+
+
+class ClienteRead(ClienteBase):
+    """Schema para resposta dos dados do cliente (sem expor credenciais)."""
 
     id: int
+    criado_em: datetime
 
     model_config = {"from_attributes": True}
-
-
-# ============================================================================
-# Modelo de Dados: Cadastro de Clientes (Client)
-# ============================================================================
-
-
-class ClientCreateRequest(BaseModel):
-    """
-    Contrato de entrada para a rota POST /api/v1/clients (ou /api/clients).
-    
-    Representa exatamente o payload JSON que o frontend Web e Mobile enviam
-    ao finalizar o formulário de cadastro de clientes.
-    """
-
-    nome_completo: str = Field(
-        ...,
-        min_length=3,
-        max_length=120,
-        description="Nome completo do cliente (mínimo nome e sobrenome)",
-        examples=["Ana Clara da Silva"],
-    )
-    email: EmailStr = Field(
-        ...,
-        description="Endereço de e-mail válido RFC 5322 em minúsculas",
-        examples=["ana.silva@exemplo.com.br"],
-    )
-    cpf: str = Field(
-        ...,
-        min_length=11,
-        max_length=11,
-        description="CPF higienizado contendo exatamente 11 dígitos numéricos",
-        examples=["12345678901"],
-    )
-    data_nascimento: str = Field(
-        ...,
-        description="Data de nascimento no formato ISO YYYY-MM-DD",
-        examples=["1994-05-18"],
-    )
-    senha: str = Field(
-        ...,
-        min_length=8,
-        description="Senha forte cumprindo os 5 critérios de segurança",
-        examples=["SenhaForte@2026"],
-    )
-    endereco: AddressCreate = Field(
-        ...,
-        description="Estrutura com os dados do endereço principal do cliente",
-    )
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "nome_completo": "Ana Clara da Silva",
-                "email": "ana.silva@exemplo.com.br",
-                "cpf": "12345678901",
-                "data_nascimento": "1994-05-18",
-                "senha": "SenhaForte@2026",
-                "endereco": {
-                    "cep": "01001000",
-                    "logradouro": "Praça da Sé",
-                    "numero": "100",
-                    "complemento": "Apto 42",
-                    "bairro": "Sé",
-                    "cidade": "São Paulo",
-                    "estado_uf": "SP",
-                },
-            }
-        }
-    }
-
-
-class ClientReadResponse(BaseModel):
-    """
-    Contrato de resposta esperado pelo frontend após sucesso (HTTP 201 Created).
-    ATENÇÃO: A senha em texto claro e o hash nunca devem ser retornados.
-    """
-
-    id: int = Field(..., description="Identificador único do cliente no banco", examples=[104])
-    nome_completo: str = Field(..., examples=["Ana Clara da Silva"])
-    email: str = Field(..., examples=["ana.silva@exemplo.com.br"])
-    cpf: str = Field(..., examples=["12345678901"])
-    data_nascimento: str = Field(..., examples=["1994-05-18"])
-    created_at: Optional[datetime] = Field(None, description="Data/hora de criação do registro")
-
-    model_config = {"from_attributes": True}
-
-
-class ConflictErrorResponse(BaseModel):
-    """
-    Contrato de erro esperado pelo frontend em caso de duplicidade (HTTP 409 Conflict).
-    Permite que o frontend aponte ao usuário qual campo já está cadastrado (cpf ou email).
-    """
-
-    detail: str = Field(..., examples=["CPF já cadastrado na base de dados."])
-    field: str = Field(..., description="Nome do campo em conflito ('cpf' ou 'email')", examples=["cpf"])
