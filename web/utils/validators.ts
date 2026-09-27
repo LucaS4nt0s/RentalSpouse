@@ -221,12 +221,12 @@ export function evaluatePasswordStrength(password: string): PasswordStrengthResu
   if (score >= 5) {
     strength = 'strong';
     label = 'Senha forte e segura';
-    color = '#e8d18e'; // Soft Gold
+    color = '#1D4ED8'; // Soft Gold
     percentage = 100;
   } else if (score >= 3) {
     strength = 'moderate';
     label = 'Senha moderada';
-    color = '#bab195'; // Warm Sand
+    color = '#93A5C0'; // Warm Sand
     percentage = 66;
   } else {
     strength = 'weak';
