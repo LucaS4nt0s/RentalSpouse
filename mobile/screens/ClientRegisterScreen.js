@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { Check, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { useAppTheme } from '../theme/ThemeContext';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
@@ -328,8 +329,13 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
           backgroundColor={colors.bg}
         />
         <View style={styles.successContainer}>
-          <View style={styles.successIconBox}>
-            <Text style={styles.successCheckIcon}>✓</Text>
+          <View
+            style={[
+              styles.successIconBox,
+              { borderColor: colors.primary, backgroundColor: 'rgba(59, 130, 246, 0.12)' },
+            ]}
+          >
+            <Check size={32} color={colors.primary} />
           </View>
 
           <View style={styles.successBadge}>
@@ -341,7 +347,7 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
           </Text>
           <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
             Olá,{' '}
-            <Text style={[styles.goldText, { color: isDark ? colors.gold : '#6e581c' }]}>
+            <Text style={[styles.goldText, { color: colors.primary }]}>
               {successData.nome}
             </Text>
             ! Sua conta está pronta para solicitar manutenções e reparos.
@@ -420,14 +426,15 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
                 style={[
                   styles.backButton,
                   {
-                    backgroundColor: colors.surfaceGlass,
-                    borderColor: colors.borderGlass,
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
                   },
                 ]}
                 activeOpacity={0.7}
               >
+                <ArrowLeft size={14} color={colors.textPrimary} />
                 <Text style={[styles.backButtonText, { color: colors.textPrimary }]}>
-                  ← Voltar
+                  Voltar
                 </Text>
               </TouchableOpacity>
             ) : (
@@ -441,7 +448,7 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
           <View style={styles.header}>
             <View style={styles.brandBadge}>
               <View style={styles.badgeDot} />
-              <Text style={[styles.brandBadgeText, { color: isDark ? colors.gold : '#6e581c' }]}>
+              <Text style={[styles.brandBadgeText, { color: colors.primary }]}>
                 RentalSpouse Mobile
               </Text>
             </View>
@@ -565,9 +572,9 @@ const styles = StyleSheet.create({
   brandBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(232, 209, 142, 0.1)',
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(232, 209, 142, 0.25)',
+    borderColor: 'rgba(59, 130, 246, 0.25)',
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 20,
@@ -577,11 +584,11 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: Colors.gold,
+    backgroundColor: Colors.primary,
     marginRight: 6,
   },
   brandBadgeText: {
-    color: Colors.gold,
+    color: Colors.primary,
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -655,17 +662,12 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: 'rgba(232, 209, 142, 0.15)',
+    backgroundColor: 'rgba(59, 130, 246, 0.12)',
     borderWidth: 2,
-    borderColor: Colors.gold,
+    borderColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
-  },
-  successCheckIcon: {
-    fontSize: 32,
-    color: Colors.gold,
-    fontWeight: 'bold',
   },
   successBadge: {
     backgroundColor: 'rgba(16, 185, 129, 0.15)',
@@ -696,7 +698,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   goldText: {
-    color: Colors.gold,
+    color: Colors.primary,
     fontWeight: '700',
   },
   successInfoCard: {

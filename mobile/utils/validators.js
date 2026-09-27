@@ -134,16 +134,16 @@ export function evaluatePasswordStrength(password = '') {
 
   let strength = 'weak';
   let label = 'Senha fraca';
-  let color = '#EF4444';
+  let color = '#dc2626';
 
   if (score >= 5) {
     strength = 'strong';
     label = 'Senha forte e segura';
-    color = '#e8d18e';
+    color = '#059669';
   } else if (score >= 3) {
     strength = 'moderate';
     label = 'Senha moderada';
-    color = '#bab195';
+    color = '#2563eb';
   }
 
   return {
