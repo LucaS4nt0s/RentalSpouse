@@ -1,27 +1,32 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { Sun, Moon } from 'lucide-react-native';
 import { useAppTheme } from '../../theme/ThemeContext';
 
-export const ThemeToggle = ({ style }) => {
+export const ThemeToggle = ({ style, showLabel = true }) => {
   const { isDark, colors, toggleTheme } = useAppTheme();
+  const Icon = isDark ? Sun : Moon;
 
   return (
     <TouchableOpacity
       activeOpacity={0.7}
       onPress={toggleTheme}
+      accessibilityLabel={isDark ? 'Ativar tema claro' : 'Ativar tema escuro'}
       style={[
         styles.button,
         {
-          backgroundColor: colors.surfaceGlassSubtle,
-          borderColor: colors.borderGlass,
+          backgroundColor: colors.surface,
+          borderColor: colors.border,
         },
         style,
       ]}
     >
-      <Text style={styles.icon}>{isDark ? '☀️' : '🌙'}</Text>
-      <Text style={[styles.text, { color: colors.textPrimary }]}>
-        {isDark ? 'Claro' : 'Escuro'}
-      </Text>
+      <Icon size={14} color={colors.primary} />
+      {showLabel && (
+        <Text style={[styles.text, { color: colors.muted }]}>
+          {isDark ? 'Claro' : 'Escuro'}
+        </Text>
+      )}
     </TouchableOpacity>
   );
 };
@@ -35,9 +40,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     gap: 6,
-  },
-  icon: {
-    fontSize: 13,
   },
   text: {
     fontSize: 11,

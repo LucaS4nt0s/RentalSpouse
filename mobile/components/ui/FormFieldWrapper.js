@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Colors } from '../../theme/colors';
+import { AlertCircle } from 'lucide-react-native';
 import { useAppTheme } from '../../theme/ThemeContext';
 
 export const FormFieldWrapper = ({
@@ -28,7 +28,7 @@ export const FormFieldWrapper = ({
 
       {error && (
         <View style={styles.errorRow}>
-          <Text style={styles.errorIcon}>⚠️</Text>
+          <AlertCircle size={12} color={colors.error} style={styles.errorIcon} />
           <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
         </View>
       )}
@@ -50,17 +50,14 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.sand,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   requiredStar: {
-    color: Colors.error,
     fontWeight: 'bold',
   },
   hint: {
     fontSize: 11,
-    color: Colors.muted,
     fontStyle: 'italic',
   },
   errorRow: {
@@ -69,12 +66,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   errorIcon: {
-    fontSize: 11,
     marginRight: 4,
   },
   errorText: {
     fontSize: 12,
-    color: Colors.error,
     fontWeight: '600',
     flex: 1,
   },
