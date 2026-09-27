@@ -65,7 +65,7 @@ export const AddressSection: React.FC<AddressSectionProps> = ({
   return (
     <div className="glass-card-subtle p-5 sm:p-6 rounded-2xl flex flex-col gap-5 border border-slate-200/60 dark:border-white/5 transition-colors">
       <div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-white/[0.06]">
-        <div className="w-8 h-8 rounded-xl bg-[#e8d18e]/25 dark:bg-[#e8d18e]/10 border border-[#e8d18e]/40 dark:border-[#e8d18e]/30 flex items-center justify-center text-[#6e581c] dark:text-[#e8d18e]">
+        <div className="w-8 h-8 rounded-xl bg-[#1D4ED8]/25 dark:bg-[#1D4ED8]/10 border border-[#1D4ED8]/40 dark:border-[#1D4ED8]/30 flex items-center justify-center text-[#1E40AF] dark:text-[#1D4ED8]">
           <svg
             className="w-4 h-4"
             fill="none"
@@ -86,10 +86,10 @@ export const AddressSection: React.FC<AddressSectionProps> = ({
           </svg>
         </div>
         <div>
-          <h2 className="text-base font-bold text-[#11091a] dark:text-[#F3F4F6] tracking-tight">
+          <h2 className="text-base font-bold text-[#0E1B2E] dark:text-[#EAF1FB] tracking-tight">
             2. Endereço Principal
           </h2>
-          <p className="text-xs text-[#626970] dark:text-[#bab195]/80">
+          <p className="text-xs text-[#64748B] dark:text-[#93A5C0]/80">
             Local onde os atendimentos e manutenções serão solicitados
           </p>
         </div>
@@ -121,7 +121,7 @@ export const AddressSection: React.FC<AddressSectionProps> = ({
                 rightIcon={
                   isLoadingCep ? (
                     <svg
-                      className="animate-spin h-4 w-4 text-[#e8d18e]"
+                      className="animate-spin h-4 w-4 text-[#1D4ED8]"
                       xmlns="http://www.w3.org/2000/svg"
                       fill="none"
                       viewBox="0 0 24 24"

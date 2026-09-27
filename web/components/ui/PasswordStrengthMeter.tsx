@@ -60,10 +60,10 @@ export const PasswordStrengthMeter: React.FC<PasswordStrengthMeterProps> = ({
       {/* Barra de Força Segmentada em 3 níveis */}
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-[#2f2f4d] dark:text-[#bab195] font-semibold">Força da senha:</span>
+          <span className="text-[#16263F] dark:text-[#93A5C0] font-semibold">Força da senha:</span>
           <span
             className="font-bold tracking-wide transition-colors duration-300"
-            style={{ color: score === 0 ? '#626970' : color }}
+            style={{ color: score === 0 ? '#64748B' : color }}
           >
             {score === 0 ? 'Insira sua senha' : label}
           </span>
@@ -89,7 +89,7 @@ export const PasswordStrengthMeter: React.FC<PasswordStrengthMeterProps> = ({
       {/* Checklist Interativo dos 5 Critérios */}
       {showChecklist && (
         <div className="flex flex-col gap-2 pt-1 border-t border-slate-200 dark:border-white/[0.06]">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#2f2f4d] dark:text-[#626970]">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-[#16263F] dark:text-[#64748B]">
             Requisitos de Segurança Obrigatórios
           </span>
 
@@ -100,8 +100,8 @@ export const PasswordStrengthMeter: React.FC<PasswordStrengthMeterProps> = ({
                   key={item.id}
                   className={`flex items-center gap-2 p-1.5 rounded-lg transition-all duration-200 ${
                     item.satisfied
-                      ? 'bg-emerald-500/10 dark:bg-emerald-950/20 text-[#11091a] dark:text-[#F3F4F6]'
-                      : 'text-[#626970]'
+                      ? 'bg-emerald-500/10 dark:bg-emerald-950/20 text-[#0E1B2E] dark:text-[#EAF1FB]'
+                      : 'text-[#64748B]'
                   }`}
                 >
                   {item.satisfied ? (
@@ -123,13 +123,13 @@ export const PasswordStrengthMeter: React.FC<PasswordStrengthMeterProps> = ({
                     </div>
                   ) : (
                     // Círculo Oco Pendente
-                    <div className="w-4 h-4 rounded-full border border-slate-300 dark:border-[#626970]/50 flex items-center justify-center shrink-0" />
+                    <div className="w-4 h-4 rounded-full border border-slate-300 dark:border-[#64748B]/50 flex items-center justify-center shrink-0" />
                   )}
                   <span
                     className={`text-[12px] leading-tight ${
                       item.satisfied
-                        ? 'font-medium text-[#11091a] dark:text-[#F3F4F6]'
-                        : 'text-[#626970]'
+                        ? 'font-medium text-[#0E1B2E] dark:text-[#EAF1FB]'
+                        : 'text-[#64748B]'
                     }`}
                   >
                     {item.label}

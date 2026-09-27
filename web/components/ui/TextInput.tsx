@@ -24,18 +24,17 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
     },
     ref
   ) => {
-    let stateClasses = 'border-[#626970]/40 focus:border-[#e8d18e] focus:ring-[#e8d18e]/30';
-
+    let stateClasses = '';
     if (hasError) {
-      stateClasses = 'glass-input-error !border-[#EF4444] focus:!border-[#EF4444] focus:!ring-[#EF4444]/40';
+      stateClasses = 'glass-input-error';
     } else if (hasSuccess) {
-      stateClasses = 'glass-input-success !border-[#10B981] focus:!border-[#10B981] focus:!ring-[#10B981]/40';
+      stateClasses = 'glass-input-success';
     }
 
     return (
       <div className={`relative flex items-center w-full ${containerClassName}`}>
         {leftIcon && (
-          <div className="absolute left-3.5 flex items-center pointer-events-none text-[#bab195]/80">
+          <div className="absolute left-3.5 flex items-center pointer-events-none text-rental-muted">
             {leftIcon}
           </div>
         )}
@@ -44,16 +43,14 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(
           ref={ref}
           disabled={disabled}
           aria-invalid={hasError ? 'true' : 'false'}
-          className={`glass-input w-full rounded-xl px-4 py-3 text-sm font-medium tracking-wide placeholder-[#626970] disabled:opacity-40 disabled:cursor-not-allowed ${
+          className={`glass-input w-full rounded-xl px-4 py-3 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
             leftIcon ? 'pl-11' : ''
           } ${rightIcon ? 'pr-11' : ''} ${stateClasses} ${className}`}
           {...props}
         />
 
         {rightIcon && (
-          <div className="absolute right-3.5 flex items-center text-[#bab195]">
-            {rightIcon}
-          </div>
+          <div className="absolute right-3.5 flex items-center text-rental-muted">{rightIcon}</div>
         )}
       </div>
     );

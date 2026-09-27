@@ -9,19 +9,27 @@ module.exports = {
     extend: {
       colors: {
         rental: {
-          bg: '#11091a',
-          surface: '#2f2f4d',
-          muted: '#626970',
-          sand: '#bab195',
-          gold: '#e8d18e',
-          error: '#EF4444',
-          success: '#10B981',
+          bg: 'var(--rs-bg)',
+          surface: 'var(--rs-surface)',
+          surface2: 'var(--rs-surface-2)',
+          border: 'var(--rs-border)',
+          muted: 'var(--rs-text-muted)',
+          sand: 'var(--rs-accent)',
+          gold: 'var(--rs-primary)',
+          primary: 'var(--rs-primary)',
+          ink: 'var(--rs-text)',
+          error: 'var(--rs-error)',
+          success: 'var(--rs-success)',
         },
       },
+      borderRadius: {
+        xl: '0.85rem',
+        '2xl': '1.1rem',
+        '3xl': '1.5rem',
+      },
       boxShadow: {
-        'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
-        'glass-hover': '0 8px 32px 0 rgba(232, 209, 142, 0.15)',
-        'gold-glow': '0 0 20px -3px rgba(232, 209, 142, 0.4)',
+        'panel': 'var(--rs-shadow)',
+        'primary': '0 10px 24px -10px var(--rs-ring)',
       },
       keyframes: {
         fadeIn: {
@@ -59,4 +67,4 @@ module.exports = {
     },
   },
   plugins: [],
-}
+};
