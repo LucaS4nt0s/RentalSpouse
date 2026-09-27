@@ -1,57 +1,9 @@
-import os
-import sys
-
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-# Ajuste de path para importação dos módulos do backend
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-import database
 import models
-from database import Base, get_db
-from main import app
-from security import create_access_token, hash_password
-
-# ---------------------------------------------------------------------------
-# Configuração de isolamento do banco SQLite em memória
-# ---------------------------------------------------------------------------
-
-TEST_DATABASE_URL = "sqlite:///:memory:"
-
-test_engine = create_engine(
-    TEST_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-database.engine = test_engine
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
-
-
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-@pytest.fixture(autouse=True)
-def setup_test_db():
-    """Setup e teardown limpo para cada teste."""
-    Base.metadata.create_all(bind=test_engine)
-    app.dependency_overrides[get_db] = override_get_db
-    yield
-    app.dependency_overrides.clear()
-    Base.metadata.drop_all(bind=test_engine)
-
-
-@pytest.fixture
-def client():
-    return TestClient(app, raise_server_exceptions=True)
+from security import create_access_token, hash_senha
+from tests.conftest import TestingSessionLocal
 
 
 @pytest.fixture
@@ -62,7 +14,7 @@ def admin_user():
         user = models.User(
             name="Admin Master",
             email="admin.master@rentalspouse.com",
-            hashed_password=hash_password("MasterAdmin@123"),
+            hashed_password=hash_senha("MasterAdmin@123"),
             role=models.UserRole.ADMIN.value,
             is_active=True,
         )
@@ -84,7 +36,7 @@ def regular_user():
         user = models.User(
             name="Cliente Comum",
             email="cliente@exemplo.com",
-            hashed_password=hash_password("Cliente@123"),
+            hashed_password=hash_senha("Cliente@123"),
             role=models.UserRole.CLIENT.value,
             is_active=True,
         )
@@ -166,8 +118,8 @@ class TestAdminRegistration:
         assert response.status_code == 403
         assert "permissão de administrador necessária" in response.json()["detail"]
 
-    def test_duplicate_email_is_rejected_with_400(self, client: TestClient, admin_user: dict):
-        """Não deve permitir cadastrar administrador com e-mail já existente no sistema."""
+    def test_duplicate_email_is_rejected_with_409(self, client: TestClient, admin_user: dict):
+        """Não deve permitir cadastrar administrador com e-mail já existente no sistema (HTTP 409 Conflict)."""
         payload = {
             "name": "Duplicado",
             "email": admin_user["user"].email,
@@ -175,7 +127,7 @@ class TestAdminRegistration:
         }
 
         response = client.post("/api/admins", json=payload, headers=admin_user["headers"])
-        assert response.status_code == 400
+        assert response.status_code == 409
         assert "Já existe um usuário cadastrado com este e-mail" in response.json()["detail"]
 
     def test_short_password_is_rejected_with_422(self, client: TestClient, admin_user: dict):

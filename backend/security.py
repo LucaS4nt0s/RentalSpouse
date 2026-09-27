@@ -1,7 +1,8 @@
+import hashlib
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 
-import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -9,6 +10,9 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 import models
+
+# Recomendação OWASP para PBKDF2-HMAC-SHA256 (>= 600.000 iterações)
+ITERACOES_PBKDF2 = 600_000
 
 # Configurações de JWT a partir de variáveis de ambiente com fallback seguro para dev
 JWT_SECRET = os.getenv("JWT_SECRET", "rentalspouse_dev_secret_key_change_in_production_123456789")
@@ -19,15 +23,41 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440
 http_bearer = HTTPBearer(auto_error=False)
 
 
-def hash_password(password: str) -> str:
-    """Gera o hash seguro da senha em texto plano usando bcrypt com salt aleatório."""
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+def hash_senha(senha: str) -> str:
+    """
+    Gera um hash seguro da senha utilizando PBKDF2-HMAC-SHA256 com salt aleatório.
+    Formato do retorno: <salt_hex>$<hash_hex>
+    """
+    salt = secrets.token_hex(16)
+    key = hashlib.pbkdf2_hmac(
+        "sha256",
+        senha.encode("utf-8"),
+        salt.encode("utf-8"),
+        iterations=ITERACOES_PBKDF2,
+    )
+    return f"{salt}${key.hex()}"
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verifica se a senha em texto plano confere com o hash armazenado."""
-    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+def verificar_senha(senha: str, senha_hash: str) -> bool:
+    """
+    Verifica se a senha em texto plano corresponde ao hash armazenado.
+    """
+    try:
+        salt, key_hex = senha_hash.split("$", 1)
+        key = hashlib.pbkdf2_hmac(
+            "sha256",
+            senha.encode("utf-8"),
+            salt.encode("utf-8"),
+            iterations=ITERACOES_PBKDF2,
+        )
+        return secrets.compare_digest(key.hex(), key_hex)
+    except (ValueError, AttributeError):
+        return False
+
+
+# Aliases para padronização e compatibilidade de chamadas
+hash_password = hash_senha
+verify_password = verificar_senha
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
@@ -119,7 +149,7 @@ def seed_initial_admin(db: Session) -> models.User | None:
     initial_admin = models.User(
         name=admin_name,
         email=admin_email,
-        hashed_password=hash_password(admin_password),
+        hashed_password=hash_senha(admin_password),
         role=models.UserRole.ADMIN.value,
         is_active=True,
     )

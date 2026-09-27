@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 import models
 from schemas import AdminCreate, AdminRead
-from security import get_current_admin, hash_password
+from security import get_current_admin, hash_senha
 
 router = APIRouter(prefix="/api/admins", tags=["Administradores"])
 
@@ -31,14 +31,14 @@ def create_admin(
     existing_user = db.query(models.User).filter(models.User.email == payload.email).first()
     if existing_user is not None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Já existe um usuário cadastrado com este e-mail",
         )
 
     new_admin = models.User(
         name=payload.name,
         email=payload.email,
-        hashed_password=hash_password(payload.password),
+        hashed_password=hash_senha(payload.password),
         role=models.UserRole.ADMIN.value,
         is_active=True,
     )
