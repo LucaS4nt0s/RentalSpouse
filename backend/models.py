@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, Date, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, Integer, JSON, String, Text
 
 from database import Base
 
@@ -76,3 +76,27 @@ class Cliente(Base):
             "cidade": self.cidade,
             "estado": self.estado,
         }
+
+
+class Professional(Base):
+    """Tabela de profissionais com especialidades e raio de atendimento."""
+
+    __tablename__ = "professionals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    phone = Column(String(20), nullable=True)
+    bio = Column(Text, nullable=False)
+    service_radius_km = Column(Float, nullable=False)
+    specialties = Column(JSON, nullable=False)
+    city = Column(String(100), nullable=True)
+    state = Column(String(2), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )

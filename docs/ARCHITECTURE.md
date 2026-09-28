@@ -66,18 +66,34 @@ O sistema **RentalSpouse** adota a arquitetura de **Monorepo Modularizado**, sep
 | :--- | :--- | :--- | :--- |
 | `id` | Integer | Primary Key, Auto Increment | Identificador único do cliente |
 | `nome` | String(255) | Not Null | Nome completo do cliente |
-| `email` | String(255) | Unique, Index, Not Null | E-mail único |
-| `cpf` | String(11) | Unique, Index, Not Null | CPF único (apenas números) |
-| `data_nascimento` | Date | Not Null | Data de nascimento |
-| `senha_hash` | String(255) | Not Null | Hash de senha PBKDF2-HMAC-SHA256 |
-| `cep` | String(8) | Not Null | CEP do endereço |
-| `logradouro` | String(255) | Not Null | Rua, avenida, etc. |
-| `numero` | String(50) | Not Null | Número residencial |
-| `complemento` | String(255) | Nullable | Complemento do endereço |
+| `email` | String(255) | Unique, Index, Not Null | E-mail exclusivo |
+| `cpf` | String(11) | Unique, Index, Not Null | CPF único (apenas dígitos) |
+| `data_nascimento` | Date | Not Null | Data de nascimento (maioridade 18+) |
+| `senha_hash` | String(255) | Not Null | Hash criptográfico da senha (PBKDF2/SHA-256) |
+| `cep` | String(8) | Not Null | CEP do endereço (apenas dígitos) |
+| `logradouro` | String(255) | Not Null | Rua / Avenida do endereço |
+| `numero` | String(50) | Not Null | Número da residência |
+| `complemento` | String(255) | Nullable | Complemento (apto, bloco, etc.) |
 | `bairro` | String(100) | Not Null | Bairro |
 | `cidade` | String(100) | Not Null | Cidade |
-| `estado` | String(2) | Not Null | UF do estado |
-| `criado_em` | DateTime | Not Null, Default: UTC Now | Data e hora de criação |
+| `estado` | String(2) | Not Null | Sigla da Unidade Federativa (UF) |
+| `criado_em` | DateTime | Default UTC Now, Not Null | Timestamp de cadastro |
+
+### Tabela: `professionals`
+| Coluna | Tipo | Restrições | Descrição |
+| :--- | :--- | :--- | :--- |
+| `id` | Integer | Primary Key, Auto Increment | Identificador único do profissional |
+| `name` | String(100) | Not Null | Nome completo do profissional |
+| `email` | String(255) | Unique, Index, Not Null | E-mail exclusivo de contato |
+| `phone` | String(20) | Nullable | Telefone / WhatsApp do profissional |
+| `bio` | Text | Not Null | Biografia e apresentação do profissional |
+| `service_radius_km` | Float | Not Null (>= 1.0) | Raio máximo de atendimento em km |
+| `specialties` | JSON | Not Null | Lista de especialidades e habilidades atendidas |
+| `city` | String(100) | Nullable | Cidade base de atendimento |
+| `state` | String(2) | Nullable | Unidade Federativa (UF) |
+| `is_active` | Boolean | Default True, Not Null | Status de ativação na plataforma |
+| `created_at` | DateTime | Default UTC Now, Not Null | Timestamp de cadastro |
+| `updated_at` | DateTime | Default UTC Now, Auto Update | Timestamp da última alteração |
 
 ---
 
@@ -95,3 +111,12 @@ O sistema **RentalSpouse** adota a arquitetura de **Monorepo Modularizado**, sep
 | Método | Rota | Autenticação | Descrição |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/clientes` | Pública | Cadastro de novos clientes com validações estritas |
+
+### Profissionais
+| Método | Rota | Autenticação | Descrição |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/professionals` | Pública | Cadastro de novo profissional com validações |
+| `GET` | `/api/professionals` | Pública | Lista profissionais com paginação e filtros |
+| `GET` | `/api/professionals/{id}` | Pública | Detalhes de um profissional por ID |
+| `PUT` | `/api/professionals/{id}` | Pública | Atualiza dados cadastrais de um profissional |
+| `DELETE` | `/api/professionals/{id}` | Pública | Remove o cadastro de um profissional |
