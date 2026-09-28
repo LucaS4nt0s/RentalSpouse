@@ -10,6 +10,14 @@ node_modules/
 .next/
 .expo/
 
+# Artefatos de build do TypeScript (TypeScript incremental / Next.js)
+*.tsbuildinfo
+
+# Bancos SQLite locais de desenvolvimento e teste (o projeto usa PostgreSQL)
+*.db
+*.sqlite
+*.sqlite3
+
 # Variáveis de ambiente — nunca versionar o .env real
 .env
 *.env
