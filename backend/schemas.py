@@ -1,8 +1,8 @@
 from datetime import date, datetime
 import re
-from typing import List, Optional
+from typing import Any, List, Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, computed_field, field_validator, model_validator
 
 # Conjunto de Unidades Federativas válidas do Brasil
 UFS_VALIDAS = {
@@ -47,11 +47,38 @@ class StatusRead(StatusBase):
 # ============================================================================
 
 
-class AdminBase(BaseModel):
+class UserBase(BaseModel):
+    """Campos base de um Usuário."""
+
+    name: str = Field(..., min_length=2, max_length=255, description="Nome completo do usuário")
+    email: EmailStr = Field(..., description="E-mail do usuário")
+
+
+class UserRead(UserBase):
+    """Schema de resposta para exibição de dados do usuário."""
+
+    id: int
+    role: str
+    is_active: bool
+    created_at: Optional[datetime] = None
+
+    @computed_field
+    @property
+    def nome(self) -> str:
+        return self.name
+
+    @computed_field
+    @property
+    def tipo(self) -> str:
+        return self.role
+
+    model_config = {"from_attributes": True}
+
+
+class AdminBase(UserBase):
     """Campos base de um Administrador."""
 
-    name: str = Field(..., min_length=2, max_length=255, description="Nome completo do administrador")
-    email: EmailStr = Field(..., description="E-mail do administrador")
+    pass
 
 
 class AdminCreate(AdminBase):
@@ -60,22 +87,42 @@ class AdminCreate(AdminBase):
     password: str = Field(..., min_length=8, max_length=128, description="Senha com no mínimo 8 caracteres")
 
 
-class AdminRead(AdminBase):
+class AdminRead(UserRead):
     """Schema de resposta para exibição pública de um Administrador (sem expor hash de senha)."""
 
-    id: int
-    role: str
-    is_active: bool
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
+    pass
 
 
 class LoginRequest(BaseModel):
     """Schema para autenticação (login) de usuários."""
 
     email: EmailStr
-    password: str
+    password: str = Field(..., max_length=128, description="Senha de acesso")
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalizar_email(cls, v: Any) -> str:
+        limpo = (v or "").strip().lower() if isinstance(v, str) else ""
+        if not limpo:
+            raise ValueError("O e-mail é obrigatório.")
+        if not EMAIL_REGEX.match(limpo):
+            raise ValueError("E-mail com formato inválido.")
+        return limpo
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_senha_alias(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if "password" not in data and "senha" in data:
+                data["password"] = data["senha"]
+        return data
+
+    @field_validator("password")
+    @classmethod
+    def validar_senha(cls, v: str) -> str:
+        if not (v or "").strip():
+            raise ValueError("A senha é obrigatória.")
+        return v
 
 
 class TokenResponse(BaseModel):
@@ -83,6 +130,26 @@ class TokenResponse(BaseModel):
 
     access_token: str
     token_type: str = "bearer"
+    user: Optional[UserRead] = None
+
+    @computed_field
+    @property
+    def token_acesso(self) -> str:
+        return self.access_token
+
+    @computed_field
+    @property
+    def tipo_token(self) -> str:
+        return self.token_type
+
+    @computed_field
+    @property
+    def usuario(self) -> Optional[UserRead]:
+        return self.user
+
+
+UsuarioAutenticado = UserRead
+LoginResponse = TokenResponse
 
 
 
@@ -375,3 +442,4 @@ class ProfessionalRead(ProfessionalBase):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+

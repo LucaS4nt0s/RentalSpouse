@@ -71,8 +71,6 @@ def verificar_senha(senha: str, senha_hash: str) -> bool:
         return False
 
 
-
-
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Gera um token JWT com expiração configurável."""
     to_encode = data.copy()
@@ -120,6 +118,21 @@ def get_current_user(
         )
 
     user = db.query(models.User).filter(models.User.email == email).first()
+
+    # Caso seja um cliente cadastrado via tabela de clientes sem registro na tabela users
+    if user is None:
+        cliente = db.query(models.Cliente).filter(models.Cliente.email == email).first()
+        if cliente is not None:
+            user = models.User(
+                name=cliente.nome,
+                email=cliente.email,
+                hashed_password=cliente.senha_hash,
+                role=models.UserRole.CLIENT.value,
+                is_active=True,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
 
     if user is None or not user.is_active:
         raise HTTPException(
