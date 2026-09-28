@@ -21,7 +21,7 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
         onClick={toggleVisibility}
         tabIndex={-1}
         aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-        className="p-1 rounded-lg text-[#bab195] hover:text-[#e8d18e] focus:outline-none focus:ring-1 focus:ring-[#e8d18e] transition-colors"
+        className="p-1 rounded-lg text-[#93A5C0] hover:text-[#1D4ED8] focus:outline-none focus:ring-1 focus:ring-[#1D4ED8] transition-colors"
       >
         {showPassword ? (
           // Ícone Olho Riscado (Eye Off)

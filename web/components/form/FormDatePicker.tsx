@@ -46,7 +46,7 @@ export const FormDatePicker = forwardRef<HTMLInputElement, FormDatePickerProps>(
         disabled={disabled}
         tabIndex={-1}
         aria-label="Abrir seletor de calendário"
-        className="p-1 rounded-lg text-[#bab195] hover:text-[#e8d18e] focus:outline-none focus:ring-1 focus:ring-[#e8d18e] transition-colors disabled:opacity-40"
+        className="p-1 rounded-lg text-[#93A5C0] hover:text-[#1D4ED8] focus:outline-none focus:ring-1 focus:ring-[#1D4ED8] transition-colors disabled:opacity-40"
       >
         <svg
           className="w-5 h-5"

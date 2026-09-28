@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Lock, Check } from 'lucide-react-native';
 import { FormFieldWrapper } from '../ui/FormFieldWrapper';
 import { PasswordInput } from '../ui/PasswordInput';
 import { PasswordStrengthMeter } from '../ui/PasswordStrengthMeter';
 import { usePasswordStrength } from '../../hooks/usePasswordStrength';
-import { Colors } from '../../theme/colors';
 import { useAppTheme } from '../../theme/ThemeContext';
 
 export const PasswordSection = ({
@@ -28,12 +28,17 @@ export const PasswordSection = ({
     <View
       style={[
         styles.card,
-        { backgroundColor: colors.surfaceGlass, borderColor: colors.borderGlass },
+        { backgroundColor: colors.surface, borderColor: colors.border },
       ]}
     >
-      <View style={[styles.header, { borderBottomColor: colors.borderGlass }]}>
-        <View style={styles.badgeIcon}>
-          <Text style={styles.iconText}>🔒</Text>
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <View
+          style={[
+            styles.badgeIcon,
+            { backgroundColor: colors.surface2, borderColor: colors.border },
+          ]}
+        >
+          <Lock size={16} color={colors.primary} />
         </View>
         <View>
           <Text style={[styles.title, { color: colors.textPrimary }]}>
@@ -87,8 +92,9 @@ export const PasswordSection = ({
 
         {passwordsMatch && (
           <View style={styles.matchBadge}>
+            <Check size={13} color={colors.success} />
             <Text style={[styles.matchText, { color: colors.success }]}>
-              ✓ Senhas coincidem
+              Senhas coincidem
             </Text>
           </View>
         )}
@@ -99,12 +105,10 @@ export const PasswordSection = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.surfaceGlass,
     borderRadius: 20,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: Colors.borderGlass,
   },
   header: {
     flexDirection: 'row',
@@ -112,30 +116,22 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
   },
   badgeIcon: {
     width: 32,
     height: 32,
     borderRadius: 10,
-    backgroundColor: 'rgba(232, 209, 142, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(232, 209, 142, 0.3)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
-  iconText: {
-    fontSize: 16,
-  },
   title: {
     fontSize: 15,
     fontWeight: '800',
-    color: Colors.textLight,
   },
   subtitle: {
     fontSize: 11,
-    color: Colors.sand,
   },
   confirmWrapper: {
     marginTop: 14,
@@ -145,10 +141,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: -6,
     marginBottom: 8,
+    gap: 4,
   },
   matchText: {
     fontSize: 12,
-    color: Colors.success,
     fontWeight: '700',
   },
 });

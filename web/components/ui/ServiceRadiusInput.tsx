@@ -39,7 +39,7 @@ export const ServiceRadiusInput: React.FC<ServiceRadiusInputProps> = ({
         disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
         aria-label="Raio de atendimento em quilômetros"
-        className="flex-1 h-1.5 accent-[#e8d18e] cursor-pointer disabled:opacity-40"
+        className="flex-1 h-1.5 accent-[#1D4ED8] cursor-pointer disabled:opacity-40"
       />
 
       <div className="flex items-center gap-2 shrink-0">
@@ -57,7 +57,7 @@ export const ServiceRadiusInput: React.FC<ServiceRadiusInputProps> = ({
             hasError ? 'glass-input-error' : ''
           }`}
         />
-        <span className="text-xs font-semibold text-[#626970] dark:text-[#bab195]">km</span>
+        <span className="text-xs font-semibold text-[#64748B] dark:text-[#93A5C0]">km</span>
       </div>
     </div>
   );

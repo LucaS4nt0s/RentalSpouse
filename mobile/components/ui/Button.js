@@ -6,7 +6,6 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { Colors } from '../../theme/colors';
 import { useAppTheme } from '../../theme/ThemeContext';
 
 export const Button = ({
@@ -17,6 +16,8 @@ export const Button = ({
   isLoading = false,
   loadingText,
   disabled = false,
+  leftIcon,
+  rightIcon,
   style,
   textStyle,
 }) => {
@@ -31,9 +32,11 @@ export const Button = ({
     size === 'md' && styles.sizeMd,
     size === 'lg' && styles.sizeLg,
     isPrimary && styles.primaryBtn,
+    isPrimary && { backgroundColor: colors.primary, shadowColor: colors.primary },
     isGlass && styles.glassBtn,
-    isGlass && { backgroundColor: colors.surfaceGlass, borderColor: colors.borderGlass },
+    isGlass && { backgroundColor: colors.surface2, borderColor: colors.border },
     isOutline && styles.outlineBtn,
+    isOutline && { borderColor: colors.primary },
     (disabled || isLoading) && styles.disabledBtn,
     style,
   ];
@@ -43,12 +46,9 @@ export const Button = ({
     size === 'sm' && styles.textSm,
     size === 'md' && styles.textMd,
     size === 'lg' && styles.textLg,
-    isPrimary && styles.primaryText,
-    isPrimary && { color: colors.textDark },
-    isGlass && styles.glassText,
+    isPrimary && { color: colors.primaryText },
     isGlass && { color: colors.textPrimary },
-    isOutline && styles.outlineText,
-    isOutline && { color: colors.gold },
+    isOutline && { color: colors.primary },
     textStyle,
   ];
 
@@ -60,17 +60,21 @@ export const Button = ({
       style={containerStyles}
     >
       {isLoading ? (
-        <View style={styles.loadingRow}>
+        <View style={styles.row}>
           <ActivityIndicator
             size="small"
-            color={isPrimary ? colors.textDark : colors.gold}
+            color={isPrimary ? colors.primaryText : colors.primary}
           />
-          <Text style={[...textStyles, styles.loadingTextMargin]}>
+          <Text style={[...textStyles, styles.gapLeft]}>
             {loadingText || children}
           </Text>
         </View>
       ) : (
-        <Text style={textStyles}>{children}</Text>
+        <View style={styles.row}>
+          {leftIcon}
+          <Text style={textStyles}>{children}</Text>
+          {rightIcon}
+        </View>
       )}
     </TouchableOpacity>
   );
@@ -95,22 +99,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   primaryBtn: {
-    backgroundColor: Colors.gold,
-    shadowColor: Colors.gold,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
   glassBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   outlineBtn: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.gold,
   },
   disabledBtn: {
     opacity: 0.5,
@@ -128,21 +127,13 @@ const styles = StyleSheet.create({
   textLg: {
     fontSize: 16,
   },
-  primaryText: {
-    color: Colors.textDark,
-  },
-  glassText: {
-    color: Colors.textLight,
-  },
-  outlineText: {
-    color: Colors.gold,
-  },
-  loadingRow: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
   },
-  loadingTextMargin: {
+  gapLeft: {
     marginLeft: 8,
   },
 });

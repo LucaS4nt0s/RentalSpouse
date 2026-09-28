@@ -378,10 +378,10 @@ export default function CadastroClientePage() {
   // Se o cadastro foi um sucesso, renderiza a tela de confirmação (Estado 3: Success)
   if (successData) {
     return (
-      <main className="min-h-screen bg-[#f6f5f8] dark:bg-[#11091a] text-[#11091a] dark:text-[#F3F4F6] relative overflow-hidden flex items-center justify-center p-4 sm:p-6 lg:p-8 transition-colors duration-300">
+      <main className="min-h-screen bg-[#F4F7FE] dark:bg-[var(--rs-bg)] text-[#0E1B2E] dark:text-[#EAF1FB] relative overflow-hidden flex items-center justify-center p-4 sm:p-6 lg:p-8 transition-colors duration-300">
         {/* Luzes de Fundo Ambient Glass */}
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#e8d18e]/15 dark:bg-[#e8d18e]/10 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#2f2f4d]/10 dark:bg-[#2f2f4d]/40 rounded-full blur-[140px] pointer-events-none" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#1D4ED8]/15 dark:bg-[#1D4ED8]/10 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#16263F]/10 dark:bg-[var(--rs-surface)]/40 rounded-full blur-[140px] pointer-events-none" />
 
         <div className="absolute top-6 right-6 z-20">
           <ThemeToggle />
@@ -389,7 +389,7 @@ export default function CadastroClientePage() {
 
         <div className="relative w-full max-w-xl glass-panel-elevated rounded-3xl p-8 sm:p-12 text-center flex flex-col items-center gap-6 animate-fadeIn transition-colors">
           {/* Ícone de Sucesso com Soft Gold */}
-          <div className="w-20 h-20 rounded-3xl bg-[#e8d18e]/20 dark:bg-[#e8d18e]/15 border-2 border-[#e8d18e] flex items-center justify-center text-[#947728] dark:text-[#e8d18e] shadow-gold-glow animate-bounceOnce">
+          <div className="w-20 h-20 rounded-3xl bg-[#1D4ED8]/20 dark:bg-[#1D4ED8]/15 border-2 border-[#1D4ED8] flex items-center justify-center text-[#1D4ED8] dark:text-[var(--rs-primary)] shadow-primary animate-bounceOnce">
             <svg
               className="w-10 h-10"
               fill="none"
@@ -406,12 +406,12 @@ export default function CadastroClientePage() {
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               Conta Criada com Sucesso
             </span>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#11091a] dark:text-[#F3F4F6] tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0E1B2E] dark:text-[#EAF1FB] tracking-tight">
               Bem-vindo ao RentalSpouse!
             </h1>
-            <p className="text-sm text-[#626970] dark:text-[#bab195] max-w-md mx-auto leading-relaxed">
+            <p className="text-sm text-[#64748B] dark:text-[#93A5C0] max-w-md mx-auto leading-relaxed">
               Cadastro realizado com sucesso,{' '}
-              <strong className="text-[#947728] dark:text-[#e8d18e] font-semibold">
+              <strong className="text-[#1D4ED8] dark:text-[var(--rs-primary)] font-semibold">
                 {successData.nome}
               </strong>
               ! Sua conta está pronta para uso imediato.
@@ -421,15 +421,15 @@ export default function CadastroClientePage() {
           {/* Dados Resumidos em Card Glass */}
           <div className="w-full glass-card-subtle rounded-2xl p-4 text-left text-xs space-y-2 border border-slate-200 dark:border-white/5">
             <div className="flex justify-between items-center py-1 border-b border-slate-200/50 dark:border-white/[0.04]">
-              <span className="text-[#626970]">Protocolo / ID:</span>
-              <span className="font-mono text-[#2f2f4d] dark:text-[#bab195] font-bold">#{successData.id}</span>
+              <span className="text-[#64748B]">Protocolo / ID:</span>
+              <span className="font-mono text-[#16263F] dark:text-[#93A5C0] font-bold">#{successData.id}</span>
             </div>
             <div className="flex justify-between items-center py-1 border-b border-slate-200/50 dark:border-white/[0.04]">
-              <span className="text-[#626970]">E-mail:</span>
-              <span className="text-[#11091a] dark:text-[#F3F4F6] font-medium">{successData.email}</span>
+              <span className="text-[#64748B]">E-mail:</span>
+              <span className="text-[#0E1B2E] dark:text-[#EAF1FB] font-medium">{successData.email}</span>
             </div>
             <div className="flex justify-between items-center py-1">
-              <span className="text-[#626970]">Status da Conta:</span>
+              <span className="text-[#64748B]">Status da Conta:</span>
               <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
                 Ativa & Verificada
               </span>
@@ -460,25 +460,25 @@ export default function CadastroClientePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f6f5f8] dark:bg-[#11091a] text-[#11091a] dark:text-[#F3F4F6] relative overflow-hidden py-10 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
+    <main className="min-h-screen bg-[#F4F7FE] dark:bg-[var(--rs-bg)] text-[#0E1B2E] dark:text-[#EAF1FB] relative overflow-hidden py-10 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
       {/* Luzes de Fundo Ambientais Estilo Glass */}
-      <div className="absolute top-10 left-1/3 w-[500px] h-[500px] bg-[#e8d18e]/15 dark:bg-[#2f2f4d]/30 rounded-full blur-[150px] pointer-events-none" />
-      <div className="absolute top-1/2 right-10 w-[450px] h-[450px] bg-[#bab195]/20 dark:bg-[#e8d18e]/10 rounded-full blur-[160px] pointer-events-none" />
-      <div className="absolute bottom-10 left-10 w-[400px] h-[400px] bg-[#626970]/10 dark:bg-[#626970]/15 rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute top-10 left-1/3 w-[500px] h-[500px] bg-[#1D4ED8]/15 dark:bg-[var(--rs-surface)]/30 rounded-full blur-[150px] pointer-events-none" />
+      <div className="absolute top-1/2 right-10 w-[450px] h-[450px] bg-[#93A5C0]/20 dark:bg-[#1D4ED8]/10 rounded-full blur-[160px] pointer-events-none" />
+      <div className="absolute bottom-10 left-10 w-[400px] h-[400px] bg-[#64748B]/10 dark:bg-[#64748B]/15 rounded-full blur-[140px] pointer-events-none" />
 
       <div className="relative max-w-3xl mx-auto flex flex-col gap-6">
         {/* Barra de Topo com Atalhos e Alternância de Tema */}
         <div className="flex items-center justify-between w-full">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold glass-card-subtle text-[#2f2f4d] dark:text-[#bab195] hover:text-[#11091a] dark:hover:text-[#e8d18e] border border-slate-200/80 dark:border-white/10 transition-colors"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold glass-card-subtle text-[#16263F] dark:text-[#93A5C0] hover:text-[#0E1B2E] dark:hover:text-[var(--rs-primary)] border border-slate-200/80 dark:border-white/10 transition-colors"
           >
             <span>← Início</span>
           </Link>
 
           <div className="flex items-center gap-2">
-            <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#e8d18e]/20 dark:bg-[#e8d18e]/10 text-[#6e581c] dark:text-[#e8d18e] border border-[#e8d18e]/30">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#e8d18e] animate-pulse" />
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#1D4ED8]/20 dark:bg-[#1D4ED8]/10 text-[#1E40AF] dark:text-[var(--rs-primary)] border border-[#1D4ED8]/30">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#1D4ED8] animate-pulse" />
               RentalSpouse
             </span>
             <ThemeToggle />
@@ -487,10 +487,10 @@ export default function CadastroClientePage() {
 
         {/* Cabeçalho da Página */}
         <header className="text-center flex flex-col items-center gap-3">
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#11091a] dark:text-[#F3F4F6]">
+          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#0E1B2E] dark:text-[#EAF1FB]">
             Cadastro de Novo Cliente
           </h1>
-          <p className="text-sm sm:text-base text-[#626970] dark:text-[#bab195] max-w-lg leading-relaxed">
+          <p className="text-sm sm:text-base text-[#64748B] dark:text-[#93A5C0] max-w-lg leading-relaxed">
             Crie sua conta para solicitar manutenções, reparos e reformas com profissionais
             qualificados e credenciados.
           </p>
@@ -519,14 +519,14 @@ export default function CadastroClientePage() {
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-semibold text-[#11091a] dark:text-[#F3F4F6]">
+                <p className="text-sm font-semibold text-[#0E1B2E] dark:text-[#EAF1FB]">
                   {globalError.type === 'conflict'
                     ? 'Registro Já Cadastrado'
                     : globalError.type === 'network'
                     ? 'Falha de Conexão'
                     : 'Atenção ao Preenchimento'}
                 </p>
-                <p className="text-xs text-[#626970] dark:text-[#bab195] mt-0.5 leading-relaxed">
+                <p className="text-xs text-[#64748B] dark:text-[#93A5C0] mt-0.5 leading-relaxed">
                   {globalError.message}
                 </p>
               </div>
@@ -559,7 +559,7 @@ export default function CadastroClientePage() {
         <form
           onSubmit={handleSubmit}
           noValidate
-          className="glass-panel rounded-3xl p-6 sm:p-8 lg:p-10 flex flex-col gap-8 shadow-glass transition-all duration-300"
+          className="glass-panel rounded-3xl p-6 sm:p-8 lg:p-10 flex flex-col gap-8 shadow-panel transition-all duration-300"
         >
           {/* Seção 1: Dados Pessoais */}
           <PersonalInfoSection
@@ -590,7 +590,7 @@ export default function CadastroClientePage() {
 
           {/* Rodapé e CTA de Envio (Estado 1: Loading tratado) */}
           <div className="pt-4 border-t border-slate-200/60 dark:border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-[#626970] text-center sm:text-left">
+            <p className="text-xs text-[#64748B] text-center sm:text-left">
               Ao cadastrar-se, você concorda com os termos do RentalSpouse e com a LGPD.
             </p>
 
@@ -608,9 +608,9 @@ export default function CadastroClientePage() {
         </form>
 
         {/* Rodapé Informativo */}
-        <footer className="text-center text-xs text-[#626970] space-y-1">
+        <footer className="text-center text-xs text-[#64748B] space-y-1">
           <p>RentalSpouse &copy; 2026 — Plataforma de Serviços Residenciais</p>
-          <p className="font-mono text-[11px] text-[#626970]/80">
+          <p className="font-mono text-[11px] text-[#64748B]/80">
             Next.js App Router • Glassmorphism (Light & Dark Theme)
           </p>
         </footer>

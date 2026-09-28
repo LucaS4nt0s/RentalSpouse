@@ -1,14 +1,14 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Colors } from '../../theme/colors';
+import { Check } from 'lucide-react-native';
 import { useAppTheme } from '../../theme/ThemeContext';
 
 export const PasswordStrengthMeter = ({ evaluation }) => {
-  const { isDark, colors } = useAppTheme();
+  const { colors } = useAppTheme();
   const { score, criteria, label, color } = evaluation;
 
-  const trackColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(47, 47, 77, 0.12)';
-  const emptySegmentColor = isDark ? 'rgba(98, 105, 112, 0.25)' : 'rgba(47, 47, 77, 0.15)';
+  const trackColor = colors.border;
+  const emptySegmentColor = colors.textSoft;
 
   let activeSegments = 0;
   if (score >= 5) activeSegments = 3;
@@ -28,8 +28,8 @@ export const PasswordStrengthMeter = ({ evaluation }) => {
       style={[
         styles.container,
         {
-          backgroundColor: colors.surfaceGlassSubtle,
-          borderColor: colors.borderGlass,
+          backgroundColor: colors.surface2,
+          borderColor: colors.border,
         },
       ]}
     >
@@ -64,7 +64,7 @@ export const PasswordStrengthMeter = ({ evaluation }) => {
       </View>
 
       {/* Checklist dos 5 Critérios */}
-      <View style={[styles.checklistContainer, { borderTopColor: colors.borderGlass }]}>
+      <View style={[styles.checklistContainer, { borderTopColor: colors.border }]}>
         <Text style={[styles.checklistTitle, { color: colors.muted }]}>
           Requisitos Obrigatórios
         </Text>
@@ -74,10 +74,12 @@ export const PasswordStrengthMeter = ({ evaluation }) => {
               <View
                 style={[
                   styles.checkCircle,
+                  { borderColor: colors.borderStrong },
                   item.ok && styles.checkCircleOk,
+                  item.ok && { backgroundColor: colors.surface2, borderColor: colors.success },
                 ]}
               >
-                <Text style={styles.checkIconText}>{item.ok ? '✓' : ''}</Text>
+                {item.ok && <Check size={10} color={colors.success} />}
               </View>
               <Text
                 style={[
@@ -99,12 +101,10 @@ export const PasswordStrengthMeter = ({ evaluation }) => {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: Colors.surfaceGlassSubtle,
     borderRadius: 14,
     padding: 12,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
   },
   headerRow: {
     flexDirection: 'row',
@@ -114,7 +114,6 @@ const styles = StyleSheet.create({
   },
   headerLabel: {
     fontSize: 11,
-    color: Colors.sand,
     fontWeight: '600',
   },
   statusText: {
@@ -124,7 +123,6 @@ const styles = StyleSheet.create({
   track: {
     flexDirection: 'row',
     height: 5,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 3,
     overflow: 'hidden',
     gap: 4,
@@ -137,12 +135,10 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.05)',
   },
   checklistTitle: {
     fontSize: 10,
     fontWeight: '700',
-    color: Colors.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 6,
@@ -160,28 +156,20 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: 7,
     borderWidth: 1,
-    borderColor: 'rgba(98, 105, 112, 0.5)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 6,
   },
   checkCircleOk: {
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
-    borderColor: Colors.success,
-  },
-  checkIconText: {
-    fontSize: 9,
-    color: Colors.success,
-    fontWeight: 'bold',
+    borderWidth: 1,
   },
   itemText: {
     fontSize: 11,
   },
   itemTextOk: {
-    color: Colors.textLight,
     fontWeight: '600',
   },
   itemTextPending: {
-    color: Colors.muted,
+    fontWeight: '500',
   },
 });

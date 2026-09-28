@@ -27,7 +27,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
     },
     ref
   ) => {
-    let stateClasses = 'border-[#626970]/40 focus:border-[#e8d18e] focus:ring-[#e8d18e]/30';
+    let stateClasses = 'border-[#64748B]/40 focus:border-[#1D4ED8] focus:ring-[#1D4ED8]/30';
     if (hasError) {
       stateClasses = 'glass-input-error !border-[#EF4444] focus:!border-[#EF4444] focus:!ring-[#EF4444]/40';
     }
@@ -38,11 +38,11 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           ref={ref}
           disabled={disabled}
           aria-invalid={hasError ? 'true' : 'false'}
-          className={`glass-input w-full appearance-none rounded-xl px-4 py-3 text-sm font-medium tracking-wide placeholder-[#626970] disabled:opacity-40 disabled:cursor-not-allowed pr-10 cursor-pointer ${stateClasses} ${className}`}
+          className={`glass-input w-full appearance-none rounded-xl px-4 py-3 text-sm font-medium tracking-wide placeholder-[#64748B] disabled:opacity-40 disabled:cursor-not-allowed pr-10 cursor-pointer ${stateClasses} ${className}`}
           {...props}
         >
           {placeholder && (
-            <option value="" disabled className="bg-[#11091a] text-[#626970]">
+            <option value="" disabled className="bg-[#0E1B2E] text-[#64748B]">
               {placeholder}
             </option>
           )}
@@ -50,7 +50,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             const val = typeof opt === 'string' ? opt : opt.value;
             const lbl = typeof opt === 'string' ? opt : opt.label;
             return (
-              <option key={val} value={val} className="bg-[#11091a] text-[#F3F4F6]">
+              <option key={val} value={val} className="bg-[#0E1B2E] text-[#EAF1FB]">
                 {lbl}
               </option>
             );
@@ -58,7 +58,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
         </select>
 
         {/* Seta Chevron customizada */}
-        <div className="absolute right-3.5 flex items-center pointer-events-none text-[#bab195]">
+        <div className="absolute right-3.5 flex items-center pointer-events-none text-[#93A5C0]">
           <svg
             className="w-4 h-4"
             fill="none"

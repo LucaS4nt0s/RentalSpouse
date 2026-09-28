@@ -1,7 +1,7 @@
 import React, { useState, forwardRef } from 'react';
-import { TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { TouchableOpacity, StyleSheet } from 'react-native';
+import { Eye, EyeOff } from 'lucide-react-native';
 import { TextInput } from './TextInput';
-import { Colors } from '../../theme/colors';
 import { useAppTheme } from '../../theme/ThemeContext';
 
 export const PasswordInput = forwardRef((props, ref) => {
@@ -19,9 +19,11 @@ export const PasswordInput = forwardRef((props, ref) => {
       style={styles.eyeBtn}
       accessibilityLabel={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
     >
-      <Text style={[styles.eyeText, { color: colors.sand }]}>
-        {showPassword ? '👁️' : '🙈'}
-      </Text>
+      {showPassword ? (
+        <EyeOff size={18} color={colors.muted} />
+      ) : (
+        <Eye size={18} color={colors.muted} />
+      )}
     </TouchableOpacity>
   );
 
@@ -43,9 +45,5 @@ PasswordInput.displayName = 'PasswordInput';
 const styles = StyleSheet.create({
   eyeBtn: {
     padding: 6,
-  },
-  eyeText: {
-    fontSize: 16,
-    color: Colors.sand,
   },
 });

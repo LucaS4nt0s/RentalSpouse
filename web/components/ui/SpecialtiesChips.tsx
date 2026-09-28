@@ -46,10 +46,10 @@ export const SpecialtiesChips: React.FC<SpecialtiesChipsProps> = ({
             onClick={() => toggle(specialty)}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
               active
-                ? 'bg-[#e8d18e] text-[#11091a] border-[#e8d18e] shadow-gold-glow'
+                ? 'bg-[#1D4ED8] text-white border-[#1D4ED8] shadow-primary'
                 : hasError
-                ? 'bg-transparent text-[#626970] dark:text-[#bab195] border-[#EF4444]/50 hover:border-[#e8d18e]'
-                : 'bg-transparent text-[#626970] dark:text-[#bab195] border-slate-300 dark:border-white/15 hover:border-[#e8d18e] hover:text-[#11091a] dark:hover:text-[#e8d18e]'
+                ? 'bg-transparent text-[#64748B] dark:text-[#93A5C0] border-[#EF4444]/50 hover:border-[#1D4ED8]'
+                : 'bg-transparent text-[#64748B] dark:text-[#93A5C0] border-slate-300 dark:border-white/15 hover:border-[#1D4ED8] hover:text-[#0E1B2E] dark:hover:text-[var(--rs-primary)]'
             }`}
           >
             {specialty}

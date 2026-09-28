@@ -41,11 +41,14 @@ export const TextInput = forwardRef(
           styles.container,
           {
             backgroundColor: colors.inputBg,
-            borderColor: colors.borderGlass,
+            borderColor: colors.border,
           },
           isFocused && styles.focusedContainer,
+          isFocused && { borderColor: colors.primary },
           hasError && styles.errorContainer,
+          hasError && { borderColor: colors.error },
           hasSuccess && styles.successContainer,
+          hasSuccess && { borderColor: colors.success },
           containerStyle,
         ]}
       >
@@ -85,8 +88,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   focusedContainer: {
-    borderColor: Colors.gold,
-    shadowColor: Colors.gold,
+    shadowColor: '#2563eb',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.35,
     shadowRadius: 6,

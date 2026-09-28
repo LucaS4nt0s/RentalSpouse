@@ -38,7 +38,7 @@ export const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
   return (
     <div className="glass-card-subtle p-5 sm:p-6 rounded-2xl flex flex-col gap-5 border border-slate-200/60 dark:border-white/5 transition-colors">
       <div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-white/[0.06]">
-        <div className="w-8 h-8 rounded-xl bg-[#e8d18e]/25 dark:bg-[#e8d18e]/10 border border-[#e8d18e]/40 dark:border-[#e8d18e]/30 flex items-center justify-center text-[#6e581c] dark:text-[#e8d18e]">
+        <div className="w-8 h-8 rounded-xl bg-[#1D4ED8]/25 dark:bg-[#1D4ED8]/10 border border-[#1D4ED8]/40 dark:border-[#1D4ED8]/30 flex items-center justify-center text-[#1E40AF] dark:text-[var(--rs-primary)]">
           <svg
             className="w-4 h-4"
             fill="none"
@@ -54,10 +54,10 @@ export const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
           </svg>
         </div>
         <div>
-          <h2 className="text-base font-bold text-[#11091a] dark:text-[#F3F4F6] tracking-tight">
+          <h2 className="text-base font-bold text-[#0E1B2E] dark:text-[#EAF1FB] tracking-tight">
             1. Dados Pessoais
           </h2>
-          <p className="text-xs text-[#626970] dark:text-[#bab195]/80">
+          <p className="text-xs text-[#64748B] dark:text-[#93A5C0]/80">
             Identificação segura para emissão de orçamentos e chamados
           </p>
         </div>
@@ -110,7 +110,7 @@ export const PersonalInfoSection: React.FC<PersonalInfoSectionProps> = ({
               disabled={disabled}
               leftIcon={
                 <svg
-                  className="w-4 h-4 text-[#bab195]"
+                  className="w-4 h-4 text-[#93A5C0]"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"

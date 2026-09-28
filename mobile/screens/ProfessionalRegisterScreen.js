@@ -388,7 +388,7 @@ export const ProfessionalRegisterScreen = ({ onNavigateBack }) => {
           </Text>
           <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
             Olá,{' '}
-            <Text style={[styles.goldText, { color: isDark ? colors.gold : '#6e581c' }]}>
+            <Text style={[styles.goldText, { color: colors.gold }]}>
               {successData.nome}
             </Text>
             ! Seu perfil está pronto para receber solicitações de clientes.
@@ -485,7 +485,7 @@ export const ProfessionalRegisterScreen = ({ onNavigateBack }) => {
           <View style={styles.header}>
             <View style={styles.brandBadge}>
               <View style={styles.badgeDot} />
-              <Text style={[styles.brandBadgeText, { color: isDark ? colors.gold : '#6e581c' }]}>
+              <Text style={[styles.brandBadgeText, { color: colors.gold }]}>
                 RentalSpouse Profissional
               </Text>
             </View>
