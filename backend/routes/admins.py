@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -28,7 +29,8 @@ def create_admin(
     - Exige token Bearer válido de um usuário que seja Administrador (`role='admin'`).
     - Caso contrário, a requisição é rejeitada com 401 ou 403.
     """
-    existing_user = db.query(models.User).filter(models.User.email == payload.email).first()
+    email_normalizado = payload.email.strip().lower()
+    existing_user = db.query(models.User).filter(models.User.email == email_normalizado).first()
     if existing_user is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -36,15 +38,22 @@ def create_admin(
         )
 
     new_admin = models.User(
-        name=payload.name,
-        email=payload.email,
+        name=payload.name.strip(),
+        email=email_normalizado,
         hashed_password=hash_senha(payload.password),
         role=models.UserRole.ADMIN.value,
         is_active=True,
     )
     db.add(new_admin)
-    db.commit()
-    db.refresh(new_admin)
+    try:
+        db.commit()
+        db.refresh(new_admin)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Já existe um usuário cadastrado com este e-mail",
+        )
 
     return new_admin
 

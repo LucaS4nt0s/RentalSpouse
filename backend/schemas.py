@@ -80,12 +80,6 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
-class TokenPayload(BaseModel):
-    """Dados decodificados de um token JWT."""
-
-    sub: str | None = None
-    role: str | None = None
-
 
 # ---------------------------------------------------------------------------
 # Schemas de Endereço

@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import models
-from security import create_access_token, hash_senha
+from security import create_access_token, hash_senha, seed_initial_admin
 from tests.conftest import TestingSessionLocal
 
 
@@ -152,6 +152,47 @@ class TestAdminRegistration:
         response = client.post("/api/admins", json=payload, headers=admin_user["headers"])
         assert response.status_code == 422
 
+    def test_admin_registration_normalizes_email(self, client: TestClient, admin_user: dict):
+        """O e-mail cadastrado deve ser normalizado para minúsculas."""
+        payload = {
+            "name": "Admin Upper",
+            "email": "Novo.Admin.Upper@RentalSpouse.COM",
+            "password": "SenhaForte@2026",
+        }
+        response = client.post("/api/admins", json=payload, headers=admin_user["headers"])
+        assert response.status_code == 201
+        assert response.json()["email"] == "novo.admin.upper@rentalspouse.com"
+
+    def test_duplicate_email_case_insensitive_rejected(self, client: TestClient, admin_user: dict):
+        """Tentativa de cadastrar e-mail já existente com casing diferente deve retornar 409 Conflict."""
+        payload = {
+            "name": "Duplicado Casing",
+            "email": admin_user["user"].email.upper(),
+            "password": "OutraSenha@123",
+        }
+        response = client.post("/api/admins", json=payload, headers=admin_user["headers"])
+        assert response.status_code == 409
+        assert "Já existe um usuário cadastrado com este e-mail" in response.json()["detail"]
+
+    def test_duplicate_email_concurrency_integrity_error(self, client: TestClient, admin_user: dict, monkeypatch):
+        """Simula condição de corrida onde o commit dispara IntegrityError."""
+        from sqlalchemy.exc import IntegrityError
+
+        def mock_commit(*args, **kwargs):
+            raise IntegrityError("mock unique constraint", orig=Exception("unique"), params={})
+
+        monkeypatch.setattr("sqlalchemy.orm.Session.commit", mock_commit)
+
+        payload = {
+            "name": "Admin Concorrente",
+            "email": "concorrente@rentalspouse.com",
+            "password": "SenhaForte@2026",
+        }
+        response = client.post("/api/admins", json=payload, headers=admin_user["headers"])
+        assert response.status_code == 409
+        assert "Já existe um usuário cadastrado com este e-mail" in response.json()["detail"]
+
+
 
 class TestAdminListAndLogin:
     """Testes para listagem de administradores e fluxo de autenticação."""
@@ -204,3 +245,109 @@ class TestAdminListAndLogin:
         response = client.post("/api/auth/login", json=login_payload)
         assert response.status_code == 401
         assert "Credenciais inválidas" in response.json()["detail"]
+
+    def test_login_is_case_insensitive(self, client: TestClient, admin_user: dict):
+        """Login com e-mail em maiúsculas deve autenticar com sucesso."""
+        login_payload = {
+            "email": admin_user["user"].email.upper(),
+            "password": "MasterAdmin@123",
+        }
+        response = client.post("/api/auth/login", json=login_payload)
+        assert response.status_code == 200
+        assert "access_token" in response.json()
+
+    def test_inactive_user_cannot_login(self, client: TestClient):
+        """Tentativa de login por usuário desativado deve retornar 401 Conta desativada."""
+        db = TestingSessionLocal()
+        try:
+            inactive_user = models.User(
+                name="Usuario Inativo",
+                email="inativo@rentalspouse.com",
+                hashed_password=hash_senha("SenhaInativo@123"),
+                role=models.UserRole.ADMIN.value,
+                is_active=False,
+            )
+            db.add(inactive_user)
+            db.commit()
+        finally:
+            db.close()
+
+        login_payload = {
+            "email": "inativo@rentalspouse.com",
+            "password": "SenhaInativo@123",
+        }
+        response = client.post("/api/auth/login", json=login_payload)
+        assert response.status_code == 401
+        assert "Conta desativada" in response.json()["detail"]
+
+
+class TestUserModelAndSecurity:
+    """Validações do modelo User e funções de segurança."""
+
+    def test_user_model_default_role_is_client(self):
+        """Pelo princípio do menor privilégio, uma nova instância de User deve ter default role 'client'."""
+        db = TestingSessionLocal()
+        try:
+            user = models.User(
+                name="Usuario Sem Role",
+                email="semrole@rentalspouse.com",
+                hashed_password="hash_qualquer",
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            assert user.role == models.UserRole.CLIENT.value
+        finally:
+            db.close()
+
+    def test_seed_initial_admin_creates_admin_when_table_empty(self):
+        """seed_initial_admin deve criar um admin inicial se a tabela estiver vazia."""
+        db = TestingSessionLocal()
+        try:
+            admin = seed_initial_admin(db)
+            assert admin is not None
+            assert admin.role == models.UserRole.ADMIN.value
+            assert admin.email == "admin@rentalspouse.com"
+            assert admin.is_active is True
+
+            # Segunda chamada deve ser idempotente e retornar o admin já existente
+            admin_again = seed_initial_admin(db)
+            assert admin_again.id == admin.id
+        finally:
+            db.close()
+
+    def test_seed_initial_admin_respects_disabled_flag(self, monkeypatch):
+        """Quando SEED_INITIAL_ADMIN estiver desativado, seed_initial_admin não deve criar usuário."""
+        monkeypatch.setenv("SEED_INITIAL_ADMIN", "false")
+        db = TestingSessionLocal()
+        try:
+            result = seed_initial_admin(db)
+            assert result is None
+        finally:
+            db.close()
+
+
+class TestLifespanStartup:
+    """Testes para o ciclo de vida (lifespan) da aplicação."""
+
+    @pytest.mark.asyncio
+    async def test_lifespan_startup_success(self):
+        """Verifica se o lifespan inicializa o banco e executa o seed sem exceções."""
+        from main import app, lifespan
+
+        async with lifespan(app):
+            pass
+
+    @pytest.mark.asyncio
+    async def test_lifespan_startup_handles_exception_gracefully(self, monkeypatch):
+        """Garante que exceções no seed durante o lifespan são tratadas com rollback e log."""
+        from main import app, lifespan
+
+        def failing_seed(db):
+            raise RuntimeError("Falha simulada no seed")
+
+        monkeypatch.setattr("main.seed_initial_admin", failing_seed)
+
+        async with lifespan(app):
+            pass
+

@@ -57,7 +57,7 @@ O sistema **RentalSpouse** adota a arquitetura de **Monorepo Modularizado**, sep
 | `name` | String(255) | Not Null | Nome completo do usuário |
 | `email` | String(255) | Unique, Index, Not Null | E-mail do usuário/administrador |
 | `hashed_password` | String(255) | Not Null | Hash de senha com PBKDF2-HMAC-SHA256 (600.000 iterações) |
-| `role` | String(50) | Not Null, Default: 'admin' | Papel no sistema (`admin`, `client`, `professional`) |
+| `role` | String(50) | Not Null, Default: 'client' | Papel no sistema (`admin`, `client`, `professional`) |
 | `is_active` | Boolean | Not Null, Default: True | Flag de ativação da conta |
 | `created_at` | DateTime | Not Null, Default: UTC Now | Data e hora do cadastro |
 

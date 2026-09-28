@@ -13,6 +13,13 @@ from security import (
 router = APIRouter(prefix="/api/auth", tags=["Autenticação"])
 
 
+# Hash fictício pré-calculado com PBKDF2 (600.000 iterações) para atenuar timing attacks
+_DUMMY_HASH = (
+    "00000000000000000000000000000000$"
+    "0000000000000000000000000000000000000000000000000000000000000000"
+)
+
+
 @router.post(
     "/login",
     response_model=TokenResponse,
@@ -21,9 +28,16 @@ router = APIRouter(prefix="/api/auth", tags=["Autenticação"])
 )
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     """Realiza a autenticação de usuários e administradores."""
-    user = db.query(models.User).filter(models.User.email == payload.email).first()
+    email_normalizado = payload.email.strip().lower()
+    user = db.query(models.User).filter(models.User.email == email_normalizado).first()
 
-    if user is None or not verificar_senha(payload.password, user.hashed_password):
+    senha_valida = (
+        verificar_senha(payload.password, user.hashed_password)
+        if user
+        else verificar_senha(payload.password, _DUMMY_HASH)
+    )
+
+    if user is None or not senha_valida:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciais inválidas: e-mail ou senha incorretos",

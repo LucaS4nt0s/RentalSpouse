@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -11,11 +12,26 @@ from sqlalchemy.orm import Session
 from database import get_db
 import models
 
+logger = logging.getLogger(__name__)
+
 # Recomendação OWASP para PBKDF2-HMAC-SHA256 (>= 600.000 iterações)
 ITERACOES_PBKDF2 = 600_000
 
-# Configurações de JWT a partir de variáveis de ambiente com fallback seguro para dev
-JWT_SECRET = os.getenv("JWT_SECRET", "rentalspouse_dev_secret_key_change_in_production_123456789")
+# Configurações de ambiente e JWT
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+_jwt_secret_env = os.getenv("JWT_SECRET")
+
+if _jwt_secret_env:
+    JWT_SECRET = _jwt_secret_env
+elif ENVIRONMENT == "production":
+    raise RuntimeError("FATAL: A variável de ambiente JWT_SECRET é obrigatória em ambiente de produção!")
+else:
+    JWT_SECRET = "rentalspouse_dev_secret_key_change_in_production_123456789"
+    logger.warning(
+        "AVISO DE SEGURANÇA: JWT_SECRET não configurado. Utilizando segredo padrão de desenvolvimento. "
+        "Defina JWT_SECRET no ambiente para produção!"
+    )
+
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))  # 24 horas
 
@@ -55,9 +71,6 @@ def verificar_senha(senha: str, senha_hash: str) -> bool:
         return False
 
 
-# Aliases para padronização e compatibilidade de chamadas
-hash_password = hash_senha
-verify_password = verificar_senha
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
@@ -136,14 +149,21 @@ def get_current_admin(
 def seed_initial_admin(db: Session) -> models.User | None:
     """
     Cria o primeiro administrador caso ainda não exista nenhum no banco de dados.
-    Utiliza variáveis de ambiente ou valores padrão de desenvolvimento.
+    Controlado pela variável SEED_INITIAL_ADMIN (padrão True em desenvolvimento, False em produção).
     """
-    existing_admin = db.query(models.User).filter(models.User.role == models.UserRole.ADMIN.value).first()
+    seed_enabled_default = "true" if ENVIRONMENT != "production" else "false"
+    seed_enabled = os.getenv("SEED_INITIAL_ADMIN", seed_enabled_default).lower() in ("true", "1", "yes")
+
+    if not seed_enabled:
+        logger.info("Semeadura de administrador inicial desativada (SEED_INITIAL_ADMIN=false ou ambiente de produção).")
+        return None
+
+    admin_email = os.getenv("INITIAL_ADMIN_EMAIL", "admin@rentalspouse.com").strip().lower()
+    existing_admin = db.query(models.User).filter(models.User.email == admin_email).first()
     if existing_admin is not None:
         return existing_admin
 
-    admin_name = os.getenv("INITIAL_ADMIN_NAME", "Administrador Inicial")
-    admin_email = os.getenv("INITIAL_ADMIN_EMAIL", "admin@rentalspouse.com")
+    admin_name = os.getenv("INITIAL_ADMIN_NAME", "Administrador Inicial").strip()
     admin_password = os.getenv("INITIAL_ADMIN_PASSWORD", "Admin@123456")
 
     initial_admin = models.User(
@@ -156,4 +176,5 @@ def seed_initial_admin(db: Session) -> models.User | None:
     db.add(initial_admin)
     db.commit()
     db.refresh(initial_admin)
+    logger.info("Administrador inicial semeado com sucesso: %s", admin_email)
     return initial_admin
