@@ -172,3 +172,77 @@ export function validateCEP(cep = '') {
   if (clean.length !== 8) return { isValid: false, message: 'O CEP deve ter 8 dígitos.' };
   return { isValid: true };
 }
+
+// ============================================================================
+// Cadastro de Profissionais (Prestadores de Serviço)
+// ============================================================================
+
+export const SPECIALTIES = [
+  'Elétrica',
+  'Hidráulica',
+  'Pintura',
+  'Montagem de Móveis',
+  'Marcenaria',
+  'Limpeza',
+  'Jardinagem',
+  'Ar-condicionado',
+  'Reparos Gerais',
+];
+
+export const MIN_SERVICE_RADIUS_KM = 1;
+export const MAX_SERVICE_RADIUS_KM = 100;
+export const MIN_BIO_LENGTH = 20;
+export const MAX_BIO_LENGTH = 500;
+
+export function validatePhone(phone = '') {
+  const digits = (phone || '').replace(/\D/g, '');
+  if (!digits) return { isValid: false, message: 'O telefone é obrigatório.' };
+  if (digits.length < 10 || digits.length > 11) {
+    return { isValid: false, message: 'Informe um telefone válido com DDD (10 ou 11 dígitos).' };
+  }
+  const ddd = parseInt(digits.slice(0, 2), 10);
+  if (ddd < 11 || ddd > 99) {
+    return { isValid: false, message: 'DDD inválido.' };
+  }
+  if (digits.length === 11 && digits.charAt(2) !== '9') {
+    return { isValid: false, message: 'Celular inválido: o número deve iniciar com 9 após o DDD.' };
+  }
+  return { isValid: true };
+}
+
+export function validateSpecialties(specialties = []) {
+  if (!specialties || specialties.length < 1) {
+    return { isValid: false, message: 'Selecione ao menos 1 especialidade.' };
+  }
+  const invalid = specialties.filter((s) => !SPECIALTIES.includes(s));
+  if (invalid.length > 0) {
+    return { isValid: false, message: 'Especialidade inválida selecionada.' };
+  }
+  return { isValid: true };
+}
+
+export function validateServiceRadius(radius) {
+  const value = typeof radius === 'string' ? parseFloat(radius) : radius;
+  if (radius === '' || value === undefined || Number.isNaN(value)) {
+    return { isValid: false, message: 'Informe o raio de atendimento.' };
+  }
+  if (value < MIN_SERVICE_RADIUS_KM) {
+    return { isValid: false, message: `O raio mínimo é de ${MIN_SERVICE_RADIUS_KM} km.` };
+  }
+  if (value > MAX_SERVICE_RADIUS_KM) {
+    return { isValid: false, message: `O raio máximo é de ${MAX_SERVICE_RADIUS_KM} km.` };
+  }
+  return { isValid: true };
+}
+
+export function validateBio(bio = '') {
+  const trimmed = (bio || '').trim();
+  if (!trimmed) return { isValid: false, message: 'A biografia é obrigatória.' };
+  if (trimmed.length < MIN_BIO_LENGTH) {
+    return { isValid: false, message: `A biografia deve ter no mínimo ${MIN_BIO_LENGTH} caracteres.` };
+  }
+  if (trimmed.length > MAX_BIO_LENGTH) {
+    return { isValid: false, message: `A biografia deve ter no máximo ${MAX_BIO_LENGTH} caracteres.` };
+  }
+  return { isValid: true };
+}

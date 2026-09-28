@@ -1,6 +1,6 @@
 import React, { forwardRef } from 'react';
 import { TextInput } from './TextInput';
-import { maskCPF, maskCEP, maskDate, cleanDigits } from '../../utils/formatters';
+import { maskCPF, maskCEP, maskDate, maskPhone, cleanDigits } from '../../utils/formatters';
 
 export const MaskedInput = forwardRef(
   ({ maskType, onChangeText, value, ...props }, ref) => {
@@ -12,6 +12,8 @@ export const MaskedInput = forwardRef(
           return maskCEP(val);
         case 'date':
           return maskDate(val);
+        case 'phone':
+          return maskPhone(val);
         default:
           return val;
       }

@@ -133,13 +133,29 @@ export default function Home() {
           )}
         </div>
 
-        {/* Link para o Cadastro de Cliente */}
-        <div className="w-full mt-6 pt-6 border-t border-slate-200/60 dark:border-white/[0.08]">
+        {/* Links de Cadastro */}
+        <div className="w-full mt-6 pt-6 border-t border-slate-200/60 dark:border-white/[0.08] flex flex-col gap-3">
           <Link
             href="/cadastro/cliente"
             className="w-full py-3 px-4 rounded-xl bg-[#e8d18e] text-[#11091a] font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#dfc476] shadow-lg shadow-[#e8d18e]/20 transition-all active:scale-[0.98]"
           >
             <span>Ir para Cadastro de Clientes</span>
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2.5}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </Link>
+
+          <Link
+            href="/cadastro/profissional"
+            className="w-full py-3 px-4 rounded-xl bg-transparent border border-[#e8d18e]/60 text-[#6e581c] dark:text-[#e8d18e] font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#e8d18e]/10 transition-all active:scale-[0.98]"
+          >
+            <span>Sou Profissional — Cadastrar Perfil</span>
             <svg
               className="w-4 h-4"
               fill="none"
