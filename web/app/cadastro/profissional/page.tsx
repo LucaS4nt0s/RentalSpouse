@@ -13,6 +13,11 @@ import {
   AddressErrors,
 } from '../../../components/sections/AddressSection';
 import {
+  ProviderSkillsSection,
+  ProviderSkillsData,
+  ProviderSkillsErrors,
+} from '../../../components/sections/ProviderSkillsSection';
+import {
   PasswordSection,
   PasswordData,
   PasswordErrors,
@@ -24,6 +29,10 @@ import {
   validateEmail,
   validateCPF,
   validateBirthDate,
+  validatePhone,
+  validateSpecialties,
+  validateServiceRadius,
+  validateBio,
   evaluatePasswordStrength,
   validatePasswordMatch,
   validateCEP,
@@ -39,7 +48,7 @@ interface SuccessResponseData {
   criado_em?: string;
 }
 
-export default function CadastroClientePage() {
+export default function CadastroProfissionalPage() {
   // Estado 1: Dados Pessoais
   const [personalData, setPersonalData] = useState<PersonalInfoData>({
     nomeCompleto: '',
@@ -59,18 +68,27 @@ export default function CadastroClientePage() {
     estado_uf: '',
   });
 
-  // Estado 3: Credenciais
+  // Estado 3: Perfil Profissional
+  const [skillsData, setSkillsData] = useState<ProviderSkillsData>({
+    telefone: '',
+    especialidades: [],
+    raioAtendimento: 10,
+    bio: '',
+  });
+
+  // Estado 4: Credenciais
   const [passwordData, setPasswordData] = useState<PasswordData>({
     senha: '',
     confirmacaoSenha: '',
   });
 
-  // Erros de cada seção
+  // Erros por seção
   const [personalErrors, setPersonalErrors] = useState<PersonalInfoErrors>({});
   const [addressErrors, setAddressErrors] = useState<AddressErrors>({});
+  const [skillsErrors, setSkillsErrors] = useState<ProviderSkillsErrors>({});
   const [passwordErrors, setPasswordErrors] = useState<PasswordErrors>({});
 
-  // Estados Globais de UI (Loading, Error, Success)
+  // Estados Globais de UI
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [globalError, setGlobalError] = useState<{
     type: 'conflict' | 'network' | 'validation';
@@ -79,32 +97,33 @@ export default function CadastroClientePage() {
   } | null>(null);
   const [successData, setSuccessData] = useState<SuccessResponseData | null>(null);
 
-  // Manipuladores de alteração
   const handlePersonalChange = (field: keyof PersonalInfoData, value: string) => {
     setPersonalData((prev) => ({ ...prev, [field]: value }));
-    if (personalErrors[field]) {
-      setPersonalErrors((prev) => ({ ...prev, [field]: undefined }));
-    }
+    if (personalErrors[field]) setPersonalErrors((prev) => ({ ...prev, [field]: undefined }));
     if (globalError) setGlobalError(null);
   };
 
   const handleAddressChange = (field: keyof AddressData, value: string) => {
     setAddressData((prev) => ({ ...prev, [field]: value }));
-    if (addressErrors[field]) {
-      setAddressErrors((prev) => ({ ...prev, [field]: undefined }));
-    }
+    if (addressErrors[field]) setAddressErrors((prev) => ({ ...prev, [field]: undefined }));
+    if (globalError) setGlobalError(null);
+  };
+
+  const handleSkillsChange = (
+    field: keyof ProviderSkillsData,
+    value: string | string[] | number
+  ) => {
+    setSkillsData((prev) => ({ ...prev, [field]: value }));
+    if (skillsErrors[field]) setSkillsErrors((prev) => ({ ...prev, [field]: undefined }));
     if (globalError) setGlobalError(null);
   };
 
   const handlePasswordChange = (field: keyof PasswordData, value: string) => {
     setPasswordData((prev) => ({ ...prev, [field]: value }));
-    if (passwordErrors[field]) {
-      setPasswordErrors((prev) => ({ ...prev, [field]: undefined }));
-    }
+    if (passwordErrors[field]) setPasswordErrors((prev) => ({ ...prev, [field]: undefined }));
     if (globalError) setGlobalError(null);
   };
 
-  // Validação em evento de blur por campo
   const handlePersonalBlur = (field: keyof PersonalInfoData) => {
     if (field === 'nomeCompleto' && personalData.nomeCompleto) {
       const res = validateFullName(personalData.nomeCompleto);
@@ -125,10 +144,16 @@ export default function CadastroClientePage() {
     if (field === 'cep' && addressData.cep) {
       const res = validateCEP(addressData.cep);
       if (!res.isValid) setAddressErrors((prev) => ({ ...prev, cep: res.message }));
-    } else if (field === 'logradouro' && addressData.logradouro && addressData.logradouro.trim().length < 3) {
-      setAddressErrors((prev) => ({ ...prev, logradouro: 'O logradouro deve ter no mínimo 3 caracteres.' }));
-    } else if (field === 'numero' && addressData.numero && addressData.numero.trim().length < 1) {
-      setAddressErrors((prev) => ({ ...prev, numero: 'O número é obrigatório.' }));
+    }
+  };
+
+  const handleSkillsBlur = (field: keyof ProviderSkillsData) => {
+    if (field === 'telefone' && skillsData.telefone) {
+      const res = validatePhone(skillsData.telefone);
+      if (!res.isValid) setSkillsErrors((prev) => ({ ...prev, telefone: res.message }));
+    } else if (field === 'bio' && skillsData.bio) {
+      const res = validateBio(skillsData.bio);
+      if (!res.isValid) setSkillsErrors((prev) => ({ ...prev, bio: res.message }));
     }
   };
 
@@ -139,12 +164,12 @@ export default function CadastroClientePage() {
     }
   };
 
-  // Mapeia os erros de validação (HTTP 422) do backend para os campos do formulário
   const mapBackendValidationErrors = (
     detail: Array<{ loc?: (string | number)[]; msg?: string }>
   ): string => {
     const nextPersonalErrors: PersonalInfoErrors = {};
     const nextAddressErrors: AddressErrors = {};
+    const nextSkillsErrors: ProviderSkillsErrors = {};
     const nextPasswordErrors: PasswordErrors = {};
     let unmappedMessage = '';
 
@@ -166,10 +191,24 @@ export default function CadastroClientePage() {
         case 'data_nascimento':
           nextPersonalErrors.dataNascimento = message;
           break;
+        case 'telefone':
+          nextSkillsErrors.telefone = message;
+          break;
+        case 'especialidades':
+          nextSkillsErrors.especialidades = message;
+          break;
+        case 'raio_atendimento_km':
+        case 'raio_atendimento':
+          nextSkillsErrors.raioAtendimento = message;
+          break;
+        case 'bio':
+          nextSkillsErrors.bio = message;
+          break;
         case 'senha':
           nextPasswordErrors.senha = message;
           break;
         case 'confirmar_senha':
+        case 'confirmacao_senha':
         case 'body':
           nextPasswordErrors.confirmacaoSenha = message;
           break;
@@ -202,11 +241,11 @@ export default function CadastroClientePage() {
 
     setPersonalErrors(nextPersonalErrors);
     setAddressErrors(nextAddressErrors);
+    setSkillsErrors(nextSkillsErrors);
     setPasswordErrors(nextPasswordErrors);
     return unmappedMessage;
   };
 
-  // Validação completa antes do envio
   const validateForm = (): boolean => {
     let hasError = false;
 
@@ -263,7 +302,31 @@ export default function CadastroClientePage() {
     }
     setAddressErrors(newAddressErrors);
 
-    // 3. Senha Forte
+    // 3. Perfil Profissional
+    const newSkillsErrors: ProviderSkillsErrors = {};
+    const phoneVal = validatePhone(skillsData.telefone);
+    if (!phoneVal.isValid) {
+      newSkillsErrors.telefone = phoneVal.message;
+      hasError = true;
+    }
+    const specialtiesVal = validateSpecialties(skillsData.especialidades);
+    if (!specialtiesVal.isValid) {
+      newSkillsErrors.especialidades = specialtiesVal.message;
+      hasError = true;
+    }
+    const radiusVal = validateServiceRadius(skillsData.raioAtendimento);
+    if (!radiusVal.isValid) {
+      newSkillsErrors.raioAtendimento = radiusVal.message;
+      hasError = true;
+    }
+    const bioVal = validateBio(skillsData.bio);
+    if (!bioVal.isValid) {
+      newSkillsErrors.bio = bioVal.message;
+      hasError = true;
+    }
+    setSkillsErrors(newSkillsErrors);
+
+    // 4. Senha
     const newPasswordErrors: PasswordErrors = {};
     const passwordStrength = evaluatePasswordStrength(passwordData.senha);
     if (!passwordStrength.isValid) {
@@ -280,7 +343,6 @@ export default function CadastroClientePage() {
     return !hasError;
   };
 
-  // Submissão do Formulário
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setGlobalError(null);
@@ -302,6 +364,10 @@ export default function CadastroClientePage() {
       email: personalData.email.trim().toLowerCase(),
       cpf: cleanDigits(personalData.cpf),
       data_nascimento: formatDateToISO(personalData.dataNascimento),
+      telefone: cleanDigits(skillsData.telefone),
+      especialidades: skillsData.especialidades,
+      raio_atendimento_km: skillsData.raioAtendimento,
+      bio: skillsData.bio.trim(),
       senha: passwordData.senha,
       confirmar_senha: passwordData.confirmacaoSenha,
       endereco: {
@@ -318,7 +384,7 @@ export default function CadastroClientePage() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
     try {
-      const response = await fetch(`${apiUrl}/api/clientes`, {
+      const response = await fetch(`${apiUrl}/api/profissionais`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -328,8 +394,8 @@ export default function CadastroClientePage() {
       });
 
       if (response.status === 201) {
-        const createdClient: SuccessResponseData = await response.json();
-        setSuccessData(createdClient);
+        const createdProfessional: SuccessResponseData = await response.json();
+        setSuccessData(createdProfessional);
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       }
@@ -375,28 +441,19 @@ export default function CadastroClientePage() {
     }
   };
 
-  // Se o cadastro foi um sucesso, renderiza a tela de confirmação (Estado 3: Success)
   if (successData) {
     return (
-      <main className="min-h-screen bg-[#F4F7FE] dark:bg-[var(--rs-bg)] text-[#0E1B2E] dark:text-[#EAF1FB] relative overflow-hidden flex items-center justify-center p-4 sm:p-6 lg:p-8 transition-colors duration-300">
-        {/* Luzes de Fundo Ambient Glass */}
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#1D4ED8]/15 dark:bg-[#1D4ED8]/10 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#16263F]/10 dark:bg-[var(--rs-surface)]/40 rounded-full blur-[140px] pointer-events-none" />
+      <main className="min-h-screen bg-[#f6f5f8] dark:bg-[#11091a] text-[#11091a] dark:text-[#F3F4F6] relative overflow-hidden flex items-center justify-center p-4 sm:p-6 lg:p-8 transition-colors duration-300">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#e8d18e]/15 dark:bg-[#e8d18e]/10 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#2f2f4d]/10 dark:bg-[#2f2f4d]/40 rounded-full blur-[140px] pointer-events-none" />
 
         <div className="absolute top-6 right-6 z-20">
           <ThemeToggle />
         </div>
 
         <div className="relative w-full max-w-xl glass-panel-elevated rounded-3xl p-8 sm:p-12 text-center flex flex-col items-center gap-6 animate-fadeIn transition-colors">
-          {/* Ícone de Sucesso com Soft Gold */}
-          <div className="w-20 h-20 rounded-3xl bg-[#1D4ED8]/20 dark:bg-[#1D4ED8]/15 border-2 border-[#1D4ED8] flex items-center justify-center text-[#1D4ED8] dark:text-[var(--rs-primary)] shadow-primary animate-bounceOnce">
-            <svg
-              className="w-10 h-10"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2.5}
-            >
+          <div className="w-20 h-20 rounded-3xl bg-[#e8d18e]/20 dark:bg-[#e8d18e]/15 border-2 border-[#e8d18e] flex items-center justify-center text-[#947728] dark:text-[#e8d18e] shadow-gold-glow animate-bounceOnce">
+            <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
@@ -404,52 +461,40 @@ export default function CadastroClientePage() {
           <div className="space-y-2">
             <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Conta Criada com Sucesso
+              Perfil Profissional Criado
             </span>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0E1B2E] dark:text-[#EAF1FB] tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#11091a] dark:text-[#F3F4F6] tracking-tight">
               Bem-vindo ao RentalSpouse!
             </h1>
-            <p className="text-sm text-[#64748B] dark:text-[#93A5C0] max-w-md mx-auto leading-relaxed">
+            <p className="text-sm text-[#626970] dark:text-[#bab195] max-w-md mx-auto leading-relaxed">
               Cadastro realizado com sucesso,{' '}
-              <strong className="text-[#1D4ED8] dark:text-[var(--rs-primary)] font-semibold">
+              <strong className="text-[#947728] dark:text-[#e8d18e] font-semibold">
                 {successData.nome}
               </strong>
-              ! Sua conta está pronta para uso imediato.
+              ! Seu perfil está pronto para receber clientes.
             </p>
           </div>
 
-          {/* Dados Resumidos em Card Glass */}
           <div className="w-full glass-card-subtle rounded-2xl p-4 text-left text-xs space-y-2 border border-slate-200 dark:border-white/5">
             <div className="flex justify-between items-center py-1 border-b border-slate-200/50 dark:border-white/[0.04]">
-              <span className="text-[#64748B]">Protocolo / ID:</span>
-              <span className="font-mono text-[#16263F] dark:text-[#93A5C0] font-bold">#{successData.id}</span>
+              <span className="text-[#626970]">Protocolo / ID:</span>
+              <span className="font-mono text-[#2f2f4d] dark:text-[#bab195] font-bold">#{successData.id}</span>
             </div>
             <div className="flex justify-between items-center py-1 border-b border-slate-200/50 dark:border-white/[0.04]">
-              <span className="text-[#64748B]">E-mail:</span>
-              <span className="text-[#0E1B2E] dark:text-[#EAF1FB] font-medium">{successData.email}</span>
+              <span className="text-[#626970]">E-mail:</span>
+              <span className="text-[#11091a] dark:text-[#F3F4F6] font-medium">{successData.email}</span>
             </div>
             <div className="flex justify-between items-center py-1">
-              <span className="text-[#64748B]">Status da Conta:</span>
-              <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                Ativa & Verificada
+              <span className="text-[#626970]">Status do Perfil:</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                Em análise
               </span>
             </div>
           </div>
 
-          {/* Ações Subsequentes */}
           <div className="flex flex-col sm:flex-row gap-3 w-full pt-2">
-            <Button
-              variant="primary"
-              size="lg"
-              className="flex-1"
-              onClick={() => {
-                alert('Fluxo para Solicitar um Serviço iniciado!');
-              }}
-            >
-              Solicitar um Serviço Agora
-            </Button>
             <Link href="/" className="flex-1">
-              <Button variant="glass" size="lg" className="w-full">
+              <Button variant="primary" size="lg" className="w-full">
                 Ir para Minha Conta / Login
               </Button>
             </Link>
@@ -460,43 +505,39 @@ export default function CadastroClientePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F4F7FE] dark:bg-[var(--rs-bg)] text-[#0E1B2E] dark:text-[#EAF1FB] relative overflow-hidden py-10 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
-      {/* Luzes de Fundo Ambientais Estilo Glass */}
-      <div className="absolute top-10 left-1/3 w-[500px] h-[500px] bg-[#1D4ED8]/15 dark:bg-[var(--rs-surface)]/30 rounded-full blur-[150px] pointer-events-none" />
-      <div className="absolute top-1/2 right-10 w-[450px] h-[450px] bg-[#93A5C0]/20 dark:bg-[#1D4ED8]/10 rounded-full blur-[160px] pointer-events-none" />
-      <div className="absolute bottom-10 left-10 w-[400px] h-[400px] bg-[#64748B]/10 dark:bg-[#64748B]/15 rounded-full blur-[140px] pointer-events-none" />
+    <main className="min-h-screen bg-[#f6f5f8] dark:bg-[#11091a] text-[#11091a] dark:text-[#F3F4F6] relative overflow-hidden py-10 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
+      <div className="absolute top-10 left-1/3 w-[500px] h-[500px] bg-[#e8d18e]/15 dark:bg-[#2f2f4d]/30 rounded-full blur-[150px] pointer-events-none" />
+      <div className="absolute top-1/2 right-10 w-[450px] h-[450px] bg-[#bab195]/20 dark:bg-[#e8d18e]/10 rounded-full blur-[160px] pointer-events-none" />
+      <div className="absolute bottom-10 left-10 w-[400px] h-[400px] bg-[#626970]/10 dark:bg-[#626970]/15 rounded-full blur-[140px] pointer-events-none" />
 
       <div className="relative max-w-3xl mx-auto flex flex-col gap-6">
-        {/* Barra de Topo com Atalhos e Alternância de Tema */}
         <div className="flex items-center justify-between w-full">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold glass-card-subtle text-[#16263F] dark:text-[#93A5C0] hover:text-[#0E1B2E] dark:hover:text-[var(--rs-primary)] border border-slate-200/80 dark:border-white/10 transition-colors"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold glass-card-subtle text-[#2f2f4d] dark:text-[#bab195] hover:text-[#11091a] dark:hover:text-[#e8d18e] border border-slate-200/80 dark:border-white/10 transition-colors"
           >
             <span>← Início</span>
           </Link>
 
           <div className="flex items-center gap-2">
-            <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#1D4ED8]/20 dark:bg-[#1D4ED8]/10 text-[#1E40AF] dark:text-[var(--rs-primary)] border border-[#1D4ED8]/30">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#1D4ED8] animate-pulse" />
-              RentalSpouse
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#e8d18e]/20 dark:bg-[#e8d18e]/10 text-[#6e581c] dark:text-[#e8d18e] border border-[#e8d18e]/30">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#e8d18e] animate-pulse" />
+              RentalSpouse • Profissional
             </span>
             <ThemeToggle />
           </div>
         </div>
 
-        {/* Cabeçalho da Página */}
         <header className="text-center flex flex-col items-center gap-3">
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#0E1B2E] dark:text-[#EAF1FB]">
-            Cadastro de Novo Cliente
+          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#11091a] dark:text-[#F3F4F6]">
+            Cadastro de Profissional
           </h1>
-          <p className="text-sm sm:text-base text-[#64748B] dark:text-[#93A5C0] max-w-lg leading-relaxed">
-            Crie sua conta para solicitar manutenções, reparos e reformas com profissionais
-            qualificados e credenciados.
+          <p className="text-sm sm:text-base text-[#626970] dark:text-[#bab195] max-w-lg leading-relaxed">
+            Crie seu perfil, defina suas especialidades e o raio de atendimento para receber
+            solicitações de clientes próximos.
           </p>
         </header>
 
-        {/* Banner de Erro Global (Estado 2: Error) */}
         {globalError && (
           <div
             className="glass-panel p-4 sm:p-5 rounded-2xl border-l-4 border-l-[#EF4444] border-slate-200 dark:border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-shake"
@@ -504,13 +545,7 @@ export default function CadastroClientePage() {
           >
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 rounded-xl bg-red-500/20 text-[#EF4444] flex items-center justify-center shrink-0 mt-0.5">
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -519,20 +554,19 @@ export default function CadastroClientePage() {
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-semibold text-[#0E1B2E] dark:text-[#EAF1FB]">
+                <p className="text-sm font-semibold text-[#11091a] dark:text-[#F3F4F6]">
                   {globalError.type === 'conflict'
                     ? 'Registro Já Cadastrado'
                     : globalError.type === 'network'
                     ? 'Falha de Conexão'
                     : 'Atenção ao Preenchimento'}
                 </p>
-                <p className="text-xs text-[#64748B] dark:text-[#93A5C0] mt-0.5 leading-relaxed">
+                <p className="text-xs text-[#626970] dark:text-[#bab195] mt-0.5 leading-relaxed">
                   {globalError.message}
                 </p>
               </div>
             </div>
 
-            {/* Ações de Retry ou Login no Erro */}
             <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
               {globalError.type === 'conflict' && (
                 <Link href="/">
@@ -542,12 +576,7 @@ export default function CadastroClientePage() {
                 </Link>
               )}
               {globalError.type === 'network' && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleSubmit}
-                  isLoading={isSubmitting}
-                >
+                <Button variant="primary" size="sm" onClick={handleSubmit} isLoading={isSubmitting}>
                   Tentar Novamente
                 </Button>
               )}
@@ -555,13 +584,11 @@ export default function CadastroClientePage() {
           </div>
         )}
 
-        {/* Formulário Principal em Painel Glassmorphism */}
         <form
           onSubmit={handleSubmit}
           noValidate
-          className="glass-panel rounded-3xl p-6 sm:p-8 lg:p-10 flex flex-col gap-8 shadow-panel transition-all duration-300"
+          className="glass-panel rounded-3xl p-6 sm:p-8 lg:p-10 flex flex-col gap-8 shadow-glass transition-all duration-300"
         >
-          {/* Seção 1: Dados Pessoais */}
           <PersonalInfoSection
             data={personalData}
             errors={personalErrors}
@@ -570,7 +597,6 @@ export default function CadastroClientePage() {
             disabled={isSubmitting}
           />
 
-          {/* Seção 2: Endereço */}
           <AddressSection
             data={addressData}
             errors={addressErrors}
@@ -579,7 +605,14 @@ export default function CadastroClientePage() {
             disabled={isSubmitting}
           />
 
-          {/* Seção 3: Credenciais & Senha Forte */}
+          <ProviderSkillsSection
+            data={skillsData}
+            errors={skillsErrors}
+            onChange={handleSkillsChange}
+            onBlur={handleSkillsBlur}
+            disabled={isSubmitting}
+          />
+
           <PasswordSection
             data={passwordData}
             errors={passwordErrors}
@@ -588,9 +621,8 @@ export default function CadastroClientePage() {
             disabled={isSubmitting}
           />
 
-          {/* Rodapé e CTA de Envio (Estado 1: Loading tratado) */}
           <div className="pt-4 border-t border-slate-200/60 dark:border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-[#64748B] text-center sm:text-left">
+            <p className="text-xs text-[#626970] text-center sm:text-left">
               Ao cadastrar-se, você concorda com os termos do RentalSpouse e com a LGPD.
             </p>
 
@@ -599,7 +631,7 @@ export default function CadastroClientePage() {
               variant="primary"
               size="lg"
               isLoading={isSubmitting}
-              loadingText="Cadastrando cliente..."
+              loadingText="Salvando perfil..."
               className="w-full sm:w-auto min-w-[220px]"
             >
               Finalizar Cadastro
@@ -607,10 +639,9 @@ export default function CadastroClientePage() {
           </div>
         </form>
 
-        {/* Rodapé Informativo */}
-        <footer className="text-center text-xs text-[#64748B] space-y-1">
+        <footer className="text-center text-xs text-[#626970] space-y-1">
           <p>RentalSpouse &copy; 2026 — Plataforma de Serviços Residenciais</p>
-          <p className="font-mono text-[11px] text-[#64748B]/80">
+          <p className="font-mono text-[11px] text-[#626970]/80">
             Next.js App Router • Glassmorphism (Light & Dark Theme)
           </p>
         </footer>

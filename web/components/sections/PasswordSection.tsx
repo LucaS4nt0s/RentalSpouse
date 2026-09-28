@@ -47,7 +47,7 @@ export const PasswordSection: React.FC<PasswordSectionProps> = ({
   return (
     <div className="glass-card-subtle p-5 sm:p-6 rounded-2xl flex flex-col gap-5 border border-slate-200/60 dark:border-white/5 transition-colors">
       <div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-white/[0.06]">
-        <div className="w-8 h-8 rounded-xl bg-[#1D4ED8]/25 dark:bg-[#1D4ED8]/10 border border-[#1D4ED8]/40 dark:border-[#1D4ED8]/30 flex items-center justify-center text-[#1E40AF] dark:text-[#1D4ED8]">
+        <div className="w-8 h-8 rounded-xl bg-[#1D4ED8]/25 dark:bg-[#1D4ED8]/10 border border-[#1D4ED8]/40 dark:border-[#1D4ED8]/30 flex items-center justify-center text-[#1E40AF] dark:text-[var(--rs-primary)]">
           <svg
             className="w-4 h-4"
             fill="none"

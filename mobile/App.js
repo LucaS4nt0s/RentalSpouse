@@ -7,7 +7,6 @@ import {
   StatusBar,
   Platform,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { Zap, ArrowRight, Wrench, ShieldCheck, Star, Clock } from 'lucide-react-native';
 import { ThemeProvider, useAppTheme } from './theme/ThemeContext';
@@ -15,6 +14,7 @@ import { ThemeToggle } from './components/ui/ThemeToggle';
 import { Button } from './components/ui/Button';
 import { EntrarScreen } from './screens/EntrarScreen';
 import { ClientRegisterScreen } from './screens/ClientRegisterScreen';
+import { ProfessionalRegisterScreen } from './screens/ProfessionalRegisterScreen';
 
 const API_URL =
   Platform.OS === 'android'
@@ -152,16 +152,14 @@ function HomeScreen({ onNavigateEntrar, onNavigateProfessional }) {
 }
 
 function MainApp() {
-  const [screen, setScreen] = useState('home'); // 'home' | 'entrar' | 'clientRegister'
+  const [screen, setScreen] = useState('home'); // 'home' | 'entrar' | 'clientRegister' | 'professional'
 
   if (screen === 'entrar') {
     return (
       <EntrarScreen
         onNavigateHome={() => setScreen('home')}
         onNavigateClientRegister={() => setScreen('clientRegister')}
-        onNavigateProfessionalRegister={() =>
-          Alert.alert('RentalSpouse', 'Cadastro de profissional em breve!')
-        }
+        onNavigateProfessionalRegister={() => setScreen('professional')}
       />
     );
   }
@@ -170,12 +168,14 @@ function MainApp() {
     return <ClientRegisterScreen onNavigateBack={() => setScreen('entrar')} />;
   }
 
+  if (screen === 'professional') {
+    return <ProfessionalRegisterScreen onNavigateBack={() => setScreen('home')} />;
+  }
+
   return (
     <HomeScreen
       onNavigateEntrar={() => setScreen('entrar')}
-      onNavigateProfessional={() =>
-        Alert.alert('RentalSpouse', 'Cadastro de profissional em breve!')
-      }
+      onNavigateProfessional={() => setScreen('professional')}
     />
   );
 }

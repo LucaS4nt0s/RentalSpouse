@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Zap, ArrowRight, Wrench, ShieldCheck, Star, Clock } from 'lucide-react';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
 
-const API_URL = 'http://localhost:8000/api/hello';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 interface StatusResponse {
   message: string;
@@ -18,7 +18,7 @@ export default function Home() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(API_URL);
+        const res = await fetch(`${API_URL}/api/hello`);
         if (!res.ok) throw new Error('offline');
         setStatus(await res.json());
       } catch {

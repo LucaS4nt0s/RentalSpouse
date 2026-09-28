@@ -2,9 +2,9 @@
 
 import React, { forwardRef } from 'react';
 import { TextInput, TextInputProps } from './TextInput';
-import { maskCPF, maskCEP, maskDate } from '../../utils/formatters';
+import { maskCPF, maskCEP, maskDate, maskPhone } from '../../utils/formatters';
 
-export type MaskType = 'cpf' | 'cep' | 'date';
+export type MaskType = 'cpf' | 'cep' | 'date' | 'phone';
 
 export interface MaskedInputProps extends Omit<TextInputProps, 'onChange'> {
   maskType: MaskType;
@@ -22,6 +22,8 @@ export const MaskedInput = forwardRef<HTMLInputElement, MaskedInputProps>(
           return maskCEP(val);
         case 'date':
           return maskDate(val);
+        case 'phone':
+          return maskPhone(val);
         default:
           return val;
       }
