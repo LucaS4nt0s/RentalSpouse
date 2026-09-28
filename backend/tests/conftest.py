@@ -13,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 import database
 from database import Base, get_db
 from main import app
+import email_service
 import models
 
 TEST_DATABASE_URL = "sqlite:///:memory:"
@@ -59,3 +60,37 @@ def setup_test_db():
 def client():
     """Retorna um TestClient configurado para a aplicação FastAPI."""
     return TestClient(app, raise_server_exceptions=True)
+
+
+@pytest.fixture
+def db_session():
+    """
+    Sessão direta no banco em memória, para inspecionar ou ajustar estado
+    (ex.: simular um token expirado) sem passar pela camada HTTP.
+    """
+    sessao = TestingSessionLocal()
+    try:
+        yield sessao
+    finally:
+        sessao.close()
+
+
+@pytest.fixture(autouse=True)
+def email_em_memoria(monkeypatch):
+    """
+    Isola o envio de e-mails em TODA a suíte de testes.
+
+    Nenhum teste toca em SMTP real: as mensagens ficam retidas no transporte
+    `memoria` e podem ser inspecionadas pela fixture `caixa_de_entrada`.
+    """
+    monkeypatch.setenv("EMAIL_BACKEND", "memoria")
+    monkeypatch.setenv("APP_BASE_URL", "http://localhost:3000")
+    email_service.limpar_caixa_de_saida()
+    yield
+    email_service.limpar_caixa_de_saida()
+
+
+@pytest.fixture
+def caixa_de_entrada() -> list:
+    """Lista das mensagens de e-mail capturadas durante o teste."""
+    return email_service.caixa_de_saida()

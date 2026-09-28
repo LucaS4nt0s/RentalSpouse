@@ -194,5 +194,52 @@ class ClienteRead(ClienteBase):
 
     id: int
     criado_em: datetime
+    email_verificado: bool = False
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Schemas de Verificação de E-mail
+# ---------------------------------------------------------------------------
+
+
+class ConfirmarVerificacaoRequest(BaseModel):
+    """Payload de confirmação do token recebido por e-mail."""
+
+    token: str = Field(
+        ...,
+        min_length=16,
+        max_length=256,
+        description="Token de verificação recebido no link enviado por e-mail",
+    )
+
+
+class ReenviarVerificacaoRequest(BaseModel):
+    """Payload de solicitação de reenvio do e-mail de verificação."""
+
+    email: str = Field(..., max_length=255, description="E-mail informado no cadastro")
+
+    @field_validator("email")
+    @classmethod
+    def validar_email(cls, valor: str) -> str:
+        limpo = (valor or "").strip().lower()
+        if not EMAIL_REGEX.match(limpo):
+            raise ValueError("E-mail com formato inválido.")
+        return limpo
+
+
+class MensagemResponse(BaseModel):
+    """Resposta genérica contendo apenas uma mensagem ao usuário."""
+
+    mensagem: str
+
+
+class VerificacaoConfirmadaResponse(BaseModel):
+    """Resultado da confirmação de e-mail."""
+
+    email: str = Field(..., description="E-mail confirmado")
+    email_verificado: bool = Field(
+        ..., description="Indica que o endereço de e-mail está confirmado"
+    )
+    mensagem: str = Field(..., description="Mensagem de retorno para o usuário")

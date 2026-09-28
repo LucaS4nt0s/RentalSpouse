@@ -6,6 +6,7 @@ from database import get_db
 import models
 from schemas import ClienteCreate, ClienteRead
 from security import hash_senha
+import verificacao
 
 router = APIRouter(prefix="/api/clientes", tags=["Clientes"])
 
@@ -76,5 +77,10 @@ def cadastrar_cliente(cliente_in: ClienteCreate, db: Session = Depends(get_db)):
         )
 
     db.refresh(db_cliente)
+
+    # Dispara o e-mail de confirmação. Uma falha de SMTP não invalida o
+    # cadastro: o estado do token fica persistido e o usuário pode solicitar
+    # um novo envio em POST /api/verificacao/reenviar.
+    verificacao.iniciar_verificacao(db, db_cliente)
 
     return db_cliente
