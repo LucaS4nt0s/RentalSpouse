@@ -37,6 +37,7 @@ interface SuccessResponseData {
   cpf: string;
   data_nascimento: string;
   criado_em?: string;
+  email_verificado?: boolean;
 }
 
 export default function CadastroClientePage() {
@@ -414,7 +415,7 @@ export default function CadastroClientePage() {
               <strong className="text-[#1D4ED8] dark:text-[var(--rs-primary)] font-semibold">
                 {successData.nome}
               </strong>
-              ! Sua conta está pronta para uso imediato.
+              ! Falta apenas confirmar seu endereço de e-mail para ativar a conta.
             </p>
           </div>
 
@@ -430,11 +431,50 @@ export default function CadastroClientePage() {
             </div>
             <div className="flex justify-between items-center py-1">
               <span className="text-[#64748B]">Status da Conta:</span>
-              <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                Ativa & Verificada
-              </span>
+              {successData.email_verificado ? (
+                <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                  Ativa &amp; Verificada
+                </span>
+              ) : (
+                <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
+                  Aguardando confirmação de e-mail
+                </span>
+              )}
             </div>
           </div>
+
+          {/* Aviso de verificação de e-mail pendente */}
+          {!successData.email_verificado && (
+            <div className="w-full rounded-2xl p-4 text-left text-xs space-y-2 border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+              <div className="flex items-center gap-2 font-semibold">
+                <svg
+                  className="w-4 h-4 shrink-0"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
+                </svg>
+                Confirme seu endereço de e-mail
+              </div>
+              <p className="leading-relaxed">
+                Enviamos um link de confirmação para{' '}
+                <strong className="font-semibold">{successData.email}</strong>. Sua conta só
+                é ativada após a confirmação — confira também a caixa de spam.
+              </p>
+              <Link
+                href="/verificar-email"
+                className="inline-block font-semibold underline underline-offset-4"
+              >
+                Problemas com o link? Solicitar um novo
+              </Link>
+            </div>
+          )}
 
           {/* Ações Subsequentes */}
           <div className="flex flex-col sm:flex-row gap-3 w-full pt-2">
