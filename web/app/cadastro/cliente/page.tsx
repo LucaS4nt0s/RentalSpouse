@@ -19,6 +19,8 @@ import {
 } from '../../../components/sections/PasswordSection';
 import { Button } from '../../../components/ui/Button';
 import { ThemeToggle } from '../../../components/ui/ThemeToggle';
+import { ArrowLeft } from 'lucide-react';
+
 import {
   validateFullName,
   validateEmail,
@@ -448,7 +450,7 @@ export default function CadastroClientePage() {
             >
               Solicitar um Serviço Agora
             </Button>
-            <Link href="/" className="flex-1">
+            <Link href="/entrar?mode=signin" className="flex-1">
               <Button variant="glass" size="lg" className="w-full">
                 Ir para Minha Conta / Login
               </Button>
@@ -469,12 +471,22 @@ export default function CadastroClientePage() {
       <div className="relative max-w-3xl mx-auto flex flex-col gap-6">
         {/* Barra de Topo com Atalhos e Alternância de Tema */}
         <div className="flex items-center justify-between w-full">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold glass-card-subtle text-[#16263F] dark:text-[#93A5C0] hover:text-[#0E1B2E] dark:hover:text-[var(--rs-primary)] border border-slate-200/80 dark:border-white/10 transition-colors"
-          >
-            <span>← Início</span>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/entrar?mode=signup"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold glass-card-subtle text-[#16263F] dark:text-[#93A5C0] hover:text-[#0E1B2E] dark:hover:text-[var(--rs-primary)] border border-slate-200/80 dark:border-white/10 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Voltar</span>
+            </Link>
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold glass-card-subtle text-[#16263F] dark:text-[#93A5C0] hover:text-[#0E1B2E] dark:hover:text-[var(--rs-primary)] border border-slate-200/80 dark:border-white/10 transition-colors"
+            >
+              <span>Início</span>
+            </Link>
+          </div>
+
 
           <div className="flex items-center gap-2">
             <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#1D4ED8]/20 dark:bg-[#1D4ED8]/10 text-[#1E40AF] dark:text-[var(--rs-primary)] border border-[#1D4ED8]/30">
@@ -535,7 +547,7 @@ export default function CadastroClientePage() {
             {/* Ações de Retry ou Login no Erro */}
             <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
               {globalError.type === 'conflict' && (
-                <Link href="/">
+                <Link href="/entrar?mode=signin">
                   <Button variant="outline" size="sm">
                     Ir para Login
                   </Button>

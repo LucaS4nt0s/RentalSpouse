@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Zap, ArrowRight, Wrench, ShieldCheck, Star, Clock } from 'lucide-react';
+import { Zap, ArrowRight, Wrench, ShieldCheck, Star, Clock, User, LogOut } from 'lucide-react';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
+import { useAuth } from '../context/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
@@ -12,6 +13,7 @@ interface StatusResponse {
 }
 
 export default function Home() {
+  const { user, isAuthenticated, logout } = useAuth();
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [offline, setOffline] = useState(false);
 
@@ -31,13 +33,53 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col bg-rental-bg text-rental-ink">
       <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6">
-        <div className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-90">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rental-primary text-[var(--rs-primary-text)]">
             <Zap className="h-5 w-5" />
           </span>
           <span className="text-lg font-extrabold tracking-tight">RentalSpouse</span>
+        </Link>
+
+        <div className="flex items-center gap-3">
+          {isAuthenticated && user ? (
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 text-xs font-semibold">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-rental-primary/10 text-rental-primary">
+                  <User className="h-4 w-4" />
+                </span>
+                <span className="hidden sm:inline font-bold text-rental-ink">
+                  Olá, {user.nome.split(' ')[0]}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={logout}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-muted transition-colors hover:border-[var(--rs-error)]/40 hover:text-[var(--rs-error)]"
+                title="Sair da conta"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Sair</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Link
+                href="/entrar?mode=signin"
+                className="rounded-xl px-3.5 py-1.5 text-xs font-bold text-rental-ink transition-colors hover:text-rental-primary"
+              >
+                Entrar
+              </Link>
+              <Link
+                href="/entrar?mode=signup"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-rental-primary px-3.5 py-1.5 text-xs font-bold text-[var(--rs-primary-text)] shadow-primary transition-colors hover:bg-[var(--rs-primary-hover)]"
+              >
+                Cadastre-se
+              </Link>
+            </div>
+          )}
+
+          <ThemeToggle />
         </div>
-        <ThemeToggle />
       </header>
 
       <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center px-6 py-16 text-center">
@@ -57,20 +99,40 @@ export default function Home() {
         </p>
 
         <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-          <Link
-            href="/entrar"
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-rental-primary px-7 text-sm font-bold text-[var(--rs-primary-text)] shadow-primary transition-colors hover:bg-[var(--rs-primary-hover)]"
-          >
-            Entrar ou criar conta
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-          <Link
-            href="/cadastro/profissional"
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
-          >
-            <Wrench className="h-4 w-4 text-rental-primary" />
-            Sou profissional
-          </Link>
+          {isAuthenticated && user ? (
+            <>
+              <Link
+                href="/entrar"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-rental-primary px-7 text-sm font-bold text-[var(--rs-primary-text)] shadow-primary transition-colors hover:bg-[var(--rs-primary-hover)]"
+              >
+                <User className="h-4 w-4" />
+                Minha Conta ({user.nome.split(' ')[0]})
+              </Link>
+              <Link
+                href="/cadastro/profissional"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+              >
+                <Wrench className="h-4 w-4 text-rental-primary" />
+                Sou profissional
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/entrar?mode=signin"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-rental-primary px-7 text-sm font-bold text-[var(--rs-primary-text)] shadow-primary transition-colors hover:bg-[var(--rs-primary-hover)]"
+              >
+                Entrar na minha conta
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href="/entrar?mode=signup"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+              >
+                Criar conta
+              </Link>
+            </>
+          )}
         </div>
 
         <div className="mt-14 grid w-full max-w-2xl grid-cols-1 gap-6 sm:grid-cols-3">
