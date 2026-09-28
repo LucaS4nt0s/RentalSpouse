@@ -153,13 +153,17 @@ function HomeScreen({ onNavigateEntrar, onNavigateProfessional }) {
 
 function MainApp() {
   const [screen, setScreen] = useState('home'); // 'home' | 'entrar' | 'clientRegister' | 'professional'
+  const [professionalBack, setProfessionalBack] = useState('home');
 
   if (screen === 'entrar') {
     return (
       <EntrarScreen
         onNavigateHome={() => setScreen('home')}
         onNavigateClientRegister={() => setScreen('clientRegister')}
-        onNavigateProfessionalRegister={() => setScreen('professional')}
+        onNavigateProfessionalRegister={() => {
+          setProfessionalBack('entrar');
+          setScreen('professional');
+        }}
       />
     );
   }
@@ -169,13 +173,16 @@ function MainApp() {
   }
 
   if (screen === 'professional') {
-    return <ProfessionalRegisterScreen onNavigateBack={() => setScreen('home')} />;
+    return <ProfessionalRegisterScreen onNavigateBack={() => setScreen(professionalBack)} />;
   }
 
   return (
     <HomeScreen
       onNavigateEntrar={() => setScreen('entrar')}
-      onNavigateProfessional={() => setScreen('professional')}
+      onNavigateProfessional={() => {
+        setProfessionalBack('home');
+        setScreen('professional');
+      }}
     />
   );
 }

@@ -177,6 +177,7 @@ function SignIn({
         <Field label="E-mail" icon={<Mail className="h-4 w-4" />}>
           <input
             type="email"
+            name="email"
             autoComplete="email"
             placeholder="voce@exemplo.com"
             className="glass-input h-12 w-full rounded-xl pl-11 pr-4 text-sm font-medium"
@@ -194,6 +195,7 @@ function SignIn({
         >
           <input
             type={showPassword ? 'text' : 'password'}
+            name="password"
             autoComplete="current-password"
             placeholder="••••••••"
             className="glass-input h-12 w-full rounded-xl pl-11 pr-12 text-sm font-medium"
