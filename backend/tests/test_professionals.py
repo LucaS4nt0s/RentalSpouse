@@ -427,3 +427,31 @@ class TestUpdateAndRemoveProfessional:
         assert response.status_code == 409
         assert "E-mail já cadastrado" in response.json()["detail"]
 
+    def test_create_professional_cross_table_email_conflict_with_cliente(self, client: TestClient, db_session):
+        """Valida que conflito de e-mail existente em clientes retorna 409 com mensagem apropriada."""
+        from datetime import date
+        cliente = models.Cliente(
+            nome="Cliente Existente",
+            email="conflito.cliente@teste.com",
+            cpf="12345678909",
+            data_nascimento=date(1995, 5, 20),
+            senha_hash="dummy_hash",
+            cep="01001000",
+            logradouro="Praça da Sé",
+            numero="100",
+            bairro="Sé",
+            cidade="São Paulo",
+            estado="SP",
+        )
+        db_session.add(cliente)
+        db_session.commit()
+
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["email"] = "conflito.cliente@teste.com"
+        payload["password"] = "senhaSegura123"
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 409
+        assert "E-mail já cadastrado" in response.json()["detail"]
+
+

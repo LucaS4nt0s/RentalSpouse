@@ -408,7 +408,6 @@ class ProfessionalCreate(ProfessionalBase):
     """Schema para criação do perfil do profissional."""
 
     password: Optional[str] = Field(None, min_length=8, max_length=128, description="Senha de acesso")
-    senha: Optional[str] = Field(None, min_length=8, max_length=128, description="Alias para password")
 
     @model_validator(mode="before")
     @classmethod

@@ -55,6 +55,17 @@ def create_professional(
             detail="E-mail já cadastrado na plataforma.",
         )
 
+    existing_cliente = (
+        db.query(models.Cliente)
+        .filter(models.Cliente.email == payload.email)
+        .first()
+    )
+    if existing_cliente:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="E-mail já cadastrado na plataforma.",
+        )
+
     senha_hash = hash_senha(payload.password) if payload.password else None
 
     professional = models.Professional(

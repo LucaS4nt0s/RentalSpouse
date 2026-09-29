@@ -372,7 +372,6 @@ export default function CadastroProfissionalPage() {
     setIsSubmitting(true);
 
     const payload = {
-      // Contrato canônico REST /api/professionals
       name: personalData.nomeCompleto.trim(),
       email: personalData.email.trim().toLowerCase(),
       phone: cleanDigits(skillsData.telefone) || undefined,
@@ -382,24 +381,6 @@ export default function CadastroProfissionalPage() {
       city: addressData.cidade.trim() || undefined,
       state: addressData.estado_uf.trim().toUpperCase() || undefined,
       password: passwordData.senha,
-      // Suporte a compatibilidade e metadados adicionais
-      nome: personalData.nomeCompleto.trim(),
-      senha: passwordData.senha,
-      confirmar_senha: passwordData.confirmacaoSenha,
-      cpf: cleanDigits(personalData.cpf),
-      data_nascimento: formatDateToISO(personalData.dataNascimento),
-      telefone: cleanDigits(skillsData.telefone),
-      especialidades: skillsData.especialidades,
-      raio_atendimento_km: skillsData.raioAtendimento,
-      endereco: {
-        cep: cleanDigits(addressData.cep),
-        logradouro: addressData.logradouro.trim(),
-        numero: addressData.numero.trim(),
-        complemento: addressData.complemento.trim() || undefined,
-        bairro: addressData.bairro.trim(),
-        cidade: addressData.cidade.trim(),
-        estado: addressData.estado_uf.trim().toUpperCase(),
-      },
     };
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
