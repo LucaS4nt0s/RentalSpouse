@@ -49,15 +49,14 @@ export default function EntrarPage() {
 
 function EntrarPageContent() {
   const searchParams = useSearchParams();
-  const initialMode = searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
-  const [mode, setMode] = useState<Mode>(initialMode);
+  const modeParam = searchParams.get('mode');
+  const [mode, setMode] = useState<Mode>(() => (modeParam === 'signup' ? 'signup' : 'signin'));
 
   useEffect(() => {
-    const queryMode = searchParams.get('mode');
-    if (queryMode === 'signup' || queryMode === 'signin') {
-      setMode(queryMode);
+    if (modeParam === 'signup' || modeParam === 'signin') {
+      setMode(modeParam);
     }
-  }, [searchParams]);
+  }, [modeParam]);
 
   return (
     <main className="min-h-screen bg-rental-bg text-rental-ink">
@@ -303,8 +302,8 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setServerError(null);
 
     if (!validate()) {
@@ -329,8 +328,11 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
 
       if (response.ok) {
         const data = await response.json();
-        const authUser: AuthUser = data.user || data.usuario;
-        const authToken: string = data.access_token || data.token_acesso;
+        const authUser: AuthUser = data.user;
+        const authToken: string = data.access_token;
+        if (!authUser || !authToken) {
+          throw new Error('Resposta de autenticação inválida do servidor.');
+        }
         login(authUser, authToken);
         setLoginSuccess(authUser);
       } else if (response.status === 401) {
@@ -367,6 +369,11 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleRetry = (e: React.MouseEvent) => {
+    e.preventDefault();
+    handleSubmit();
   };
 
   return (
@@ -412,7 +419,7 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
           {serverError.type === 'network' && (
             <button
               type="button"
-              onClick={handleSubmit}
+              onClick={handleRetry}
               className="inline-flex items-center gap-1 font-bold text-rental-primary hover:underline shrink-0"
             >
               <RefreshCw className="h-3 w-3" />

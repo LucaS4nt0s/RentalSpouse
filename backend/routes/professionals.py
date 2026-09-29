@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 import models
 from database import get_db
 from schemas import ProfessionalCreate, ProfessionalRead, ProfessionalUpdate
+from security import hash_senha
 
 router = APIRouter(prefix="/api/professionals", tags=["Profissionais"])
 
@@ -36,6 +37,8 @@ def create_professional(
             detail="E-mail já cadastrado para outro profissional.",
         )
 
+    senha_hash = hash_senha(payload.password) if payload.password else None
+
     professional = models.Professional(
         name=payload.name,
         email=payload.email,
@@ -45,9 +48,20 @@ def create_professional(
         specialties=payload.specialties,
         city=payload.city,
         state=payload.state,
+        senha_hash=senha_hash,
     )
     try:
         db.add(professional)
+        if senha_hash:
+            user = models.User(
+                name=payload.name,
+                email=payload.email,
+                hashed_password=senha_hash,
+                role=models.UserRole.PROFESSIONAL.value,
+                is_active=True,
+                email_verificado=True,
+            )
+            db.add(user)
         db.commit()
     except IntegrityError:
         db.rollback()

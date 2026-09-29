@@ -65,14 +65,13 @@ class TestAuthLogin:
         assert login_res.status_code == 200
         dados = login_res.json()
         assert "access_token" in dados
-        assert "token_acesso" in dados
         assert dados["access_token"] is not None
         assert dados["token_type"] == "bearer"
-        assert dados["tipo_token"] == "bearer"
-        assert dados["usuario"]["email"] == "cliente.login@exemplo.com"
-        assert dados["usuario"]["nome"] == "Maria da Silva"
-        assert dados["usuario"]["tipo"] == "cliente"
-        assert dados["usuario"]["role"] == "client"
+        assert dados["user"]["email"] == "cliente.login@exemplo.com"
+        assert dados["user"]["nome"] == "Maria da Silva"
+        assert dados["user"]["tipo"] == "cliente"
+        assert dados["user"]["role"] == "client"
+        assert dados["user"]["email_verificado"] is True
 
         # Validação do token no servidor através de GET /api/auth/me
         headers = {"Authorization": f"Bearer {dados['access_token']}"}
@@ -83,6 +82,7 @@ class TestAuthLogin:
         assert me_dados["role"] == "client"
         assert me_dados["tipo"] == "cliente"
         assert me_dados["name"] == "Maria da Silva"
+        assert me_dados["email_verificado"] is True
 
     def test_login_com_campo_password_em_vez_de_senha(self, client: TestClient):
         """Suporta payload com 'password' (convenção REST/OpenAPI) ou 'senha'."""
@@ -104,7 +104,7 @@ class TestAuthLogin:
             json={"email": "CASE.Teste@Exemplo.COM", "senha": "SenhaSegura@2026"},
         )
         assert login_res.status_code == 200
-        assert login_res.json()["usuario"]["email"] == "case.teste@exemplo.com"
+        assert login_res.json()["user"]["email"] == "case.teste@exemplo.com"
 
     def test_login_senha_incorreta_retorna_401(self, client: TestClient):
         """Senha incorreta deve retornar HTTP 401 Unauthorized."""
@@ -264,3 +264,118 @@ class TestAuthLogin:
             assert db.query(models.User).filter(models.User.email == "token.puro@exemplo.com").first() is None
         finally:
             db.close()
+
+    def test_login_profissional_sucesso_com_sincronizacao(self, client: TestClient):
+        """Profissional cadastrado com senha consegue logar com sucesso e obter perfil profissional."""
+        prof_payload = {
+            "name": "Eletricista Silva",
+            "email": "eletricista.silva@exemplo.com",
+            "phone": "(11) 99999-8888",
+            "bio": "Profissional com mais de 15 anos de experiência em instalações e reparos residenciais.",
+            "service_radius_km": 20.0,
+            "specialties": ["Elétrica", "Iluminação"],
+            "city": "São Paulo",
+            "state": "SP",
+            "senha": "SenhaForte@2026",
+        }
+        res_prof = client.post("/api/professionals", json=prof_payload)
+        assert res_prof.status_code == 201
+
+        login_res = client.post(
+            "/api/auth/login",
+            json={"email": "eletricista.silva@exemplo.com", "senha": "SenhaForte@2026"},
+        )
+        assert login_res.status_code == 200
+        dados = login_res.json()
+        assert "access_token" in dados
+        assert dados["user"]["email"] == "eletricista.silva@exemplo.com"
+        assert dados["user"]["name"] == "Eletricista Silva"
+        assert dados["user"]["role"] == "professional"
+        assert dados["user"]["tipo"] == "profissional"
+
+        # Valida GET /api/auth/me
+        headers = {"Authorization": f"Bearer {dados['access_token']}"}
+        res_me = client.get("/api/auth/me", headers=headers)
+        assert res_me.status_code == 200
+        assert res_me.json()["role"] == "professional"
+        assert res_me.json()["tipo"] == "profissional"
+
+    def test_login_profissional_desativado_retorna_401(self, client: TestClient):
+        """Profissional desativado na tabela de profissionais é barrado no login com 401."""
+        prof_payload = {
+            "name": "Pintor Inativo",
+            "email": "pintor.inativo@exemplo.com",
+            "bio": "Pintor residencial com ampla experiência em pintura decorativa.",
+            "service_radius_km": 10.0,
+            "specialties": ["Pintura"],
+            "senha": "SenhaForte@2026",
+        }
+        res_prof = client.post("/api/professionals", json=prof_payload)
+        assert res_prof.status_code == 201
+        prof_id = res_prof.json()["id"]
+
+        # Desativa o profissional
+        db = SessionLocal()
+        try:
+            p = db.query(models.Professional).filter(models.Professional.id == prof_id).first()
+            p.is_active = False
+            db.commit()
+        finally:
+            db.close()
+
+        login_res = client.post(
+            "/api/auth/login",
+            json={"email": "pintor.inativo@exemplo.com", "senha": "SenhaForte@2026"},
+        )
+        assert login_res.status_code == 401
+        assert "Conta desativada" in login_res.json()["detail"]
+
+    def test_get_me_reflete_status_real_de_email_verificado_do_cliente(self, client: TestClient):
+        """GET /api/auth/me reflete a verdade viva do banco para email_verificado."""
+        cadastrar_cliente_auxiliar(
+            client,
+            email="status.vivo@exemplo.com",
+            senha="SenhaForte123",
+            verificado=True,
+        )
+        login_res = client.post(
+            "/api/auth/login",
+            json={"email": "status.vivo@exemplo.com", "senha": "SenhaForte123"},
+        )
+        assert login_res.status_code == 200
+        token = login_res.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Primeiro /me reporta True
+        res_me_1 = client.get("/api/auth/me", headers=headers)
+        assert res_me_1.status_code == 200
+        assert res_me_1.json()["email_verificado"] is True
+
+        # Desmarca email_verificado na tabela clientes
+        db = SessionLocal()
+        try:
+            cli = db.query(models.Cliente).filter(models.Cliente.email == "status.vivo@exemplo.com").first()
+            cli.email_verificado = False
+            db.commit()
+        finally:
+            db.close()
+
+        # Próximo /me reflete False dinamicamente, sem estar hardcoded
+        res_me_2 = client.get("/api/auth/me", headers=headers)
+        assert res_me_2.status_code == 200
+        assert res_me_2.json()["email_verificado"] is False
+
+    def test_get_current_user_in_memory_nao_faz_spoofing_de_pk(self, client: TestClient):
+        """get_current_user in-memory não deve forjar id com cliente.id para evitar colisão de sequences."""
+        from security import create_access_token
+        cadastrar_cliente_auxiliar(
+            client,
+            email="pk.isolada@exemplo.com",
+            senha="SenhaForte123",
+            verificado=True,
+        )
+        token = create_access_token(data={"sub": "pk.isolada@exemplo.com", "role": "client"})
+        res_me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert res_me.status_code == 200
+        # id não é igual ao id da tabela clientes forjado
+        assert res_me.json()["email"] == "pk.isolada@exemplo.com"

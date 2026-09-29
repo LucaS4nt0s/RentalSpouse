@@ -165,19 +165,36 @@ def get_current_user(
 
     user = db.query(models.User).filter(models.User.email == email).first()
 
-    # Caso seja um cliente cadastrado sem registro na tabela users, realiza fallback em memória
-    # sem efetuar escritas ou db.commit() para manter a dependência pura e evitar race conditions
+    # Caso seja um cliente ou profissional sem registro prévio na tabela users, realiza fallback
+    # puramente em memória (sem persistência no banco e sem colisão de sequence de ID)
     if user is None:
         cliente = db.query(models.Cliente).filter(models.Cliente.email == email).first()
         if cliente is not None and cliente.email_verificado:
             user = models.User(
-                id=cliente.id,
                 name=cliente.nome,
                 email=cliente.email,
                 hashed_password=cliente.senha_hash,
                 role=models.UserRole.CLIENT.value,
                 is_active=True,
+                email_verificado=cliente.email_verificado,
+                created_at=cliente.criado_em,
             )
+        else:
+            profissional = (
+                db.query(models.Professional)
+                .filter(models.Professional.email == email)
+                .first()
+            )
+            if profissional is not None and profissional.is_active:
+                user = models.User(
+                    name=profissional.name,
+                    email=profissional.email,
+                    hashed_password=profissional.senha_hash or "",
+                    role=models.UserRole.PROFESSIONAL.value,
+                    is_active=profissional.is_active,
+                    email_verificado=True,
+                    created_at=profissional.created_at,
+                )
 
     if user is None or not user.is_active:
         raise HTTPException(

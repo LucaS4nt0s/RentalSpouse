@@ -57,7 +57,7 @@ class UserBase(BaseModel):
 class UserRead(UserBase):
     """Schema de resposta para exibição de dados do usuário."""
 
-    id: int
+    id: Optional[int] = None
     role: str
     is_active: bool
     email_verificado: bool = True
@@ -137,21 +137,6 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: Optional[UserRead] = None
-
-    @computed_field
-    @property
-    def token_acesso(self) -> str:
-        return self.access_token
-
-    @computed_field
-    @property
-    def tipo_token(self) -> str:
-        return self.token_type
-
-    @computed_field
-    @property
-    def usuario(self) -> Optional[UserRead]:
-        return self.user
 
 
 UsuarioAutenticado = UserRead
@@ -422,7 +407,16 @@ class ProfessionalBase(BaseModel):
 class ProfessionalCreate(ProfessionalBase):
     """Schema para criação do perfil do profissional."""
 
-    pass
+    password: Optional[str] = Field(None, min_length=8, max_length=128, description="Senha de acesso")
+    senha: Optional[str] = Field(None, min_length=8, max_length=128, description="Alias para password")
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_senha_alias(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if "password" not in data and "senha" in data:
+                data["password"] = data["senha"]
+        return data
 
 
 class ProfessionalUpdate(BaseModel):

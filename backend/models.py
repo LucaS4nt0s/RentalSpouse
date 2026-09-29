@@ -33,6 +33,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     role = Column(String(50), default=UserRole.CLIENT.value, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    email_verificado = Column(Boolean, default=True, nullable=False)
     created_at = Column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
@@ -103,6 +104,7 @@ class Professional(Base):
     specialties = Column(JSON, nullable=False)
     city = Column(String(100), nullable=True)
     state = Column(String(2), nullable=True)
+    senha_hash = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(
