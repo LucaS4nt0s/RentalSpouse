@@ -34,6 +34,8 @@ Conectando clientes e prestadores de serviços de forma **ágil**, **segura** e 
   - [Manual / Desenvolvedor](#-método-2-manual--desenvolvedor)
 - [Testes Automatizados](#-testes-automatizados)
 - [API](#-api)
+- [Verificação de E-mail](#-verificação-de-e-mail)
+- [Gestão e Cadastro de Administradores](#-gestão-e-cadastro-de-administradores)
 - [Equipe](#-equipe)
 - [Governança e Contribuição](#-governança-e-contribuição)
 
@@ -54,15 +56,15 @@ O projeto é estruturado como um **monorepo desacoplado em camadas**:
 ```text
 RentalSpouse/
 ├── backend/                # API REST — Python (FastAPI + SQLAlchemy 2.x + PostgreSQL)
-│   ├── routes/             # Routers modulares (ex.: hello.py)
+│   ├── routes/             # Routers modulares (admins, auth, clientes, professionals, etc.)
 │   ├── tests/              # Testes automatizados (Pytest + SQLite em memória)
 │   ├── database.py         # Conexão com o banco e sessões (SQLAlchemy)
-│   ├── models.py           # Entidades ORM (ex.: tabela status)
+│   ├── models.py           # Entidades ORM (status, users, clientes, professionals)
 │   ├── schemas.py          # Schemas de validação e DTOs (Pydantic v2)
 │   ├── main.py             # Ponto de entrada da API, lifespan e CORS
 │   └── Dockerfile          # Imagem Docker (Python 3.12-slim)
 ├── web/                    # Frontend Web — Next.js 14+ (App Router + Tailwind)
-│   ├── app/                # Rotas e páginas (page.tsx, layout.tsx, globals.css)
+│   ├── app/                # Rotas e páginas (admin, cadastro, entrar, verificar-email)
 │   └── Dockerfile          # Imagem Docker (Node 18)
 ├── mobile/                 # App Mobile — React Native (Expo)
 │   ├── App.js              # Tela inicial com resolução dinâmica de IP
@@ -279,6 +281,33 @@ SMTP_USE_TLS=false
 A caixa de entrada fica em `http://localhost:8025`.
 
 > ⚙️ Todas as variáveis relacionadas estão documentadas em `.env.example`: `APP_BASE_URL`, `EMAIL_BACKEND`, `EMAIL_FROM_*`, `EMAIL_VERIFICACAO_*` e `SMTP_*`.
+
+---
+
+## 🛡️ Gestão e Cadastro de Administradores
+
+A plataforma dispõe de um módulo dedicado para autenticação e gestão de administradores (**Issue #37**), com proteção baseada em JWT e segregação estrita de privilégios.
+
+### Endpoints da API
+
+| Método | Rota | Autenticação | Descrição |
+|---|---|---|---|
+| `POST` | `/api/auth/login` | Pública | Realiza login e gera o token de acesso JWT |
+| `GET` | `/api/auth/me` | Bearer Token | Retorna os dados do usuário/administrador autenticado |
+| `POST` | `/api/admins` | Bearer Token (`admin`) | Cadastra um novo administrador (`HTTP 201 Created` / `HTTP 409 Conflict`) |
+| `GET` | `/api/admins` | Bearer Token (`admin`) | Lista todos os administradores cadastrados |
+
+### Interface Web (Painel Administrativo)
+
+O painel de administradores pode ser acessado no frontend web em:
+- **[/admin](http://localhost:3000/admin)** (redireciona para `/cadastro/admin`)
+- **[/cadastro/admin](http://localhost:3000/cadastro/admin)**
+
+**Recursos implementados:**
+- **Autenticação obrigatória**: Apenas administradores autenticados podem cadastrar novos administradores e visualizar a lista de membros ativos.
+- **Validação de força de senha**: Medidor reativo em tempo real com validação dos 5 critérios OWASP (mínimo 8 caracteres, maiúscula, minúscula, número e caractere especial).
+- **Tratamento de sessão e erros**: Detecção automática de expiração de token (HTTP 401/403) e feedback amigável para novo login.
+- **Seed inicial de desenvolvimento**: O backend semeia automaticamente o administrador inicial na inicialização (controlado por `SEED_INITIAL_ADMIN`, veja `.env.example`).
 
 ---
 
