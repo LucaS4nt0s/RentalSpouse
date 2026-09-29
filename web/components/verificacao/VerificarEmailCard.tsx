@@ -102,11 +102,11 @@ export function VerificarEmailCard() {
    * A guarda cobre apenas a execução automática: o botão "Tentar novamente" e o
    * reenvio continuam chamando a função diretamente.
    */
-  const confirmacaoAutomaticaRef = useRef(false);
+  const executadoRef = useRef(false);
 
   useEffect(() => {
-    if (confirmacaoAutomaticaRef.current) return;
-    confirmacaoAutomaticaRef.current = true;
+    if (executadoRef.current) return;
+    executadoRef.current = true;
     confirmarToken();
   }, [confirmarToken]);
 

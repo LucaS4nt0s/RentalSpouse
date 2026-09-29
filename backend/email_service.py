@@ -230,7 +230,8 @@ def montar_mensagem_verificacao(
     """
     nome_remetente, endereco_remetente = remetente()
     link = montar_link_verificacao(token)
-    primeiro_nome = (nome or "").split(" ")[0] or "olá"
+    primeiro_nome_puro = (nome or "").split(" ")[0] or "olá"
+    primeiro_nome_html = html.escape(primeiro_nome_puro)
 
     # Somente para interpolação em HTML — nunca no corpo em texto puro.
     primeiro_nome_html = html.escape(primeiro_nome)
@@ -242,7 +243,7 @@ def montar_mensagem_verificacao(
     mensagem["To"] = destinatario
 
     texto = (
-        f"Olá, {primeiro_nome}!\n\n"
+        f"Olá, {primeiro_nome_puro}!\n\n"
         "Falta pouco para concluir seu cadastro na RentalSpouse.\n"
         "Confirme seu endereço de e-mail acessando o link abaixo:\n\n"
         f"{link}\n\n"
