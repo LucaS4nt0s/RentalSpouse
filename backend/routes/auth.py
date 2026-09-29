@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -30,19 +31,28 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     """Realiza a autenticação de usuários, administradores e clientes."""
     email = payload.email  # Já normalizado pelo validator do LoginRequest
     user = db.query(models.User).filter(models.User.email == email).first()
+    senha_valida = False
 
     # Se não encontrado na tabela de users, verifica na tabela de clientes
     if user is None:
         cliente = db.query(models.Cliente).filter(models.Cliente.email == email).first()
         if cliente is not None:
-            senha_valida = verificar_senha(payload.password, cliente.senha_hash)
-            if not senha_valida:
+            # 1. Valida a senha contra o hash do cliente
+            if not verificar_senha(payload.password, cliente.senha_hash):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Credenciais inválidas: e-mail ou senha incorretos",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
-            # Sincroniza com a tabela de usuários para unificar autenticação
+
+            # 2. Bloqueia o login caso o e-mail não tenha sido confirmado via link
+            if not cliente.email_verificado:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="E-mail pendente de confirmação. Por favor, verifique sua caixa de entrada.",
+                )
+
+            # 3. Sincroniza com a tabela de usuários para unificar autenticação
             user = models.User(
                 name=cliente.nome,
                 email=cliente.email,
@@ -50,15 +60,38 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
                 role=models.UserRole.CLIENT.value,
                 is_active=True,
             )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
+            try:
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+            except IntegrityError:
+                db.rollback()
+                user = db.query(models.User).filter(models.User.email == email).first()
 
-    senha_valida = (
-        verificar_senha(payload.password, user.hashed_password)
-        if user
-        else verificar_senha(payload.password, _DUMMY_HASH)
-    )
+            # Evita custo duplo de PBKDF2 (600.000 iterações já executadas na validação acima)
+            senha_valida = True
+        else:
+            verificar_senha(payload.password, _DUMMY_HASH)
+            senha_valida = False
+    else:
+        # Usuário já existe na tabela users: valida credenciais
+        if not verificar_senha(payload.password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Credenciais inválidas: e-mail ou senha incorretos",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Se for cliente, bloqueia caso o e-mail não tenha sido confirmado
+        if user.role == models.UserRole.CLIENT.value:
+            cliente = db.query(models.Cliente).filter(models.Cliente.email == email).first()
+            if cliente is not None and not cliente.email_verificado:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="E-mail pendente de confirmação. Por favor, verifique sua caixa de entrada.",
+                )
+
+        senha_valida = True
 
     if user is None or not senha_valida:
         raise HTTPException(

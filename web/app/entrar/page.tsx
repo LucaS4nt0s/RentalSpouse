@@ -207,7 +207,7 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
   const [serverError, setServerError] = useState<{
-    type: 'invalid_credentials' | 'network' | 'validation';
+    type: 'invalid_credentials' | 'network' | 'validation' | 'unverified_email';
     message: string;
   } | null>(null);
   const [loginSuccess, setLoginSuccess] = useState<AuthUser | null>(null);
@@ -338,6 +338,16 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
           type: 'invalid_credentials',
           message: 'E-mail ou senha incorretos. Verifique suas credenciais e tente novamente.',
         });
+      } else if (response.status === 403) {
+        const errorData = await response.json().catch(() => null);
+        const detailMsg =
+          typeof errorData?.detail === 'string'
+            ? errorData.detail
+            : 'E-mail pendente de confirmação. Por favor, verifique sua caixa de entrada.';
+        setServerError({
+          type: 'unverified_email',
+          message: detailMsg,
+        });
       } else if (response.status === 422) {
         setServerError({
           type: 'validation',
@@ -385,6 +395,17 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
                 >
                   Cadastre-se aqui
                 </button>
+              </span>
+            )}
+            {serverError.type === 'unverified_email' && (
+              <span className="mt-1 block text-rental-muted">
+                Não recebeu ou perdeu o link de ativação?{' '}
+                <Link
+                  href="/verificar-email"
+                  className="font-bold text-rental-primary hover:underline ml-1"
+                >
+                  Reenviar confirmação
+                </Link>
               </span>
             )}
           </div>

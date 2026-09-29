@@ -60,6 +60,7 @@ class UserRead(UserBase):
     id: int
     role: str
     is_active: bool
+    email_verificado: bool = True
     created_at: Optional[datetime] = None
 
     @computed_field
@@ -70,7 +71,12 @@ class UserRead(UserBase):
     @computed_field
     @property
     def tipo(self) -> str:
-        return self.role
+        role_map = {
+            "client": "cliente",
+            "professional": "profissional",
+            "admin": "admin",
+        }
+        return role_map.get(self.role, self.role)
 
     model_config = {"from_attributes": True}
 
