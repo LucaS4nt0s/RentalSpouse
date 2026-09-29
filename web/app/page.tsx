@@ -88,7 +88,13 @@ export default function Home() {
       </section>
 
       <footer className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 border-t border-rental-border px-6 py-5 text-xs text-rental-muted">
-        <span>RentalSpouse © 2026</span>
+        <div className="flex items-center gap-4">
+          <span>RentalSpouse © 2026</span>
+          <span>•</span>
+          <Link href="/admin" className="hover:text-rental-primary transition-colors">
+            Painel Admin
+          </Link>
+        </div>
         <span className="inline-flex items-center gap-2">
           <span
             className={`h-2 w-2 rounded-full ${
