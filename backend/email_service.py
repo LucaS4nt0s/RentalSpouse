@@ -231,10 +231,8 @@ def montar_mensagem_verificacao(
     nome_remetente, endereco_remetente = remetente()
     link = montar_link_verificacao(token)
     primeiro_nome_puro = (nome or "").split(" ")[0] or "olá"
-    primeiro_nome_html = html.escape(primeiro_nome_puro)
-
     # Somente para interpolação em HTML — nunca no corpo em texto puro.
-    primeiro_nome_html = html.escape(primeiro_nome)
+    primeiro_nome_html = html.escape(primeiro_nome_puro)
     link_html = html.escape(link, quote=True)
 
     mensagem = EmailMessage()
