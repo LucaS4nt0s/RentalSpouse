@@ -244,6 +244,44 @@ Retorna a mensagem armazenada no banco (inserindo-a automaticamente caso a tabel
 
 ---
 
+## 📧 Verificação de E-mail
+
+Todo cliente criado por `POST /api/clientes` nasce com `email_verificado = false` e recebe um e-mail com um link de confirmação.
+
+1. **Cadastro** → o backend gera um token aleatório de 256 bits, persiste **apenas o hash SHA-256** no banco e envia o link por e-mail.
+2. **Clique no link** → a página `/verificar-email` lê o token da URL e o submete no corpo da requisição.
+3. **Confirmação** → o e-mail é marcado como verificado e o token é descartado.
+
+| Endpoint | Corpo | Descrição |
+|---|---|---|
+| `POST /api/verificacao/confirmar` | `{"token": "..."}` | Consome o token e confirma o e-mail. `400` se inválido, já utilizado ou expirado |
+| `POST /api/verificacao/reenviar` | `{"email": "..."}` | Dispara um novo link. Sempre responde `202`, mesmo para e-mails não cadastrados |
+
+**Garantias de segurança:** o token nunca é gravado em claro; uso único; expiração padrão de 24 h; intervalo mínimo de 60 s entre reenvios; e resposta de reenvio idêntica para contas existentes ou não (evita enumeração de e-mails).
+
+### Visualizando os e-mails em desenvolvimento
+
+Por padrão (`EMAIL_BACKEND=console`) o e-mail é escrito no **log do backend** — o link de verificação aparece direto no terminal. Para uma caixa de entrada real:
+
+```bash
+docker compose up -d mailpit
+```
+
+E no `.env`:
+
+```env
+EMAIL_BACKEND=smtp
+SMTP_HOST=mailpit
+SMTP_PORT=1025
+SMTP_USE_TLS=false
+```
+
+A caixa de entrada fica em `http://localhost:8025`.
+
+> ⚙️ Todas as variáveis relacionadas estão documentadas em `.env.example`: `APP_BASE_URL`, `EMAIL_BACKEND`, `EMAIL_FROM_*`, `EMAIL_VERIFICACAO_*` e `SMTP_*`.
+
+---
+
 ## 👥 Equipe
 
 Projeto desenvolvido por:

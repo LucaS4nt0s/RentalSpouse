@@ -10,6 +10,7 @@ from routes.auth import router as auth_router
 from routes.clientes import router as clientes_router
 from routes.hello import router as hello_router
 from routes.professionals import router as professionals_router
+from routes.verificacao import router as verificacao_router
 from security import seed_initial_admin
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ app.add_middleware(
 # Registrar routers modulares
 app.include_router(hello_router)
 app.include_router(clientes_router)
+app.include_router(verificacao_router)
 app.include_router(professionals_router)
 app.include_router(auth_router)
 app.include_router(admins_router)
