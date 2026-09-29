@@ -91,7 +91,7 @@ export default function Home() {
         <div className="flex items-center gap-4">
           <span>RentalSpouse © 2026</span>
           <span>•</span>
-          <Link href="/cadastro/admin" className="hover:text-rental-primary transition-colors">
+          <Link href="/admin" className="hover:text-rental-primary transition-colors">
             Painel Admin
           </Link>
         </div>

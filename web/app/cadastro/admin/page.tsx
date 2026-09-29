@@ -30,6 +30,7 @@ import { validateEmail, validatePasswordMatch } from '../../../utils/validators'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 const STORAGE_KEY = 'rentalspouse_admin_token';
+const isDevEnvironment = process.env.NODE_ENV === 'development';
 
 interface AdminUser {
   id: number;
@@ -46,9 +47,9 @@ export default function CadastroAdminPage() {
   const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
   const [isValidatingSession, setIsValidatingSession] = useState<boolean>(true);
 
-  // Estado do formulário de login (quando deslogado)
-  const [loginEmail, setLoginEmail] = useState<string>('admin@rentalspouse.com');
-  const [loginPassword, setLoginPassword] = useState<string>('Admin@123456');
+  // Estado do formulário de login (inicia vazio, sem credenciais hardcoded)
+  const [loginEmail, setLoginEmail] = useState<string>('');
+  const [loginPassword, setLoginPassword] = useState<string>('');
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -78,6 +79,15 @@ export default function CadastroAdminPage() {
   // Medidor de força da senha
   const passwordEvaluation = usePasswordStrength(newPassword);
 
+  // Logout do administrador
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem(STORAGE_KEY);
+    setAuthToken(null);
+    setCurrentAdmin(null);
+    setCreatedAdmin(null);
+    setAdminsList([]);
+  }, []);
+
   // 1. Carrega sessão salva no localStorage ao montar a página
   const verifySession = useCallback(async (token: string) => {
     try {
@@ -98,14 +108,12 @@ export default function CadastroAdminPage() {
       setAuthToken(token);
       return true;
     } catch {
-      localStorage.removeItem(STORAGE_KEY);
-      setAuthToken(null);
-      setCurrentAdmin(null);
+      handleLogout();
       return false;
     } finally {
       setIsValidatingSession(false);
     }
-  }, []);
+  }, [handleLogout]);
 
   useEffect(() => {
     const savedToken = localStorage.getItem(STORAGE_KEY);
@@ -116,24 +124,32 @@ export default function CadastroAdminPage() {
     }
   }, [verifySession]);
 
-  // 2. Busca lista de administradores
+  // 2. Busca lista de administradores com tratamento correto de 401/403
   const fetchAdmins = useCallback(async (token: string) => {
     setIsLoadingList(true);
     try {
       const res = await fetch(`${API_URL}/api/admins`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
+      if (res.status === 401 || res.status === 403) {
+        handleLogout();
+        setLoginError('Sua sessão de administrador expirou. Faça login novamente.');
+        return;
+      }
+
       if (res.ok) {
         const data = await res.json();
         setAdminsList(data);
       }
     } catch {
-      // Ignora erro de rede silenciosamente
+      // Ignora falhas de conexão de rede transitórias
     } finally {
       setIsLoadingList(false);
     }
-  }, []);
+  }, [handleLogout]);
 
+  // Sincroniza listagem automaticamente quando authToken mudar
   useEffect(() => {
     if (authToken) {
       fetchAdmins(authToken);
@@ -156,21 +172,25 @@ export default function CadastroAdminPage() {
         }),
       });
 
-      const data = await res.json();
+      let data: any = null;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json().catch(() => null);
+      }
 
       if (!res.ok) {
-        throw new Error(data.detail || 'Credenciais inválidas. Verifique e-mail e senha.');
+        throw new Error(data?.detail || 'Credenciais inválidas. Verifique e-mail e senha.');
       }
 
       const token = data.access_token;
       localStorage.setItem(STORAGE_KEY, token);
 
       const isValid = await verifySession(token);
-      if (isValid) {
-        fetchAdmins(token);
-      } else {
+      if (!isValid) {
         setLoginError('A conta autenticada não possui permissão de administrador.');
       }
+      // Não chamamos fetchAdmins(token) aqui para evitar chamada duplicada:
+      // verifySession já define authToken que aciona o useEffect.
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : 'Falha ao autenticar.');
     } finally {
@@ -178,16 +198,7 @@ export default function CadastroAdminPage() {
     }
   };
 
-  // 4. Logout
-  const handleLogout = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    setAuthToken(null);
-    setCurrentAdmin(null);
-    setCreatedAdmin(null);
-    setAdminsList([]);
-  };
-
-  // 5. Submissão do cadastro de novo admin
+  // 4. Submissão do cadastro de novo admin com parsing seguro de resposta
   const handleCreateAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -235,9 +246,13 @@ export default function CadastroAdminPage() {
         }),
       });
 
-      const data = await res.json();
+      let data: any = null;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json().catch(() => null);
+      }
 
-      if (res.status === 201) {
+      if (res.status === 201 && data) {
         setCreatedAdmin(data);
         setNewName('');
         setNewEmail('');
@@ -250,7 +265,7 @@ export default function CadastroAdminPage() {
       }
 
       if (res.status === 409) {
-        setFormError('Já existe um usuário cadastrado com este e-mail.');
+        setFormError(data?.detail || 'Já existe um usuário cadastrado com este e-mail.');
         return;
       }
 
@@ -261,14 +276,14 @@ export default function CadastroAdminPage() {
       }
 
       if (res.status === 422) {
-        const detailMsg = Array.isArray(data.detail)
+        const detailMsg = Array.isArray(data?.detail)
           ? data.detail.map((d: { msg?: string }) => d.msg).join(', ')
-          : 'Dados inválidos. Revise os campos preenchidos.';
+          : data?.detail || 'Dados inválidos. Revise os campos preenchidos.';
         setFormError(detailMsg);
         return;
       }
 
-      throw new Error(data.detail || `Erro ${res.status}: Não foi possível cadastrar o administrador.`);
+      throw new Error(data?.detail || `Erro ${res.status}: Não foi possível cadastrar o administrador.`);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Falha na conexão com o servidor.');
     } finally {
@@ -375,7 +390,7 @@ export default function CadastroAdminPage() {
                   type="email"
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder="admin@rentalspouse.com"
+                  placeholder="admin@empresa.com"
                   leftIcon={<Mail className="h-4 w-4" />}
                   required
                 />
@@ -406,29 +421,28 @@ export default function CadastroAdminPage() {
               </div>
             </form>
 
-            {/* Dica / Preenchimento de dev */}
-            <div className="mt-6 rounded-2xl border border-dashed border-rental-border bg-rental-surface2/60 p-4 text-xs">
-              <div className="flex items-center gap-1.5 font-bold text-rental-primary mb-1">
-                <Sparkles className="h-3.5 w-3.5" />
-                Atalho para Desenvolvimento (Seed Inicial)
-              </div>
-              <p className="text-rental-muted text-[11px] leading-relaxed mb-3">
-                Caso seja o primeiro acesso local, o backend semeou o administrador padrão automaticamente:
-              </p>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-rental-surface rounded-xl p-2.5 border border-rental-border font-mono text-[11px]">
-                <span>admin@rentalspouse.com • Admin@123456</span>
+            {/* Dica / Preenchimento de dev (exibido apenas em ambiente de desenvolvimento local) */}
+            {isDevEnvironment && (
+              <div className="mt-6 rounded-2xl border border-dashed border-rental-border bg-rental-surface2/60 p-4 text-xs">
+                <div className="flex items-center gap-1.5 font-bold text-rental-primary mb-1">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Atalho de Desenvolvimento
+                </div>
+                <p className="text-rental-muted text-[11px] leading-relaxed mb-3">
+                  Ambiente local detectado. Caso deseje preencher com as credenciais do administrador inicial gerado no seed:
+                </p>
                 <button
                   type="button"
                   onClick={() => {
                     setLoginEmail('admin@rentalspouse.com');
                     setLoginPassword('Admin@123456');
                   }}
-                  className="text-rental-primary hover:underline font-bold text-[11px] shrink-0"
+                  className="w-full text-center py-2 px-3 rounded-xl border border-rental-border bg-rental-surface hover:bg-rental-surface2 text-rental-primary font-bold text-[11px] transition-colors"
                 >
-                  Usar estas credenciais
+                  Preencher credenciais de seed (Dev)
                 </button>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -634,6 +648,7 @@ export default function CadastroAdminPage() {
                       disabled={isLoadingList}
                       className="p-1.5 rounded-lg text-rental-muted hover:text-rental-primary hover:bg-rental-surface2 transition-colors"
                       title="Atualizar lista"
+                      aria-label="Atualizar lista de administradores"
                     >
                       <RefreshCw className={`h-4 w-4 ${isLoadingList ? 'animate-spin' : ''}`} />
                     </button>
