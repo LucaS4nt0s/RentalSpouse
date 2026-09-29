@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session
 import models
 from database import get_db
 from schemas import ProfessionalCreate, ProfessionalRead, ProfessionalUpdate
+from security import hash_senha
 
 router = APIRouter(prefix="/api/professionals", tags=["Profissionais"])
+profissionais_router = APIRouter(prefix="/api/profissionais", tags=["Profissionais"])
 
 
 @router.post(
@@ -16,6 +18,12 @@ router = APIRouter(prefix="/api/professionals", tags=["Profissionais"])
     response_model=ProfessionalRead,
     status_code=status.HTTP_201_CREATED,
     summary="Criar perfil de profissional",
+)
+@profissionais_router.post(
+    "",
+    response_model=ProfessionalRead,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
 )
 def create_professional(
     payload: ProfessionalCreate,
@@ -36,6 +44,30 @@ def create_professional(
             detail="E-mail já cadastrado para outro profissional.",
         )
 
+    existing_user = (
+        db.query(models.User)
+        .filter(models.User.email == payload.email)
+        .first()
+    )
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="E-mail já cadastrado na plataforma.",
+        )
+
+    existing_cliente = (
+        db.query(models.Cliente)
+        .filter(models.Cliente.email == payload.email)
+        .first()
+    )
+    if existing_cliente:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="E-mail já cadastrado na plataforma.",
+        )
+
+    senha_hash = hash_senha(payload.password) if payload.password else None
+
     professional = models.Professional(
         name=payload.name,
         email=payload.email,
@@ -45,15 +77,26 @@ def create_professional(
         specialties=payload.specialties,
         city=payload.city,
         state=payload.state,
+        senha_hash=senha_hash,
     )
     try:
         db.add(professional)
+        if senha_hash:
+            user = models.User(
+                name=payload.name,
+                email=payload.email,
+                hashed_password=senha_hash,
+                role=models.UserRole.PROFESSIONAL.value,
+                is_active=True,
+                email_verificado=True,
+            )
+            db.add(user)
         db.commit()
     except IntegrityError:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="E-mail já cadastrado para outro profissional.",
+            detail="E-mail já cadastrado na plataforma.",
         )
 
     db.refresh(professional)
@@ -62,6 +105,7 @@ def create_professional(
 
 
 @router.get("", response_model=List[ProfessionalRead], summary="Listar profissionais")
+@profissionais_router.get("", response_model=List[ProfessionalRead], include_in_schema=False)
 def list_professionals(
     specialty: Optional[str] = Query(
         None, description="Filtra por especialidade do profissional"
@@ -100,6 +144,7 @@ def list_professionals(
 
 
 @router.get("/{professional_id}", response_model=ProfessionalRead, summary="Obter profissional por ID")
+@profissionais_router.get("/{professional_id}", response_model=ProfessionalRead, include_in_schema=False)
 def get_professional_by_id(
     professional_id: int,
     db: Session = Depends(get_db),
@@ -122,6 +167,7 @@ def get_professional_by_id(
 
 
 @router.put("/{professional_id}", response_model=ProfessionalRead, summary="Atualizar profissional")
+@profissionais_router.put("/{professional_id}", response_model=ProfessionalRead, include_in_schema=False)
 def update_professional(
     professional_id: int,
     payload: ProfessionalUpdate,
@@ -175,6 +221,7 @@ def update_professional(
 
 
 @router.delete("/{professional_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Remover profissional")
+@profissionais_router.delete("/{professional_id}", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
 def delete_professional(
     professional_id: int,
     db: Session = Depends(get_db),
