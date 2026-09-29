@@ -1,8 +1,8 @@
 from datetime import date, datetime
 import re
-from typing import Optional
+from typing import List, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 # Conjunto de Unidades Federativas válidas do Brasil
 UFS_VALIDAS = {
@@ -15,6 +15,11 @@ UFS_VALIDAS = {
 EMAIL_REGEX = re.compile(
     r"^(?!.*\.\.)[a-zA-Z0-9_+-]+(?:\.[a-zA-Z0-9_+-]+)*@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}$"
 )
+
+
+# ---------------------------------------------------------------------------
+# Schemas de Status
+# ---------------------------------------------------------------------------
 
 
 class StatusBase(BaseModel):
@@ -35,6 +40,50 @@ class StatusRead(StatusBase):
     id: int
 
     model_config = {"from_attributes": True}
+
+
+# ============================================================================
+# Schemas de Administrador e Autenticação
+# ============================================================================
+
+
+class AdminBase(BaseModel):
+    """Campos base de um Administrador."""
+
+    name: str = Field(..., min_length=2, max_length=255, description="Nome completo do administrador")
+    email: EmailStr = Field(..., description="E-mail do administrador")
+
+
+class AdminCreate(AdminBase):
+    """Schema de payload para cadastro de um novo Administrador."""
+
+    password: str = Field(..., min_length=8, max_length=128, description="Senha com no mínimo 8 caracteres")
+
+
+class AdminRead(AdminBase):
+    """Schema de resposta para exibição pública de um Administrador (sem expor hash de senha)."""
+
+    id: int
+    role: str
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LoginRequest(BaseModel):
+    """Schema para autenticação (login) de usuários."""
+
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
+    """Schema para resposta de emissão de token JWT."""
+
+    access_token: str
+    token_type: str = "bearer"
+
 
 
 # ---------------------------------------------------------------------------
@@ -243,3 +292,133 @@ class VerificacaoConfirmadaResponse(BaseModel):
         ..., description="Indica que o endereço de e-mail está confirmado"
     )
     mensagem: str = Field(..., description="Mensagem de retorno para o usuário")
+
+
+# ---------------------------------------------------------------------------
+# Schemas de Profissional
+# ---------------------------------------------------------------------------
+
+
+class ProfessionalBase(BaseModel):
+    """Campos base do perfil de um profissional."""
+
+    name: str = Field(..., min_length=2, max_length=100, description="Nome completo do profissional")
+    email: str = Field(..., max_length=255, description="E-mail de contato")
+    phone: Optional[str] = Field(None, max_length=20, description="Telefone ou celular com DDD")
+    bio: str = Field(..., min_length=10, max_length=2000, description="Biografia detalhada e apresentação aos clientes")
+    service_radius_km: float = Field(..., ge=1.0, description="Raio de atendimento em km (mínimo 1 km)")
+    specialties: List[str] = Field(..., min_length=1, description="Lista de especialidades do profissional")
+    city: Optional[str] = Field(None, max_length=100, description="Cidade base do profissional")
+    state: Optional[str] = Field(None, min_length=2, max_length=2, description="Sigla do estado (ex: SP)")
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        cleaned = (v or "").strip()
+        if len(cleaned) < 2:
+            raise ValueError("O nome deve ter no mínimo 2 caracteres.")
+        return cleaned
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        cleaned = (v or "").strip().lower()
+        if not EMAIL_REGEX.match(cleaned):
+            raise ValueError("E-mail com formato inválido.")
+        return cleaned
+
+    @field_validator("state")
+    @classmethod
+    def validate_state(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            uf = v.strip().upper()
+            if uf not in UFS_VALIDAS:
+                raise ValueError(f"Estado '{v}' inválido. Deve ser uma sigla de UF brasileira válida.")
+            return uf
+        return None
+
+    @field_validator("specialties")
+    @classmethod
+    def validate_specialties(cls, v: List[str]) -> List[str]:
+        cleaned = [s.strip() for s in v if isinstance(s, str) and s.strip()]
+        if not cleaned:
+            raise ValueError("O profissional deve possuir ao menos uma especialidade válida.")
+        return cleaned
+
+
+class ProfessionalCreate(ProfessionalBase):
+    """Schema para criação do perfil do profissional."""
+
+    pass
+
+
+class ProfessionalUpdate(BaseModel):
+    """Schema para atualização dos dados do profissional."""
+
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    email: Optional[str] = Field(None, max_length=255)
+    phone: Optional[str] = Field(None, max_length=20)
+    bio: Optional[str] = Field(None, min_length=10, max_length=2000)
+    service_radius_km: Optional[float] = Field(None, ge=1.0)
+    specialties: Optional[List[str]] = Field(None, min_length=1)
+    city: Optional[str] = Field(None, max_length=100)
+    state: Optional[str] = Field(None, min_length=2, max_length=2)
+    is_active: Optional[bool] = None
+
+    @field_validator("name", "email", "bio", "service_radius_km", "specialties", "is_active", mode="before")
+    @classmethod
+    def reject_null_on_non_nullable_fields(cls, v, info):
+        if v is None:
+            raise ValueError(f"O campo '{info.field_name}' não pode ser nulo.")
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            cleaned = v.strip()
+            if len(cleaned) < 2:
+                raise ValueError("O nome deve ter no mínimo 2 caracteres.")
+            return cleaned
+        return None
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            cleaned = v.strip().lower()
+            if not EMAIL_REGEX.match(cleaned):
+                raise ValueError("E-mail com formato inválido.")
+            return cleaned
+        return None
+
+    @field_validator("state")
+    @classmethod
+    def validate_state(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            uf = v.strip().upper()
+            if uf not in UFS_VALIDAS:
+                raise ValueError(f"Estado '{v}' inválido. Deve ser uma sigla de UF brasileira válida.")
+            return uf
+        return None
+
+    @field_validator("specialties")
+    @classmethod
+    def validate_specialties(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return None
+        cleaned = [s.strip() for s in v if isinstance(s, str) and s.strip()]
+        if not cleaned:
+            raise ValueError("Ao atualizar as especialidades, ao menos uma deve ser informada.")
+        return cleaned
+
+
+class ProfessionalRead(ProfessionalBase):
+    """Schema para leitura e serialização do perfil do profissional."""
+
+    id: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}

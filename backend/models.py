@@ -1,7 +1,16 @@
+import enum
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, Date, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, Integer, JSON, String, Text
 
 from database import Base
+
+
+class UserRole(str, enum.Enum):
+    """Papéis de usuário no sistema RentalSpouse."""
+
+    ADMIN = "admin"
+    CLIENT = "client"
+    PROFESSIONAL = "professional"
 
 
 class Status(Base):
@@ -11,6 +20,24 @@ class Status(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     message = Column(String, nullable=False)
+
+
+class User(Base):
+    """Entidade de usuário do sistema RentalSpouse."""
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
+    role = Column(String(50), default=UserRole.CLIENT.value, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
 
 
 class Cliente(Base):
@@ -60,3 +87,27 @@ class Cliente(Base):
             "cidade": self.cidade,
             "estado": self.estado,
         }
+
+
+class Professional(Base):
+    """Tabela de profissionais com especialidades e raio de atendimento."""
+
+    __tablename__ = "professionals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    phone = Column(String(20), nullable=True)
+    bio = Column(Text, nullable=False)
+    service_radius_km = Column(Float, nullable=False)
+    specialties = Column(JSON, nullable=False)
+    city = Column(String(100), nullable=True)
+    state = Column(String(2), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
