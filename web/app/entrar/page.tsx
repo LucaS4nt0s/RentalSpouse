@@ -196,11 +196,12 @@ function EntrarPageContent() {
 
 function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
   const router = useRouter();
-  const { user, login, logout, isAuthenticated } = useAuth();
+  const { user, login, logout, isAuthenticated, isLoading: authLoading } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [forgotPasswordNotice, setForgotPasswordNotice] = useState(false);
 
   // Estados de formulário e validação
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
@@ -210,6 +211,17 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
     message: string;
   } | null>(null);
   const [loginSuccess, setLoginSuccess] = useState<AuthUser | null>(null);
+
+  // Segura renderização para evitar flash de "deslogado" (FOUC)
+  if (authLoading) {
+    return (
+      <div className="animate-pulse space-y-4 rounded-2xl border border-rental-border bg-rental-surface p-6 text-center">
+        <div className="mx-auto h-14 w-14 rounded-2xl bg-rental-surface2" />
+        <div className="mx-auto h-5 w-48 rounded bg-rental-surface2" />
+        <div className="mx-auto h-4 w-64 rounded bg-rental-surface2" />
+      </div>
+    );
+  }
 
   // Se já estiver logado, exibe cartão de perfil ativo
   if (isAuthenticated && user && !loginSuccess) {
@@ -311,14 +323,16 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
         },
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
-          senha: password,
+          password: password,
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        login(data.usuario, data.token_acesso);
-        setLoginSuccess(data.usuario);
+        const authUser: AuthUser = data.user || data.usuario;
+        const authToken: string = data.access_token || data.token_acesso;
+        login(authUser, authToken);
+        setLoginSuccess(authUser);
       } else if (response.status === 401) {
         setServerError({
           type: 'invalid_credentials',
@@ -435,12 +449,24 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
             <button
               type="button"
               tabIndex={-1}
-              onClick={() => alert('Para redefinir sua senha, entre em contato com o suporte RentalSpouse.')}
+              onClick={() => setForgotPasswordNotice((v) => !v)}
               className="text-xs font-semibold text-rental-primary hover:underline"
             >
               Esqueci minha senha
             </button>
           </div>
+          {forgotPasswordNotice && (
+            <div className="mb-2 flex items-start gap-2.5 rounded-xl border border-rental-border bg-rental-surface2 p-3 text-xs text-rental-ink animate-fadeIn">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rental-primary" />
+              <div>
+                <span className="font-bold text-rental-ink">Recuperação de conta</span>
+                <p className="mt-0.5 text-rental-muted">
+                  O fluxo automatizado de redefinição de senha está em desenvolvimento. Para redefinir sua senha agora, solicite via{' '}
+                  <span className="font-semibold text-rental-primary">suporte@rentalspouse.com</span>.
+                </p>
+              </div>
+            </div>
+          )}
           <div className="relative">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-rental-muted">
               <Lock className="h-4 w-4" />

@@ -13,7 +13,7 @@ interface StatusResponse {
 }
 
 export default function Home() {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout, isLoading } = useAuth();
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [offline, setOffline] = useState(false);
 
@@ -41,7 +41,9 @@ export default function Home() {
         </Link>
 
         <div className="flex items-center gap-3">
-          {isAuthenticated && user ? (
+          {isLoading ? (
+            <div className="h-8 w-28 animate-pulse rounded-xl bg-rental-surface2" />
+          ) : isAuthenticated && user ? (
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 text-xs font-semibold">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-rental-primary/10 text-rental-primary">
