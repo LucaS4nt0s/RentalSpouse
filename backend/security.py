@@ -71,6 +71,50 @@ def verificar_senha(senha: str, senha_hash: str) -> bool:
         return False
 
 
+# ---------------------------------------------------------------------------
+# Tokens de verificação de e-mail
+# ---------------------------------------------------------------------------
+
+
+def gerar_token_verificacao() -> str:
+    """
+    Gera um token opaco e de alta entropia para confirmação de e-mail.
+
+    Utiliza 32 bytes (256 bits) de aleatoriedade criptográfica do módulo
+    `secrets`, codificados em URL-safe base64 — seguro para trafegar em links
+    de e-mail.
+    """
+    return secrets.token_urlsafe(32)
+
+
+def hash_token(token: str) -> str:
+    """
+    Calcula o hash determinístico (SHA-256) de um token de verificação.
+
+    O token NUNCA é persistido em claro: guardamos apenas o hash, de forma que
+    um eventual vazamento do banco não permita a terceiros confirmar o e-mail
+    de outros usuários. SHA-256 puro (sem salt) é adequado neste caso porque o
+    token já possui 256 bits de entropia aleatória, diferentemente de uma senha
+    escolhida por um humano. O determinismo também permite buscar o registro
+    diretamente por índice no banco.
+    """
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def token_confere(hash_armazenado: str, token_recebido: str) -> bool:
+    """
+    Compara, em tempo constante, o token recebido com o hash armazenado.
+    """
+    if not hash_armazenado or not token_recebido:
+        return False
+    return secrets.compare_digest(hash_armazenado, hash_token(token_recebido))
+
+
+# ---------------------------------------------------------------------------
+# Autenticação JWT e Usuários
+# ---------------------------------------------------------------------------
+
+
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Gera um token JWT com expiração configurável."""
     to_encode = data.copy()
@@ -93,6 +137,8 @@ def get_current_user(
     """
     Dependency que extrai e valida o token Bearer da requisição.
     Retorna a entidade User autenticada.
+    Esta dependência é estritamente de leitura (pura) para garantir idempotência
+    e evitar race conditions de integridade (HTTP 500) em requisições paralelas.
     """
     if auth is None or not auth.credentials:
         raise HTTPException(
@@ -119,20 +165,19 @@ def get_current_user(
 
     user = db.query(models.User).filter(models.User.email == email).first()
 
-    # Caso seja um cliente cadastrado via tabela de clientes sem registro na tabela users
+    # Caso seja um cliente cadastrado sem registro na tabela users, realiza fallback em memória
+    # sem efetuar escritas ou db.commit() para manter a dependência pura e evitar race conditions
     if user is None:
         cliente = db.query(models.Cliente).filter(models.Cliente.email == email).first()
-        if cliente is not None:
+        if cliente is not None and cliente.email_verificado:
             user = models.User(
+                id=cliente.id,
                 name=cliente.nome,
                 email=cliente.email,
                 hashed_password=cliente.senha_hash,
                 role=models.UserRole.CLIENT.value,
                 is_active=True,
             )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
 
     if user is None or not user.is_active:
         raise HTTPException(

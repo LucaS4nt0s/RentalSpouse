@@ -1,6 +1,5 @@
 import enum
 from datetime import datetime, timezone
-
 from sqlalchemy import Boolean, Column, Date, DateTime, Float, Integer, JSON, String, Text
 
 from database import Base
@@ -63,6 +62,18 @@ class Cliente(Base):
     estado = Column(String(2), nullable=False)
 
     criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    # ---------------------------------------------------------------------
+    # Verificação de e-mail
+    # ---------------------------------------------------------------------
+    # Toda conta nasce com o e-mail NÃO verificado. A confirmação só ocorre
+    # quando o usuário acessa o link enviado por e-mail.
+    email_verificado = Column(Boolean, default=False, nullable=False, index=True)
+    # Armazenamos apenas o HASH SHA-256 do token — nunca o token em claro.
+    verificacao_token_hash = Column(String(64), nullable=True, index=True)
+    verificacao_expira_em = Column(DateTime, nullable=True)
+    # Usado para aplicar intervalo mínimo entre reenvios (anti-spam).
+    verificacao_enviada_em = Column(DateTime, nullable=True)
 
     @property
     def endereco(self):

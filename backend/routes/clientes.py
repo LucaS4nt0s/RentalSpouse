@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -6,6 +6,7 @@ from database import get_db
 import models
 from schemas import ClienteCreate, ClienteRead
 from security import hash_senha
+import verificacao
 
 router = APIRouter(prefix="/api/clientes", tags=["Clientes"])
 
@@ -17,13 +18,18 @@ router = APIRouter(prefix="/api/clientes", tags=["Clientes"])
     summary="Cadastrar novo cliente",
     description="Realiza o cadastro de um novo cliente na plataforma com validação de dados, unicidade de e-mail e CPF.",
 )
-def cadastrar_cliente(cliente_in: ClienteCreate, db: Session = Depends(get_db)):
+def cadastrar_cliente(
+    cliente_in: ClienteCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """
-    Cadastra um novo cliente na plataforma:
+    Cadastra um cliente na plataforma:
     - Valida se o e-mail já está cadastrado (retorna 409 Conflict).
     - Valida se o CPF já está cadastrado (retorna 409 Conflict).
     - Aplica hash criptográfico na senha antes de salvar.
     - Persiste os dados e o endereço estruturado no banco relacional.
+    - Emite o token de verificação e agenda o envio do e-mail de confirmação.
     """
     # 1. Verificar unicidade de e-mail
     cliente_existente_email = (
@@ -76,5 +82,13 @@ def cadastrar_cliente(cliente_in: ClienteCreate, db: Session = Depends(get_db)):
         )
 
     db.refresh(db_cliente)
+
+    # O token é emitido e persistido ANTES da resposta, mas o envio do e-mail é
+    # delegado a uma BackgroundTask: o handshake SMTP (que pode levar segundos
+    # com STARTTLS) não deve atrasar o cadastro. A tarefa recebe apenas dados
+    # primitivos, pois a sessão de banco da requisição já estará fechada quando
+    # ela executar.
+    pendente = verificacao.preparar_verificacao(db, db_cliente)
+    background_tasks.add_task(verificacao.enviar_email_de_verificacao, pendente)
 
     return db_cliente
