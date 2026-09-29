@@ -412,8 +412,43 @@ class ProfessionalCreate(ProfessionalBase):
 
     @model_validator(mode="before")
     @classmethod
-    def accept_senha_alias(cls, data: Any) -> Any:
+    def accept_aliases_and_nested(cls, data: Any) -> Any:
         if isinstance(data, dict):
+            # name / nome
+            if "name" not in data and "nome" in data:
+                data["name"] = data["nome"]
+            # phone / telefone
+            if "phone" not in data and "telefone" in data:
+                data["phone"] = data["telefone"]
+            # specialties / especialidades
+            if "specialties" not in data and "especialidades" in data:
+                data["specialties"] = data["especialidades"]
+            # service_radius_km / raio_atendimento_km / raio_atendimento
+            if "service_radius_km" not in data:
+                if "raio_atendimento_km" in data:
+                    data["service_radius_km"] = data["raio_atendimento_km"]
+                elif "raio_atendimento" in data:
+                    data["service_radius_km"] = data["raio_atendimento"]
+            # endereco -> city / state
+            if "endereco" in data and isinstance(data["endereco"], dict):
+                end = data["endereco"]
+                if "city" not in data and "cidade" in end:
+                    data["city"] = end["cidade"]
+                if "state" not in data:
+                    if "estado" in end:
+                        data["state"] = end["estado"]
+                    elif "estado_uf" in end:
+                        data["state"] = end["estado_uf"]
+            # city / cidade direta
+            if "city" not in data and "cidade" in data:
+                data["city"] = data["cidade"]
+            # state / estado direto
+            if "state" not in data:
+                if "estado" in data:
+                    data["state"] = data["estado"]
+                elif "estado_uf" in data:
+                    data["state"] = data["estado_uf"]
+            # password / senha
             if "password" not in data and "senha" in data:
                 data["password"] = data["senha"]
         return data

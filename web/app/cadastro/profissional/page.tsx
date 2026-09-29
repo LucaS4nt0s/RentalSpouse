@@ -43,11 +43,14 @@ import { cleanDigits, formatDateToISO } from '../../../utils/formatters';
 
 interface SuccessResponseData {
   id: number;
-  nome: string;
+  nome?: string;
+  name?: string;
   email: string;
-  cpf: string;
-  data_nascimento: string;
+  cpf?: string;
+  data_nascimento?: string;
   criado_em?: string;
+  created_at?: string;
+  is_active?: boolean;
 }
 
 export default function CadastroProfissionalPage() {
@@ -182,6 +185,7 @@ export default function CadastroProfissionalPage() {
       switch (field) {
         case 'nome_completo':
         case 'nome':
+        case 'name':
           nextPersonalErrors.nomeCompleto = message;
           break;
         case 'email':
@@ -194,19 +198,23 @@ export default function CadastroProfissionalPage() {
           nextPersonalErrors.dataNascimento = message;
           break;
         case 'telefone':
+        case 'phone':
           nextSkillsErrors.telefone = message;
           break;
         case 'especialidades':
+        case 'specialties':
           nextSkillsErrors.especialidades = message;
           break;
         case 'raio_atendimento_km':
         case 'raio_atendimento':
+        case 'service_radius_km':
           nextSkillsErrors.raioAtendimento = message;
           break;
         case 'bio':
           nextSkillsErrors.bio = message;
           break;
         case 'senha':
+        case 'password':
           nextPasswordErrors.senha = message;
           break;
         case 'confirmar_senha':
@@ -230,10 +238,12 @@ export default function CadastroProfissionalPage() {
           nextAddressErrors.bairro = message;
           break;
         case 'cidade':
+        case 'city':
           nextAddressErrors.cidade = message;
           break;
         case 'estado_uf':
         case 'estado':
+        case 'state':
           nextAddressErrors.estado_uf = message;
           break;
         default:
@@ -362,16 +372,25 @@ export default function CadastroProfissionalPage() {
     setIsSubmitting(true);
 
     const payload = {
-      nome: personalData.nomeCompleto.trim(),
+      // Contrato canônico REST /api/professionals
+      name: personalData.nomeCompleto.trim(),
       email: personalData.email.trim().toLowerCase(),
+      phone: cleanDigits(skillsData.telefone) || undefined,
+      bio: skillsData.bio.trim(),
+      service_radius_km: skillsData.raioAtendimento,
+      specialties: skillsData.especialidades,
+      city: addressData.cidade.trim() || undefined,
+      state: addressData.estado_uf.trim().toUpperCase() || undefined,
+      password: passwordData.senha,
+      // Suporte a compatibilidade e metadados adicionais
+      nome: personalData.nomeCompleto.trim(),
+      senha: passwordData.senha,
+      confirmar_senha: passwordData.confirmacaoSenha,
       cpf: cleanDigits(personalData.cpf),
       data_nascimento: formatDateToISO(personalData.dataNascimento),
       telefone: cleanDigits(skillsData.telefone),
       especialidades: skillsData.especialidades,
       raio_atendimento_km: skillsData.raioAtendimento,
-      bio: skillsData.bio.trim(),
-      senha: passwordData.senha,
-      confirmar_senha: passwordData.confirmacaoSenha,
       endereco: {
         cep: cleanDigits(addressData.cep),
         logradouro: addressData.logradouro.trim(),
@@ -386,7 +405,7 @@ export default function CadastroProfissionalPage() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
     try {
-      const response = await fetch(`${apiUrl}/api/profissionais`, {
+      const response = await fetch(`${apiUrl}/api/professionals`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -471,7 +490,7 @@ export default function CadastroProfissionalPage() {
             <p className="text-sm text-[#64748B] dark:text-[#93A5C0] max-w-md mx-auto leading-relaxed">
               Cadastro realizado com sucesso,{' '}
               <strong className="text-[#1D4ED8] dark:text-[var(--rs-primary)] font-semibold">
-                {successData.nome}
+                {successData.nome || successData.name}
               </strong>
               ! Seu perfil está pronto para receber clientes.
             </p>
