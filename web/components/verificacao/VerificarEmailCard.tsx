@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '../ui/Button';
@@ -91,7 +91,11 @@ export function VerificarEmailCard() {
     }
   }, [token]);
 
+  const executadoRef = useRef(false);
+
   useEffect(() => {
+    if (executadoRef.current) return;
+    executadoRef.current = true;
     confirmarToken();
   }, [confirmarToken]);
 

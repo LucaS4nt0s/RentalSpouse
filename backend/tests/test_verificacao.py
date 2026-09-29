@@ -495,6 +495,17 @@ class TestConfiguracaoEmail:
         assert "html" in subtipos
         assert "Maria" in mensagem.get_body(preferencelist=("plain",)).get_content()
 
+    def test_mensagem_escapa_html_no_nome(self):
+        mensagem = email_service.montar_mensagem_verificacao(
+            destinatario=EMAIL_PRINCIPAL,
+            nome="<script>alert('xss')</script> João",
+            token="abc123",
+            expira_horas=24,
+        )
+        corpo_html = mensagem.get_body(preferencelist=("html",)).get_content()
+        assert "<script>" not in corpo_html
+        assert "&lt;script&gt;alert(" in corpo_html
+
     def test_expiracao_e_intervalo_respeitam_variaveis_de_ambiente(self, monkeypatch):
         monkeypatch.setenv("EMAIL_VERIFICACAO_EXPIRA_HORAS", "2")
         monkeypatch.setenv("EMAIL_VERIFICACAO_REENVIO_SEGUNDOS", "30")

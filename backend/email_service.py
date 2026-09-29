@@ -20,6 +20,7 @@ Transportes disponíveis, selecionados pela variável de ambiente `EMAIL_BACKEND
 | `memoria` | Guarda as mensagens em memória (testes automatizados) |
 """
 
+import html
 import logging
 import os
 import smtplib
@@ -220,7 +221,8 @@ def montar_mensagem_verificacao(
     """Compõe a mensagem (texto puro + HTML) de confirmação de e-mail."""
     nome_remetente, endereco_remetente = remetente()
     link = montar_link_verificacao(token)
-    primeiro_nome = (nome or "").split(" ")[0] or "olá"
+    primeiro_nome_puro = (nome or "").split(" ")[0] or "olá"
+    primeiro_nome_html = html.escape(primeiro_nome_puro)
 
     mensagem = EmailMessage()
     mensagem["Subject"] = "Confirme seu e-mail na RentalSpouse"
@@ -228,7 +230,7 @@ def montar_mensagem_verificacao(
     mensagem["To"] = destinatario
 
     texto = (
-        f"Olá, {primeiro_nome}!\n\n"
+        f"Olá, {primeiro_nome_puro}!\n\n"
         "Falta pouco para concluir seu cadastro na RentalSpouse.\n"
         "Confirme seu endereço de e-mail acessando o link abaixo:\n\n"
         f"{link}\n\n"
@@ -237,7 +239,7 @@ def montar_mensagem_verificacao(
         "Equipe RentalSpouse"
     )
 
-    html = f"""\
+    corpo_html = f"""\
 <!DOCTYPE html>
 <html lang="pt-BR">
   <body style="margin:0;padding:24px;background:#f4f6fb;font-family:Arial,Helvetica,sans-serif;color:#0E1B2E;">
@@ -250,7 +252,7 @@ def montar_mensagem_verificacao(
               <td>
                 <h1 style="margin:0 0 16px;font-size:20px;color:#1E40AF;">Confirme seu e-mail</h1>
                 <p style="margin:0 0 16px;font-size:14px;line-height:22px;">
-                  Olá, <strong>{primeiro_nome}</strong>! Falta pouco para concluir seu cadastro
+                  Olá, <strong>{primeiro_nome_html}</strong>! Falta pouco para concluir seu cadastro
                   na RentalSpouse.
                 </p>
                 <p style="margin:0 0 24px;font-size:14px;line-height:22px;">
@@ -279,7 +281,7 @@ def montar_mensagem_verificacao(
 </html>"""
 
     mensagem.set_content(texto)
-    mensagem.add_alternative(html, subtype="html")
+    mensagem.add_alternative(corpo_html, subtype="html")
     return mensagem
 
 
