@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '../ui/Button';
@@ -91,7 +91,22 @@ export function VerificarEmailCard() {
     }
   }, [token]);
 
+  /**
+   * Garante uma única confirmação automática por montagem do componente.
+   *
+   * Em desenvolvimento, o React 18 (Strict Mode) monta o componente duas vezes
+   * e o `useEffect` roda novamente. Como o token de verificação é de uso único,
+   * a segunda requisição consumiria o mesmo token e receberia HTTP 400, fazendo
+   * a tela cair em "Link inválido ou expirado" logo depois de um sucesso.
+   *
+   * A guarda cobre apenas a execução automática: o botão "Tentar novamente" e o
+   * reenvio continuam chamando a função diretamente.
+   */
+  const confirmacaoAutomaticaRef = useRef(false);
+
   useEffect(() => {
+    if (confirmacaoAutomaticaRef.current) return;
+    confirmacaoAutomaticaRef.current = true;
     confirmarToken();
   }, [confirmarToken]);
 

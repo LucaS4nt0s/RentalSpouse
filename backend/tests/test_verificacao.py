@@ -189,25 +189,57 @@ class TestConfirmacao:
         cliente = obter_cliente(db_session)
         assert cliente.email_verificado is True
 
-    def test_token_e_consumido_apos_o_uso(self, client, caixa_de_entrada, db_session):
+    def test_hash_permanece_para_permitir_reacesso_idempotente(
+        self, client, caixa_de_entrada, db_session
+    ):
         cadastrar_cliente(client)
         token = extrair_token(caixa_de_entrada[0])
 
         confirmar(client, token)
 
         cliente = obter_cliente(db_session)
-        assert cliente.verificacao_token_hash is None
-        assert cliente.verificacao_expira_em is None
+        assert cliente.email_verificado is True
+        # O hash é mantido como registro de reacesso (F5 / clique repetido no
+        # link) e só é descartado na primeira tentativa após expirar.
+        assert cliente.verificacao_token_hash == hash_token(token)
 
-    def test_token_nao_pode_ser_reutilizado(self, client, caixa_de_entrada):
+    def test_reacesso_ao_link_e_idempotente(self, client, caixa_de_entrada, db_session):
+        """Clicar duas vezes no link ou dar F5 não deve cair em tela de erro."""
         cadastrar_cliente(client)
         token = extrair_token(caixa_de_entrada[0])
 
-        assert confirmar(client, token).status_code == 200
+        primeira = confirmar(client, token)
         segunda = confirmar(client, token)
 
-        assert segunda.status_code == 400
-        assert "inválido" in segunda.json()["detail"].lower()
+        assert primeira.status_code == 200
+        assert segunda.status_code == 200
+        assert primeira.json()["mensagem"] == verificacao.MENSAGEM_CONFIRMADO
+        assert segunda.json()["mensagem"] == verificacao.MENSAGEM_JA_VERIFICADO
+        assert segunda.json()["email_verificado"] is True
+
+        db_session.expire_all()
+        assert obter_cliente(db_session).email_verificado is True
+
+    def test_reacesso_apos_expirar_o_token_ainda_e_idempotente(
+        self, client, caixa_de_entrada, db_session
+    ):
+        """Conta já confirmada não deve receber 'link expirado' ao reabrir o link."""
+        cadastrar_cliente(client)
+        token = extrair_token(caixa_de_entrada[0])
+        confirmar(client, token)
+
+        cliente = obter_cliente(db_session)
+        cliente.verificacao_expira_em = verificacao.utcnow() - timedelta(minutes=1)
+        db_session.commit()
+
+        resposta = confirmar(client, token)
+
+        assert resposta.status_code == 200
+        assert resposta.json()["mensagem"] == verificacao.MENSAGEM_JA_VERIFICADO
+
+        # Limpeza preguiçosa: o token já cumpriu seu papel e sai do banco
+        db_session.expire_all()
+        assert obter_cliente(db_session).verificacao_token_hash is None
 
     def test_token_invalido_retorna_400(self, client):
         resposta = confirmar(client, "token-que-nunca-existiu-na-base-123456")
@@ -257,13 +289,16 @@ class TestConfirmacao:
         assert obter_cliente(db_session, EMAIL_PRINCIPAL).email_verificado is True
         assert obter_cliente(db_session, EMAIL_SECUNDARIO).email_verificado is False
 
-    def test_confirmacao_idempotente_para_conta_ja_verificada(
+    def test_conta_verificada_por_outro_caminho_e_idempotente(
         self, client, caixa_de_entrada, db_session
     ):
+        """
+        Conta marcada como verificada por outro caminho (ex.: backoffice) e que
+        ainda possui token válido pendente: o link não deve gerar erro.
+        """
         cadastrar_cliente(client)
         token = extrair_token(caixa_de_entrada[0])
 
-        # Cenário de borda: conta já verificada que ainda possui token pendente
         cliente = obter_cliente(db_session)
         cliente.email_verificado = True
         db_session.commit()
@@ -271,7 +306,7 @@ class TestConfirmacao:
         resposta = confirmar(client, token)
 
         assert resposta.status_code == 200
-        assert resposta.json()["email_verificado"] is True
+        assert resposta.json()["mensagem"] == verificacao.MENSAGEM_JA_VERIFICADO
 
     def test_token_curto_demais_retorna_422(self, client):
         resposta = confirmar(client, "curto")
@@ -616,6 +651,135 @@ class TestGuardasDeNegocio:
         assert erro.value.mensagem == verificacao.MENSAGEM_TOKEN_INVALIDO
         assert erro.value.status_code == 400
 
-    def test_reenvio_com_email_em_branco_retorna_false(self, db_session):
-        assert verificacao.solicitar_reenvio(db_session, "   ") is False
-        assert verificacao.solicitar_reenvio(db_session, None) is False
+    def test_reenvio_com_email_em_branco_retorna_none(self, db_session):
+        assert verificacao.solicitar_reenvio(db_session, "   ") is None
+        assert verificacao.solicitar_reenvio(db_session, None) is None
+
+
+# ===========================================================================
+# Segurança: escape do conteúdo controlado pelo usuário no corpo do e-mail
+# ===========================================================================
+
+
+class TestSegurancaDoCorpoDoEmail:
+    """
+    O nome informado no cadastro é dado controlado pelo usuário e não pode
+    injetar marcação HTML no corpo do e-mail.
+    """
+
+    NOME_MALICIOSO = '<script>alert("xss")</script>'
+
+    def test_nome_e_escapado_no_corpo_html(self):
+        mensagem = email_service.montar_mensagem_verificacao(
+            destinatario=EMAIL_PRINCIPAL,
+            nome=f"{self.NOME_MALICIOSO} Silva",
+            token="abc123",
+            expira_horas=24,
+        )
+
+        corpo_html = mensagem.get_body(preferencelist=("html",)).get_content()
+
+        assert "<script>" not in corpo_html
+        assert "&lt;script&gt;" in corpo_html
+
+    def test_caracteres_especiais_nao_quebram_o_html(self):
+        mensagem = email_service.montar_mensagem_verificacao(
+            destinatario=EMAIL_PRINCIPAL,
+            nome='Tom&Jerry"aspas"',
+            token="abc123",
+            expira_horas=24,
+        )
+
+        corpo_html = mensagem.get_body(preferencelist=("html",)).get_content()
+
+        assert "Tom&amp;Jerry" in corpo_html
+        assert "&quot;aspas&quot;" in corpo_html
+
+    def test_texto_puro_preserva_o_nome_sem_entidades(self):
+        mensagem = email_service.montar_mensagem_verificacao(
+            destinatario=EMAIL_PRINCIPAL,
+            nome='Tom&Jerry"aspas"',
+            token="abc123",
+            expira_horas=24,
+        )
+
+        texto = mensagem.get_body(preferencelist=("plain",)).get_content()
+
+        # Em texto puro não há interpretação de marcação: o valor vai literal
+        assert 'Tom&Jerry"aspas"' in texto
+        assert "&amp;" not in texto
+
+    def test_link_aparece_escapado_no_href(self):
+        mensagem = email_service.montar_mensagem_verificacao(
+            destinatario=EMAIL_PRINCIPAL,
+            nome="Ana",
+            token="abc123",
+            expira_horas=24,
+        )
+
+        corpo_html = mensagem.get_body(preferencelist=("html",)).get_content()
+
+        assert 'href="http://localhost:3000/verificar-email?token=abc123"' in corpo_html
+
+
+# ===========================================================================
+# Contrato do envio em BackgroundTask
+# ===========================================================================
+
+
+class TestEmailPendenteEPreparacao:
+    """`preparar_verificacao` devolve dados primitivos e o envio é resiliente."""
+
+    def test_preparar_verificacao_devolve_apenas_dados_primitivos(
+        self, client, db_session
+    ):
+        cadastrar_cliente(client)
+
+        pendente = verificacao.preparar_verificacao(
+            db_session, obter_cliente(db_session)
+        )
+
+        assert isinstance(pendente, verificacao.EmailPendente)
+        assert pendente.destinatario == EMAIL_PRINCIPAL
+        assert pendente.nome == "Cliente Verificação"
+        assert isinstance(pendente.token, str) and pendente.token
+        assert pendente.expira_horas == verificacao.expiracao_horas()
+
+    def test_preparar_verificacao_substitui_o_token_anterior(self, client, db_session):
+        cadastrar_cliente(client)
+        cliente = obter_cliente(db_session)
+        hash_anterior = cliente.verificacao_token_hash
+
+        pendente = verificacao.preparar_verificacao(db_session, cliente)
+
+        assert cliente.verificacao_token_hash == hash_token(pendente.token)
+        assert cliente.verificacao_token_hash != hash_anterior
+
+    def test_envio_absorve_falha_de_smtp(self, monkeypatch):
+        monkeypatch.setenv("EMAIL_BACKEND", "smtp")
+        monkeypatch.delenv("SMTP_HOST", raising=False)
+        pendente = verificacao.EmailPendente(EMAIL_PRINCIPAL, "Ana", "abc123", 24)
+
+        # Não propaga exceção: a BackgroundTask não pode derrubar a requisição
+        assert verificacao.enviar_email_de_verificacao(pendente) is False
+
+    def test_envio_retorna_true_quando_entrega(self, caixa_de_entrada):
+        pendente = verificacao.EmailPendente(EMAIL_PRINCIPAL, "Ana", "abc123", 24)
+
+        assert verificacao.enviar_email_de_verificacao(pendente) is True
+        assert len(caixa_de_entrada) == 1
+        assert caixa_de_entrada[0]["To"] == EMAIL_PRINCIPAL
+
+    def test_iniciar_verificacao_emite_e_envia_na_mesma_chamada(
+        self, client, caixa_de_entrada, db_session
+    ):
+        cadastrar_cliente(client)
+        caixa_de_entrada.clear()
+
+        enviado, token = verificacao.iniciar_verificacao(
+            db_session, obter_cliente(db_session)
+        )
+
+        assert enviado is True
+        assert len(caixa_de_entrada) == 1
+        assert extrair_token(caixa_de_entrada[0]) == token

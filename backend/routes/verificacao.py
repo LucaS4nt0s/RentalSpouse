@@ -10,7 +10,7 @@ página do frontend lê o parâmetro do link recebido por e-mail e o submete via
 POST — assim o token não fica registrado nos logs de acesso do servidor.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -37,14 +37,20 @@ def confirmar_email(
 ):
     """Confirma o e-mail do cliente a partir do token recebido por e-mail."""
     try:
-        cliente = verificacao.confirmar_verificacao(db, payload.token)
+        cliente, ja_estava_verificado = verificacao.confirmar_verificacao(
+            db, payload.token
+        )
     except verificacao.ErroVerificacao as erro:
         raise HTTPException(status_code=erro.status_code, detail=erro.mensagem)
 
     return schemas.VerificacaoConfirmadaResponse(
         email=cliente.email,
         email_verificado=cliente.email_verificado,
-        mensagem="E-mail confirmado com sucesso! Sua conta está pronta para uso.",
+        mensagem=(
+            verificacao.MENSAGEM_JA_VERIFICADO
+            if ja_estava_verificado
+            else verificacao.MENSAGEM_CONFIRMADO
+        ),
     )
 
 
@@ -61,13 +67,19 @@ def confirmar_email(
 )
 def reenviar_email(
     payload: schemas.ReenviarVerificacaoRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """
     Reenvia o e-mail de verificação.
 
     Responde 202 Accepted independentemente de o e-mail existir na base: a
-    resposta não deve revelar se um endereço está cadastrado.
+    resposta não deve revelar se um endereço está cadastrado. O envio é
+    delegado a uma `BackgroundTask` para não segurar a resposta.
     """
-    verificacao.solicitar_reenvio(db, payload.email)
+    pendente = verificacao.solicitar_reenvio(db, payload.email)
+
+    if pendente is not None:
+        background_tasks.add_task(verificacao.enviar_email_de_verificacao, pendente)
+
     return schemas.MensagemResponse(mensagem=verificacao.MENSAGEM_REENVIO_SOLICITADO)

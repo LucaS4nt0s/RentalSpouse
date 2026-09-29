@@ -15,15 +15,22 @@ Fluxo implementado:
 
 Garantias de segurança:
 - O token nunca é persistido em claro (guarda-se apenas o hash SHA-256).
-- O token é de **uso único**: ao ser consumido, o hash é apagado do banco.
+- O token é de **uso único**: só consegue efetivar a confirmação uma vez. Depois
+  disso ele se torna um no-op idempotente (ver `confirmar_verificacao`) e é
+  descartado na primeira tentativa após expirar.
 - O token expira (padrão: 24 h, configurável por `EMAIL_VERIFICACAO_EXPIRA_HORAS`).
 - O reenvio respeita um intervalo mínimo (padrão: 60 s), evitando spam de e-mails.
+
+O envio de e-mail é preparado aqui e despachado pelas rotas, normalmente como
+`BackgroundTask` — por isso `EmailPendente` carrega apenas dados primitivos e
+nenhuma sessão de banco (a sessão da requisição já foi fechada quando a tarefa
+de fundo executa).
 """
 
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Tuple
+from typing import NamedTuple, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -44,7 +51,10 @@ MENSAGEM_TOKEN_INVALIDO = (
 MENSAGEM_TOKEN_EXPIRADO = (
     "Este link de verificação expirou. Solicite um novo e-mail."
 )
-MENSAGEM_JA_VERIFICADO = "Este e-mail já foi verificado anteriormente."
+MENSAGEM_CONFIRMADO = "E-mail confirmado com sucesso! Sua conta está pronta para uso."
+MENSAGEM_JA_VERIFICADO = (
+    "Este e-mail já estava confirmado — sua conta segue ativa, nada a fazer."
+)
 MENSAGEM_REENVIO_SOLICITADO = (
     "Se este e-mail estiver cadastrado e ainda não verificado, "
     "enviamos um novo link de confirmação."
@@ -58,6 +68,20 @@ class ErroVerificacao(Exception):
         self.mensagem = mensagem
         self.status_code = status_code
         super().__init__(mensagem)
+
+
+class EmailPendente(NamedTuple):
+    """
+    Dados necessários para despachar um e-mail de verificação.
+
+    Contém apenas valores primitivos de propósito: pode ser entregue a uma
+    `BackgroundTask` do FastAPI sem segurar a sessão de banco da requisição.
+    """
+
+    destinatario: str
+    nome: str
+    token: str
+    expira_horas: int
 
 
 # ---------------------------------------------------------------------------
@@ -104,59 +128,73 @@ def utcnow() -> datetime:
 # ---------------------------------------------------------------------------
 
 
-def _persistir_novo_token(cliente: models.Cliente) -> str:
+def preparar_verificacao(db: Session, cliente: models.Cliente) -> EmailPendente:
     """
-    Gera um token novo, grava o hash e a expiração na entidade (sem commit).
+    Gera um token novo, persiste o estado e devolve os dados do e-mail.
 
-    Retorna o token em claro, que existe apenas em memória durante o envio do
-    e-mail — depois disso ele é irrecuperável.
+    O token em claro existe apenas em memória: o banco recebe somente o hash.
+    Um novo token sempre substitui o anterior, invalidando links antigos.
     """
     token = gerar_token_verificacao()
     agora = utcnow()
+    horas = expiracao_horas()
 
     cliente.verificacao_token_hash = hash_token(token)
-    cliente.verificacao_expira_em = agora + timedelta(hours=expiracao_horas())
+    cliente.verificacao_expira_em = agora + timedelta(hours=horas)
     cliente.verificacao_enviada_em = agora
-    return token
+
+    db.add(cliente)
+    db.commit()
+    db.refresh(cliente)
+
+    return EmailPendente(
+        destinatario=cliente.email,
+        nome=cliente.nome,
+        token=token,
+        expira_horas=horas,
+    )
 
 
-def iniciar_verificacao(
-    db: Session, cliente: models.Cliente, persistir: bool = True
-) -> Tuple[bool, Optional[str]]:
+def enviar_email_de_verificacao(pendente: EmailPendente) -> bool:
     """
-    Gera um novo token de verificação, persiste o estado e envia o e-mail.
+    Despacha o e-mail de verificação, absorvendo falhas de transporte.
 
-    Retorna a tupla `(email_enviado, token)`. O token só é retornado para
-    facilitar diagnóstico/testes; a API nunca o expõe.
-
-    Uma falha de SMTP **não** invalida o cadastro: o erro é registrado e o
-    usuário pode solicitar um novo envio pelo endpoint de reenvio. Perder um
+    Pensada para rodar como `BackgroundTask`: nunca propaga exceção, apenas
+    registra o erro no log. Uma falha de SMTP **não** invalida o cadastro — o
+    token já está persistido e o usuário pode pedir um novo link. Perder um
     cadastro por indisponibilidade do provedor de e-mail seria pior do que
     exigir um reenvio.
+
+    Retorna `True` quando a mensagem foi efetivamente entregue ao transporte.
     """
-    token = _persistir_novo_token(cliente)
-
-    if persistir:
-        db.add(cliente)
-        db.commit()
-        db.refresh(cliente)
-
     try:
         email_service.enviar_email_verificacao(
-            destinatario=cliente.email,
-            nome=cliente.nome,
-            token=token,
-            expira_horas=expiracao_horas(),
+            destinatario=pendente.destinatario,
+            nome=pendente.nome,
+            token=pendente.token,
+            expira_horas=pendente.expira_horas,
         )
     except email_service.ErroEnvioEmail as erro:
         logger.error(
             "Não foi possível enviar o e-mail de verificação para %s: %s",
-            cliente.email,
+            pendente.destinatario,
             erro,
         )
-        return False, token
+        return False
+    return True
 
-    return True, token
+
+def iniciar_verificacao(
+    db: Session, cliente: models.Cliente
+) -> Tuple[bool, str]:
+    """
+    Conveniência síncrona: emite o token e envia o e-mail na mesma chamada.
+
+    Usada em scripts, testes e em qualquer contexto que não seja uma rota HTTP
+    (nas rotas o envio é delegado a uma `BackgroundTask`).
+    """
+    pendente = preparar_verificacao(db, cliente)
+    return enviar_email_de_verificacao(pendente), pendente.token
 
 
 # ---------------------------------------------------------------------------
@@ -170,12 +208,21 @@ def _limpar_token(cliente: models.Cliente) -> None:
     cliente.verificacao_expira_em = None
 
 
-def confirmar_verificacao(db: Session, token: str) -> models.Cliente:
+def confirmar_verificacao(db: Session, token: str) -> Tuple[models.Cliente, bool]:
     """
-    Consome um token de verificação e marca o e-mail do cliente como confirmado.
+    Confirma o e-mail do cliente a partir de um token.
 
-    Levanta `ErroVerificacao` quando o token não existe, já foi utilizado ou
-    expirou. A operação é idempotente para contas já verificadas.
+    Retorna a tupla `(cliente, ja_estava_verificado)`.
+
+    Levanta `ErroVerificacao` quando o token não existe ou expirou.
+
+    **Idempotência:** o token deixa de efetivar a confirmação após o primeiro
+    sucesso — a partir daí ele é um no-op que devolve a mesma resposta amigável.
+    Isso cobre o usuário que dá F5 na página ou clica duas vezes no link do
+    e-mail, situações em que responder "link inválido" seria enganoso. O hash é
+    mantido apenas como registro de reacesso e é descartado na primeira
+    tentativa após expirar (limpeza preguiçosa), de modo que o token não
+    permanece utilizável indefinidamente.
     """
     token = (token or "").strip()
     if not token:
@@ -190,28 +237,30 @@ def confirmar_verificacao(db: Session, token: str) -> models.Cliente:
     if cliente is None:
         raise ErroVerificacao(MENSAGEM_TOKEN_INVALIDO)
 
-    # Conta já confirmada anteriormente: nada a fazer, resposta amigável.
-    if cliente.email_verificado:
-        _limpar_token(cliente)
-        db.add(cliente)
-        db.commit()
-        return cliente
-
     expira_em = cliente.verificacao_expira_em
-    if expira_em is None or expira_em < utcnow():
+    expirado = expira_em is None or expira_em < utcnow()
+
+    # Reacesso idempotente: F5, clique repetido ou e-mail reaberto.
+    if cliente.email_verificado:
+        if expirado:
+            _limpar_token(cliente)
+            db.add(cliente)
+            db.commit()
+        return cliente, True
+
+    if expirado:
         _limpar_token(cliente)
         db.add(cliente)
         db.commit()
         raise ErroVerificacao(MENSAGEM_TOKEN_EXPIRADO)
 
     cliente.email_verificado = True
-    _limpar_token(cliente)
     db.add(cliente)
     db.commit()
     db.refresh(cliente)
 
     logger.info("E-mail verificado com sucesso: %s", cliente.email)
-    return cliente
+    return cliente, False
 
 
 # ---------------------------------------------------------------------------
@@ -219,19 +268,20 @@ def confirmar_verificacao(db: Session, token: str) -> models.Cliente:
 # ---------------------------------------------------------------------------
 
 
-def solicitar_reenvio(db: Session, email: str) -> bool:
+def solicitar_reenvio(db: Session, email: str) -> Optional[EmailPendente]:
     """
-    Reenvia o e-mail de verificação, respeitando o intervalo mínimo entre envios.
+    Prepara um novo e-mail de verificação, respeitando o intervalo mínimo.
 
-    Retorna `True` quando um novo e-mail foi efetivamente despachado.
+    Retorna o `EmailPendente` quando um novo e-mail deve ser despachado, ou
+    `None` quando nada deve sair. A rota é quem efetivamente envia (em
+    background) e quem responde, sempre com 202 genérico.
 
-    Por segurança, **não revela** se o e-mail está cadastrado: a rota responde
-    202 independentemente do resultado. Contas inexistentes e contas já
-    verificadas são simplesmente ignoradas.
+    Por segurança, **não revela** se o e-mail está cadastrado: contas
+    inexistentes e contas já verificadas resultam em `None`.
     """
     email_normalizado = (email or "").strip().lower()
     if not email_normalizado:
-        return False
+        return None
 
     cliente = (
         db.query(models.Cliente)
@@ -240,7 +290,7 @@ def solicitar_reenvio(db: Session, email: str) -> bool:
     )
 
     if cliente is None or cliente.email_verificado:
-        return False
+        return None
 
     # Intervalo mínimo entre reenvios (anti-spam). Em vez de responder 429 — o
     # que permitiria enumerar e-mails cadastrados — simplesmente não reenviamos.
@@ -253,7 +303,6 @@ def solicitar_reenvio(db: Session, email: str) -> bool:
                 cliente.email,
                 intervalo_reenvio_segundos(),
             )
-            return False
+            return None
 
-    enviado, _ = iniciar_verificacao(db, cliente)
-    return enviado
+    return preparar_verificacao(db, cliente)

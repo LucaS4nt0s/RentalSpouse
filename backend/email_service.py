@@ -20,6 +20,7 @@ Transportes disponíveis, selecionados pela variável de ambiente `EMAIL_BACKEND
 | `memoria` | Guarda as mensagens em memória (testes automatizados) |
 """
 
+import html
 import logging
 import os
 import smtplib
@@ -217,10 +218,23 @@ def montar_mensagem_verificacao(
     token: str,
     expira_horas: int,
 ) -> EmailMessage:
-    """Compõe a mensagem (texto puro + HTML) de confirmação de e-mail."""
+    """Compõe a mensagem (texto puro + HTML) de confirmação de e-mail.
+
+    O nome informado no cadastro é dado controlado pelo usuário e aceita
+    caracteres gerais. Por isso ele é **escapado** (`html.escape`) antes de ser
+    interpolado no corpo HTML, impedindo que um nome contendo marcação injete
+    tags no e-mail. No corpo em texto puro o nome vai sem escape, pois não há
+    interpretação de marcação. O link recebe o mesmo tratamento por rigor: é
+    montado a partir de uma URL base confiável e de um token URL-safe, mas
+    ainda assim é escapado para o atributo `href`.
+    """
     nome_remetente, endereco_remetente = remetente()
     link = montar_link_verificacao(token)
     primeiro_nome = (nome or "").split(" ")[0] or "olá"
+
+    # Somente para interpolação em HTML — nunca no corpo em texto puro.
+    primeiro_nome_html = html.escape(primeiro_nome)
+    link_html = html.escape(link, quote=True)
 
     mensagem = EmailMessage()
     mensagem["Subject"] = "Confirme seu e-mail na RentalSpouse"
@@ -237,7 +251,7 @@ def montar_mensagem_verificacao(
         "Equipe RentalSpouse"
     )
 
-    html = f"""\
+    corpo_html = f"""\
 <!DOCTYPE html>
 <html lang="pt-BR">
   <body style="margin:0;padding:24px;background:#f4f6fb;font-family:Arial,Helvetica,sans-serif;color:#0E1B2E;">
@@ -250,14 +264,14 @@ def montar_mensagem_verificacao(
               <td>
                 <h1 style="margin:0 0 16px;font-size:20px;color:#1E40AF;">Confirme seu e-mail</h1>
                 <p style="margin:0 0 16px;font-size:14px;line-height:22px;">
-                  Olá, <strong>{primeiro_nome}</strong>! Falta pouco para concluir seu cadastro
+                  Olá, <strong>{primeiro_nome_html}</strong>! Falta pouco para concluir seu cadastro
                   na RentalSpouse.
                 </p>
                 <p style="margin:0 0 24px;font-size:14px;line-height:22px;">
                   Confirme seu endereço de e-mail clicando no botão abaixo:
                 </p>
                 <p style="margin:0 0 24px;">
-                  <a href="{link}"
+                  <a href="{link_html}"
                      style="display:inline-block;background:#1D4ED8;color:#ffffff;text-decoration:none;
                             font-size:14px;font-weight:bold;padding:12px 24px;border-radius:12px;">
                     Confirmar meu e-mail
@@ -279,7 +293,7 @@ def montar_mensagem_verificacao(
 </html>"""
 
     mensagem.set_content(texto)
-    mensagem.add_alternative(html, subtype="html")
+    mensagem.add_alternative(corpo_html, subtype="html")
     return mensagem
 
 
