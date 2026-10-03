@@ -117,7 +117,7 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
       </div>
 
       {/* Ações do Card */}
-      <div className="mt-5 pt-3.5 border-t border-rental-border/60 flex items-center gap-2">
+      <div className="mt-5 pt-1 flex items-center gap-2">
         <button
           type="button"
           onClick={() =>

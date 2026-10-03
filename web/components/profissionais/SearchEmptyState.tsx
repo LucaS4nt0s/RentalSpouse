@@ -40,7 +40,7 @@ export const SearchEmptyState: React.FC<SearchEmptyStateProps> = ({
       </div>
 
       {onSelectSuggestedCategory && (
-        <div className="mt-8 pt-6 border-t border-rental-border/60 flex flex-col items-center">
+        <div className="mt-8 pt-3 flex flex-col items-center">
           <span className="text-xs font-semibold text-rental-muted flex items-center gap-1.5 mb-2.5">
             <Sparkles className="h-3.5 w-3.5 text-rental-primary" />
             Ou tente uma das categorias mais populares:

@@ -43,7 +43,7 @@ export const ProfessionalCardSkeleton: React.FC = () => {
       </div>
 
       {/* Botão de Ação */}
-      <div className="mt-5 pt-3.5 border-t border-rental-border/60">
+      <div className="mt-5 pt-1">
         <div className="h-10 w-full rounded-xl bg-rental-surface2" />
       </div>
     </div>

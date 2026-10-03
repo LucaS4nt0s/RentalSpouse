@@ -102,7 +102,7 @@ function ProfissionaisSearchContent() {
   return (
     <div className="flex min-h-screen flex-col bg-rental-bg text-rental-ink">
       {/* Header Global da Aplicação */}
-      <header className="sticky top-0 z-30 border-b border-rental-border/70 bg-rental-bg/90 backdrop-blur-md">
+      <header className="sticky top-0 z-30 bg-rental-bg/90 backdrop-blur-md">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 sm:px-6 py-4">
           <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-90">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rental-primary text-[var(--rs-primary-text)]">
@@ -313,7 +313,7 @@ function ProfissionaisSearchContent() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between gap-3 text-xs text-rental-muted pt-2 border-t border-rental-border/60">
+                  <div className="flex items-center justify-between gap-3 text-xs text-rental-muted pt-2">
                     <span className="flex items-center gap-1">
                       <Phone className="h-3.5 w-3.5 text-rental-primary" />
                       {selectedProfessional.phone || 'Telefone verificado'}
@@ -348,7 +348,7 @@ function ProfissionaisSearchContent() {
       )}
 
       {/* Footer */}
-      <footer className="mx-auto flex w-full max-w-6xl items-center justify-between border-t border-rental-border px-4 sm:px-6 py-6 text-xs text-rental-muted mt-12">
+      <footer className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 sm:px-6 py-6 text-xs text-rental-muted mt-12">
         <div className="flex items-center gap-4">
           <span>RentalSpouse © 2026</span>
           <span>•</span>

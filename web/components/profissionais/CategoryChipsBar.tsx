@@ -77,7 +77,7 @@ export const CategoryChipsBar: React.FC<CategoryChipsBarProps> = ({
     <div className="relative w-full group">
       {/* Botão e fade para a esquerda */}
       {canScrollLeft && (
-        <div className="absolute left-0 top-0 bottom-3.5 z-10 hidden sm:flex items-center pr-4 bg-gradient-to-r from-[var(--rs-bg)] via-[var(--rs-bg)]/80 to-transparent">
+        <div className="absolute left-0 top-0 bottom-2.5 z-10 hidden sm:flex items-center pr-4 bg-gradient-to-r from-[var(--rs-bg)] via-[var(--rs-bg)]/80 to-transparent">
           <button
             type="button"
             onClick={() => handleScroll('left')}
@@ -93,7 +93,7 @@ export const CategoryChipsBar: React.FC<CategoryChipsBarProps> = ({
       <div
         ref={scrollContainerRef}
         onScroll={checkScroll}
-        className="flex items-center gap-2.5 overflow-x-auto pb-3.5 pt-1.5 px-0.5 futuristic-scrollbar scroll-smooth"
+        className="flex items-center gap-2.5 overflow-x-auto pb-2.5 pt-1.5 px-0.5 futuristic-scrollbar scroll-smooth"
         role="toolbar"
         aria-label="Categorias de serviços"
       >
@@ -116,7 +116,7 @@ export const CategoryChipsBar: React.FC<CategoryChipsBarProps> = ({
 
       {/* Botão e fade para a direita */}
       {canScrollRight && (
-        <div className="absolute right-0 top-0 bottom-3.5 z-10 hidden sm:flex items-center pl-4 bg-gradient-to-l from-[var(--rs-bg)] via-[var(--rs-bg)]/80 to-transparent">
+        <div className="absolute right-0 top-0 bottom-2.5 z-10 hidden sm:flex items-center pl-4 bg-gradient-to-l from-[var(--rs-bg)] via-[var(--rs-bg)]/80 to-transparent">
           <button
             type="button"
             onClick={() => handleScroll('right')}

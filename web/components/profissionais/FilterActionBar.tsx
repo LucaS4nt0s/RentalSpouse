@@ -21,7 +21,7 @@ export const FilterActionBar: React.FC<FilterActionBarProps> = ({
   onClearAllFilters,
 }) => {
   return (
-    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 py-2 border-y border-rental-border/60">
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 py-1">
       {/* Filtro de Cidade */}
       <div className="flex items-center gap-2 max-w-xs">
         <div className="relative flex-1">
