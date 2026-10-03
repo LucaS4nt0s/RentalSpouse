@@ -117,4 +117,36 @@
     box-shadow: 0 0 0 1000px var(--rs-surface-2) inset !important;
     transition: background-color 5000s ease-in-out 0s;
   }
+
+  /* ==========================================================================
+     Barra de rolagem Minimalista e Futurista com Degradê
+     ========================================================================== */
+  .futuristic-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--rs-primary) var(--rs-surface-2);
+  }
+
+  .futuristic-scrollbar::-webkit-scrollbar {
+    height: 5px;
+    width: 5px;
+  }
+
+  .futuristic-scrollbar::-webkit-scrollbar-track {
+    background: var(--rs-surface-2);
+    border-radius: 9999px;
+    margin: 0 6px;
+    border: 1px solid var(--rs-border);
+  }
+
+  .futuristic-scrollbar::-webkit-scrollbar-thumb {
+    background: linear-gradient(90deg, var(--rs-primary) 0%, var(--rs-accent) 50%, #38bdf8 100%);
+    border-radius: 9999px;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.45);
+    transition: all 0.25s ease-in-out;
+  }
+
+  .futuristic-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(90deg, #38bdf8 0%, var(--rs-accent) 50%, var(--rs-primary) 100%);
+    box-shadow: 0 0 14px rgba(56, 189, 248, 0.75);
+  }
 }
