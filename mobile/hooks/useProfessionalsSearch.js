@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Platform } from 'react-native';
+import { filterProfessionalsIntelligent } from '../utils/searchMatching';
 
 const BASE_URL =
   Platform.OS === 'android'
@@ -8,7 +9,8 @@ const BASE_URL =
 
 /**
  * Hook de busca de profissionais para React Native / Expo.
- * Trata rigorosamente os 3 estados fundamentais de UI: Loading, Error (com Retry) e Data/Empty.
+ * Trata os 3 estados fundamentais de UI, busca inteligente com tolerância
+ * a erros ortográficos (estilo YouTube/Spotify) e insensibilidade a acentos.
  */
 export function useProfessionalsSearch({
   specialty = '',
@@ -17,6 +19,7 @@ export function useProfessionalsSearch({
   radius = null,
 } = {}) {
   const [data, setData] = useState([]);
+  const [detectedSuggestion, setDetectedSuggestion] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -38,12 +41,15 @@ export function useProfessionalsSearch({
       setError(null);
 
       try {
-        let endpoint = `${BASE_URL}/api/professionals?limit=50`;
-        if (specialty && specialty !== 'Todas') {
-          endpoint += `&specialty=${encodeURIComponent(specialty)}`;
-        }
-        if (city && city.trim()) {
-          endpoint += `&city=${encodeURIComponent(city.trim())}`;
+        let endpoint = `${BASE_URL}/api/professionals?limit=100`;
+        // Se não houver busca textual livre, repassa filtros para o backend
+        if (!q.trim()) {
+          if (specialty && specialty !== 'Todas') {
+            endpoint += `&specialty=${encodeURIComponent(specialty)}`;
+          }
+          if (city && city.trim()) {
+            endpoint += `&city=${encodeURIComponent(city.trim())}`;
+          }
         }
 
         const response = await fetch(endpoint, {
@@ -58,29 +64,17 @@ export function useProfessionalsSearch({
         }
 
         const result = await response.json();
-        let list = Array.isArray(result) ? result : [];
 
-        // Filtro textual no cliente por nome, especialidades ou biografia
-        if (q && q.trim()) {
-          const query = q.trim().toLowerCase();
-          list = list.filter((p) => {
-            const nameMatch = p.name?.toLowerCase().includes(query);
-            const bioMatch = p.bio?.toLowerCase().includes(query);
-            const specMatch = p.specialties?.some((s) =>
-              s.toLowerCase().includes(query)
-            );
-            const cityMatch = p.city?.toLowerCase().includes(query);
-            return nameMatch || bioMatch || specMatch || cityMatch;
-          });
-        }
-
-        // Filtro opcional de raio de atendimento
-        if (radius && Number(radius) > 0) {
-          const maxR = Number(radius);
-          list = list.filter((p) => (p.service_radius_km || 0) <= maxR);
-        }
+        // Motor de busca inteligente: acentos, aproximações (fuzzy), sinônimos e ranking
+        const { results: list, detectedSuggestion: sugg } = filterProfessionalsIntelligent(result, {
+          q,
+          specialty,
+          city,
+          radius,
+        });
 
         setData(list);
+        setDetectedSuggestion(sugg);
       } catch (err) {
         if (err.name === 'AbortError') {
           return;
@@ -116,6 +110,7 @@ export function useProfessionalsSearch({
     isRefreshing,
     error,
     isEmpty,
+    detectedSuggestion,
     refresh,
     retry,
   };

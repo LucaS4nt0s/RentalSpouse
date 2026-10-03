@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Send,
   MessageSquare,
+  Sparkles,
 } from 'lucide-react';
 import { ThemeToggle } from '../../components/ui/ThemeToggle';
 import { useAuth } from '../../context/AuthContext';
@@ -70,7 +71,7 @@ function ProfissionaisSearchContent() {
   }, [city]);
 
   // Hook central de busca e gestão dos 3 estados
-  const { data, isLoading, error, isEmpty, retry } = useProfessionalsSearch({
+  const { data, isLoading, error, isEmpty, detectedSuggestion, retry } = useProfessionalsSearch({
     specialty,
     city: debouncedCity,
     q: debouncedSearch,
@@ -175,6 +176,32 @@ function ProfissionaisSearchContent() {
           hasActiveFilters={hasActiveFilters}
           onClearAllFilters={handleClearAll}
         />
+
+        {/* Banner de Busca Inteligente / Sugestão de Aproximação (Estilo YouTube / Spotify) */}
+        {!isLoading && !error && searchInput.trim() && detectedSuggestion && (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-rental-primary/30 bg-rental-primary/5 p-4 text-xs sm:text-sm animate-fadeIn">
+            <div className="flex items-center gap-2.5 text-rental-ink flex-wrap">
+              <Sparkles className="h-4 w-4 text-rental-primary shrink-0" />
+              <span>
+                Mostrando resultados para <strong className="text-rental-primary font-semibold">"{searchInput}"</strong>
+                {detectedSuggestion.toLowerCase() !== searchInput.trim().toLowerCase() && (
+                  <span className="text-rental-muted">
+                    {' '}(aproximação com <strong className="text-rental-ink font-semibold">{detectedSuggestion}</strong>)
+                  </span>
+                )}
+              </span>
+            </div>
+            {specialty !== detectedSuggestion && (
+              <button
+                type="button"
+                onClick={() => setSpecialty(detectedSuggestion)}
+                className="text-xs font-bold text-rental-primary hover:underline flex items-center gap-1 shrink-0"
+              >
+                Filtrar apenas por {detectedSuggestion} →
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Seção 4: Grid com os 3 Estados Mandatórios */}
         <section aria-label="Catálogo de Profissionais" className="pt-2">

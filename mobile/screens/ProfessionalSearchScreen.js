@@ -17,6 +17,7 @@ import {
   SearchX,
   RefreshCw,
   WifiOff,
+  Sparkles,
 } from 'lucide-react-native';
 import { useAppTheme } from '../theme/ThemeContext';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
@@ -53,6 +54,7 @@ export const ProfessionalSearchScreen = ({ onNavigateBack }) => {
     isRefreshing,
     error,
     isEmpty,
+    detectedSuggestion,
     refresh,
     retry,
   } = useProfessionalsSearch({
@@ -189,6 +191,30 @@ export const ProfessionalSearchScreen = ({ onNavigateBack }) => {
           )}
         </View>
       </View>
+
+      {/* Banner de Sugestão / Aproximação Estilo Spotify / YouTube */}
+      {detectedSuggestion && searchQuery.trim() && !isLoading ? (
+        <View
+          style={[
+            styles.suggestionBanner,
+            {
+              backgroundColor: `${colors.primary}12`,
+              borderColor: `${colors.primary}35`,
+            },
+          ]}
+        >
+          <Sparkles size={14} color={colors.primary} />
+          <Text
+            style={[styles.suggestionText, { color: colors.textPrimary }]}
+            numberOfLines={2}
+          >
+            Buscando por "{searchQuery.trim()}" • Aproximação:{' '}
+            <Text style={{ fontWeight: '700', color: colors.primary }}>
+              {detectedSuggestion}
+            </Text>
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -467,5 +493,20 @@ const styles = StyleSheet.create({
   clearBtnText: {
     fontSize: 13,
     fontWeight: '700',
+  },
+  suggestionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  suggestionText: {
+    fontSize: 12,
+    flex: 1,
   },
 });

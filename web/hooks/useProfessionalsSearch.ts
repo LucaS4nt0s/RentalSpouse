@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Professional } from '../types/professional';
+import { filterProfessionalsIntelligent } from '../utils/searchMatching';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
@@ -16,13 +17,15 @@ export interface UseProfessionalsSearchResult {
   isLoading: boolean;
   error: string | null;
   isEmpty: boolean;
+  detectedSuggestion: string | null;
   refetch: () => void;
   retry: () => void;
 }
 
 /**
  * Hook central de busca de profissionais no RentalSpouse.
- * Implementa com rigor os 3 estados obrigatórios (Loading, Error com Retry, Success/Empty).
+ * Implementa com rigor os 3 estados obrigatórios e busca inteligente com tolerância
+ * a erros ortográficos (estilo YouTube/Spotify) e insensibilidade a acentos.
  */
 export function useProfessionalsSearch({
   specialty = '',
@@ -30,6 +33,7 @@ export function useProfessionalsSearch({
   q = '',
 }: UseProfessionalsSearchOptions): UseProfessionalsSearchResult {
   const [data, setData] = useState<Professional[]>([]);
+  const [detectedSuggestion, setDetectedSuggestion] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -47,13 +51,16 @@ export function useProfessionalsSearch({
 
     try {
       const url = new URL(`${API_BASE_URL}/api/professionals`);
-      if (specialty && specialty !== 'Todas') {
-        url.searchParams.set('specialty', specialty);
+      // Se não houver busca textual livre (q), aplica filtros no backend diretamente
+      if (!q.trim()) {
+        if (specialty && specialty !== 'Todas') {
+          url.searchParams.set('specialty', specialty);
+        }
+        if (city && city.trim()) {
+          url.searchParams.set('city', city.trim());
+        }
       }
-      if (city && city.trim()) {
-        url.searchParams.set('city', city.trim());
-      }
-      url.searchParams.set('limit', '50');
+      url.searchParams.set('limit', '100');
 
       const response = await fetch(url.toString(), {
         signal: controller.signal,
@@ -70,25 +77,16 @@ export function useProfessionalsSearch({
 
       const result: Professional[] = await response.json();
 
-      // Filtro de texto refinado no cliente (q) por nome, especialidades ou biografia
-      let filtered = Array.isArray(result) ? result : [];
-      if (q && q.trim()) {
-        const queryTerm = q.trim().toLowerCase();
-        filtered = filtered.filter((p) => {
-          const matchName = p.name?.toLowerCase().includes(queryTerm);
-          const matchBio = p.bio?.toLowerCase().includes(queryTerm);
-          const matchSpecialty = p.specialties?.some((s) =>
-            s.toLowerCase().includes(queryTerm)
-          );
-          const matchCity = p.city?.toLowerCase().includes(queryTerm);
-          return matchName || matchBio || matchSpecialty || matchCity;
-        });
-      }
+      // Motor de busca inteligente: acentos, aproximações (fuzzy), sinônimos e ranking
+      const { results: filtered, detectedSuggestion: sugg } = filterProfessionalsIntelligent(
+        result,
+        { q, specialty, city }
+      );
 
       setData(filtered);
+      setDetectedSuggestion(sugg);
       setIsLoading(false);
     } catch (err: unknown) {
-      // Ignora erro de abort proposital ao digitar ou trocar filtro rapidamente
       if (err instanceof DOMException && err.name === 'AbortError') {
         return;
       }
@@ -116,6 +114,7 @@ export function useProfessionalsSearch({
     isLoading,
     error,
     isEmpty,
+    detectedSuggestion,
     refetch: fetchData,
     retry: fetchData,
   };
