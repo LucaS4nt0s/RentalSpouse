@@ -41,6 +41,12 @@ export default function Home() {
         </Link>
 
         <div className="flex items-center gap-3">
+          <Link
+            href="/profissionais"
+            className="rounded-xl px-3 py-1.5 text-xs font-bold text-rental-primary hover:bg-rental-primary/10 transition-colors"
+          >
+            Buscar Profissionais
+          </Link>
           {isLoading ? (
             <div className="h-8 w-28 animate-pulse rounded-xl bg-rental-surface2" />
           ) : isAuthenticated && user ? (
@@ -100,40 +106,29 @@ export default function Home() {
           Tudo em um só lugar.
         </p>
 
-        <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+        <div className="mt-9 flex flex-col sm:flex-row gap-3">
+          <Link
+            href="/profissionais"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-rental-primary px-7 text-sm font-bold text-[var(--rs-primary-text)] shadow-primary transition-colors hover:bg-[var(--rs-primary-hover)]"
+          >
+            Buscar Profissionais
+            <ArrowRight className="h-4 w-4" />
+          </Link>
           {isAuthenticated && user ? (
-            <>
-              <Link
-                href="/entrar"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-rental-primary px-7 text-sm font-bold text-[var(--rs-primary-text)] shadow-primary transition-colors hover:bg-[var(--rs-primary-hover)]"
-              >
-                <User className="h-4 w-4" />
-                Minha Conta ({user.nome.split(' ')[0]})
-              </Link>
-              <Link
-                href="/cadastro/profissional"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
-              >
-                <Wrench className="h-4 w-4 text-rental-primary" />
-                Sou profissional
-              </Link>
-            </>
+            <Link
+              href="/cadastro/profissional"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+            >
+              <Wrench className="h-4 w-4 text-rental-primary" />
+              Sou profissional
+            </Link>
           ) : (
-            <>
-              <Link
-                href="/entrar?mode=signin"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-rental-primary px-7 text-sm font-bold text-[var(--rs-primary-text)] shadow-primary transition-colors hover:bg-[var(--rs-primary-hover)]"
-              >
-                Entrar na minha conta
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link
-                href="/entrar?mode=signup"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
-              >
-                Criar conta
-              </Link>
-            </>
+            <Link
+              href="/entrar?mode=signup"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+            >
+              Criar conta
+            </Link>
           )}
         </div>
 

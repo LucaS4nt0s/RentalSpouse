@@ -8,20 +8,21 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { Zap, ArrowRight, Wrench, ShieldCheck, Star, Clock } from 'lucide-react-native';
+import { Zap, ArrowRight, Wrench, ShieldCheck, Star, Clock, Search } from 'lucide-react-native';
 import { ThemeProvider, useAppTheme } from './theme/ThemeContext';
 import { ThemeToggle } from './components/ui/ThemeToggle';
 import { Button } from './components/ui/Button';
 import { EntrarScreen } from './screens/EntrarScreen';
 import { ClientRegisterScreen } from './screens/ClientRegisterScreen';
 import { ProfessionalRegisterScreen } from './screens/ProfessionalRegisterScreen';
+import { ProfessionalSearchScreen } from './screens/ProfessionalSearchScreen';
 
 const API_URL =
   Platform.OS === 'android'
     ? 'http://10.0.2.2:8000/api/hello'
     : 'http://localhost:8000/api/hello';
 
-function HomeScreen({ onNavigateEntrar, onNavigateProfessional }) {
+function HomeScreen({ onNavigateEntrar, onNavigateProfessional, onNavigateSearch }) {
   const { isDark, colors } = useAppTheme();
   const [status, setStatus] = useState(null);
   const [offline, setOffline] = useState(false);
@@ -92,9 +93,19 @@ function HomeScreen({ onNavigateEntrar, onNavigateProfessional }) {
             <Button
               variant="primary"
               size="lg"
-              onPress={onNavigateEntrar}
+              onPress={onNavigateSearch}
               style={styles.ctaPrimary}
-              rightIcon={<ArrowRight size={16} color={colors.primaryText} />}
+              leftIcon={<Search size={16} color={colors.primaryText} />}
+            >
+              Buscar Profissionais
+            </Button>
+
+            <Button
+              variant="glass"
+              size="lg"
+              onPress={onNavigateEntrar}
+              style={styles.ctaSecondary}
+              rightIcon={<ArrowRight size={16} color={colors.primary} />}
             >
               Entrar ou criar conta
             </Button>
@@ -152,8 +163,12 @@ function HomeScreen({ onNavigateEntrar, onNavigateProfessional }) {
 }
 
 function MainApp() {
-  const [screen, setScreen] = useState('home'); // 'home' | 'entrar' | 'clientRegister' | 'professional'
+  const [screen, setScreen] = useState('home'); // 'home' | 'search' | 'entrar' | 'clientRegister' | 'professional'
   const [professionalBack, setProfessionalBack] = useState('home');
+
+  if (screen === 'search') {
+    return <ProfessionalSearchScreen onNavigateBack={() => setScreen('home')} />;
+  }
 
   if (screen === 'entrar') {
     return (
@@ -178,6 +193,7 @@ function MainApp() {
 
   return (
     <HomeScreen
+      onNavigateSearch={() => setScreen('search')}
       onNavigateEntrar={() => setScreen('entrar')}
       onNavigateProfessional={() => {
         setProfessionalBack('home');

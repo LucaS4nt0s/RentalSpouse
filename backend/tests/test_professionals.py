@@ -153,8 +153,13 @@ class TestListAndFilterProfessionals:
         assert len(encanamento_resp.json()) == 1
         assert encanamento_resp.json()[0]["email"] == "prof2@test.com"
 
+        # Filtrando por eletrica (SEM ACENTO) deve encontrar Elétrica
+        sem_acento_resp = client.get("/api/professionals?specialty=eletrica")
+        assert len(sem_acento_resp.json()) == 1
+        assert sem_acento_resp.json()[0]["email"] == "prof1@test.com"
+
     def test_filter_by_city(self, client: TestClient):
-        """Deve filtrar profissionais por cidade."""
+        """Deve filtrar profissionais por cidade (com e sem acentos)."""
         p1 = dict(SAMPLE_PROFESSIONAL)
         p1["email"] = "sp@test.com"
         p1["city"] = "Campinas"
@@ -169,6 +174,12 @@ class TestListAndFilterProfessionals:
         assert resp.status_code == 200
         assert len(resp.json()) == 1
         assert resp.json()[0]["email"] == "sp@test.com"
+
+        # Filtrando por niteroi (SEM ACENTO) deve encontrar Niterói
+        resp_sem_acento = client.get("/api/professionals?city=niteroi")
+        assert resp_sem_acento.status_code == 200
+        assert len(resp_sem_acento.json()) == 1
+        assert resp_sem_acento.json()[0]["email"] == "rj@test.com"
 
     def test_pagination_skip_limit(self, client: TestClient):
         """Deve respeitar paginação via skip e limit no banco."""

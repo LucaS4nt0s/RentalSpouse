@@ -104,6 +104,16 @@ def create_professional(
     return professional
 
 
+import unicodedata
+
+def normalize_text(text: Optional[str]) -> str:
+    """Remove acentos, converte para minúsculas e normaliza espaços."""
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKD", str(text))
+    return "".join(c for c in normalized if not unicodedata.combining(c)).lower().strip()
+
+
 @router.get("", response_model=List[ProfessionalRead], summary="Listar profissionais")
 @profissionais_router.get("", response_model=List[ProfessionalRead], include_in_schema=False)
 def list_professionals(
@@ -117,28 +127,26 @@ def list_professionals(
 ):
     """
     Lista profissionais cadastrados ativos, com suporte a busca e filtros por
-    especialidade, cidade e paginação.
+    especialidade, cidade e paginação de forma insensível a maiúsculas e acentos.
     """
     query = db.query(models.Professional).filter(models.Professional.is_active.is_(True))
-
-    if city:
-        query = query.filter(models.Professional.city.ilike(f"%{city.strip()}%"))
-
-    if not specialty:
-        return (
-            query.order_by(models.Professional.id.asc())
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
-
-    target_spec = specialty.strip().lower()
     professionals = query.order_by(models.Professional.id.asc()).all()
-    filtered = [
-        p
-        for p in professionals
-        if any(target_spec in (s.lower() if isinstance(s, str) else "") for s in (p.specialties or []))
-    ]
+
+    filtered = professionals
+    if city:
+        target_city = normalize_text(city)
+        filtered = [
+            p for p in filtered
+            if target_city in normalize_text(p.city)
+        ]
+
+    if specialty:
+        target_spec = normalize_text(specialty)
+        filtered = [
+            p
+            for p in filtered
+            if any(target_spec in normalize_text(s) for s in (p.specialties or []))
+        ]
 
     return filtered[skip : skip + limit]
 
