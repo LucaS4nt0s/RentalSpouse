@@ -1,23 +1,24 @@
 """
 Camada de transporte de e-mail transacional do RentalSpouse.
 
-Responsabilidade única: **entregar** uma mensagem de e-mail. Nenhuma regra de
-negócio de verificação vive aqui — o ciclo de vida do token é responsabilidade
-de `verificacao.py`.
+Responsabilidade única: **entregar** uma mensagem de e-mail com alta
+resiliência, conformidade com RFCs anti-spam e observabilidade estruturada.
+Nenhuma regra de negócio de verificação vive aqui — o ciclo de vida do token
+é responsabilidade de `verificacao.py`.
 
 Decisão arquitetural (AI_RULES.md § 1): este módulo usa **exclusivamente a
-biblioteca padrão** (`smtplib` + `email.message`), portanto **não introduz
+biblioteca padrão** (`smtplib` + `email.message` + `ssl`), portanto **não introduz
 nenhuma dependência nova** ao `requirements.txt`. Como as rotas do backend são
 funções `def` síncronas, o FastAPI as executa em threadpool — logo o `smtplib`
 bloqueante não trava o event loop.
 
 Transportes disponíveis, selecionados pela variável de ambiente `EMAIL_BACKEND`:
 
-| Valor     | Uso                                              |
-|-----------|--------------------------------------------------|
-| `console` | Padrão em desenvolvimento: registra o e-mail no log |
-| `smtp`    | Envio real via SMTP (produção / Mailpit em Docker) |
-| `memoria` | Guarda as mensagens em memória (testes automatizados) |
+| Valor     | Uso                                                    |
+|-----------|--------------------------------------------------------|
+| `console` | Padrão em desenvolvimento: registra o e-mail no log    |
+| `smtp`    | Envio real via SMTP (produção / Mailpit em Docker)     |
+| `memoria` | Guarda as mensagens em memória (testes automatizados)  |
 """
 
 import html
@@ -25,10 +26,12 @@ import logging
 import os
 import smtplib
 import ssl
+import time
+from dataclasses import dataclass
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
-from typing import List, Protocol, Tuple
-from urllib.parse import quote, urlparse
+from typing import List, Optional, Protocol, Tuple
+from urllib.parse import quote
 
 logger = logging.getLogger("rentalspouse.email")
 
@@ -37,6 +40,49 @@ BACKEND_PADRAO = "console"
 
 class ErroEnvioEmail(Exception):
     """Erro ao transportar uma mensagem de e-mail."""
+
+
+def mascarar_email(email: str) -> str:
+    """
+    Mascaramento seguro de e-mail para logs e auditoria em conformidade com a LGPD.
+
+    Exemplos:
+        'usuario@exemplo.com' -> 'u***o@exemplo.com'
+        'ab@exemplo.com'      -> 'a*@exemplo.com'
+        ''                    -> '***'
+    """
+    if not email or "@" not in email:
+        return "***"
+    usuario, dominio = email.split("@", 1)
+    if len(usuario) <= 2:
+        usuario_mascarado = f"{usuario[0]}*" if usuario else "*"
+    else:
+        usuario_mascarado = f"{usuario[0]}***{usuario[-1]}"
+    return f"{usuario_mascarado}@{dominio}"
+
+
+def _parse_int_seguro(
+    valor: Optional[str], padrao: int, minimo: int = 1, maximo: Optional[int] = None
+) -> int:
+    """Converte string para inteiro de forma defensiva com limites seguros."""
+    if not valor:
+        return padrao
+    try:
+        num = int(str(valor).strip())
+        if num < minimo:
+            return padrao
+        if maximo is not None and num > maximo:
+            return padrao
+        return num
+    except (ValueError, TypeError):
+        return padrao
+
+
+def _parse_bool_seguro(valor: Optional[str], padrao: bool = False) -> bool:
+    """Converte valor de ambiente em booleano estrito."""
+    if valor is None:
+        return padrao
+    return str(valor).strip().lower() in ("1", "true", "yes", "on", "sim")
 
 
 # ---------------------------------------------------------------------------
@@ -88,8 +134,46 @@ class TransporteMemoria:
         self._caixa.append(mensagem)
 
 
+@dataclass(frozen=True)
+class ConfiguracaoSmtp:
+    """Configuração imutável, validada e defensiva para transporte SMTP."""
+
+    host: str
+    porta: int = 587
+    usuario: str = ""
+    senha: str = ""
+    usar_tls: bool = True
+    usar_ssl: bool = False
+    timeout: int = 10
+    max_tentativas: int = 3
+    backoff_inicial: float = 0.5
+
+    @classmethod
+    def do_ambiente(cls) -> "ConfiguracaoSmtp":
+        host = os.getenv("SMTP_HOST", "").strip()
+        porta = _parse_int_seguro(os.getenv("SMTP_PORT"), padrao=587, minimo=1, maximo=65535)
+        usar_ssl = _parse_bool_seguro(os.getenv("SMTP_USE_SSL"), padrao=(porta == 465))
+        usar_tls = _parse_bool_seguro(os.getenv("SMTP_USE_TLS"), padrao=True)
+        timeout = _parse_int_seguro(os.getenv("SMTP_TIMEOUT"), padrao=10, minimo=1, maximo=120)
+        max_tentativas = _parse_int_seguro(os.getenv("SMTP_MAX_RETRIES"), padrao=3, minimo=1, maximo=10)
+
+        return cls(
+            host=host,
+            porta=porta,
+            usuario=os.getenv("SMTP_USER", "").strip(),
+            senha=os.getenv("SMTP_PASSWORD", ""),
+            usar_tls=usar_tls,
+            usar_ssl=usar_ssl,
+            timeout=timeout,
+            max_tentativas=max_tentativas,
+        )
+
+
 class TransporteSmtp:
-    """Transporte real via SMTP (suporta STARTTLS na porta 587 e SSL/TLS direto na porta 465)."""
+    """
+    Transporte resiliente via SMTP com suporte a STARTTLS (porta 587),
+    SSL/TLS direto (porta 465), retries com backoff exponencial e métricas de latência.
+    """
 
     def __init__(
         self,
@@ -100,6 +184,8 @@ class TransporteSmtp:
         usar_tls: bool,
         timeout: int,
         usar_ssl: bool = False,
+        max_tentativas: int = 3,
+        backoff_inicial: float = 0.5,
     ) -> None:
         self.host = host
         self.porta = porta
@@ -109,32 +195,91 @@ class TransporteSmtp:
         self.timeout = timeout
         # Se usar_ssl não for explícito, infere SSL direto se a porta for 465
         self.usar_ssl = usar_ssl or (porta == 465)
+        self.max_tentativas = max(1, max_tentativas)
+        self.backoff_inicial = max(0.01, backoff_inicial)
+
+    def _executar_disparo(self, mensagem: EmailMessage) -> None:
+        """Executa um ciclo pontual de conexão e entrega SMTP."""
+        if self.usar_ssl:
+            contexto_ssl = ssl.create_default_context()
+            with smtplib.SMTP_SSL(
+                self.host,
+                self.porta,
+                timeout=self.timeout,
+                context=contexto_ssl,
+            ) as smtp:
+                smtp.ehlo()
+                if self.usuario:
+                    smtp.login(self.usuario, self.senha)
+                smtp.send_message(mensagem)
+        else:
+            with smtplib.SMTP(self.host, self.porta, timeout=self.timeout) as smtp:
+                smtp.ehlo()
+                if self.usar_tls:
+                    smtp.starttls()
+                    smtp.ehlo()
+                if self.usuario:
+                    smtp.login(self.usuario, self.senha)
+                smtp.send_message(mensagem)
 
     def enviar(self, mensagem: EmailMessage) -> None:
-        try:
-            if self.usar_ssl:
-                contexto_ssl = ssl.create_default_context()
-                with smtplib.SMTP_SSL(
-                    self.host,
-                    self.porta,
-                    timeout=self.timeout,
-                    context=contexto_ssl,
-                ) as smtp:
-                    smtp.ehlo()
-                    if self.usuario:
-                        smtp.login(self.usuario, self.senha)
-                    smtp.send_message(mensagem)
-            else:
-                with smtplib.SMTP(self.host, self.porta, timeout=self.timeout) as smtp:
-                    smtp.ehlo()
-                    if self.usar_tls:
-                        smtp.starttls()
-                        smtp.ehlo()
-                    if self.usuario:
-                        smtp.login(self.usuario, self.senha)
-                    smtp.send_message(mensagem)
-        except (smtplib.SMTPException, OSError) as erro:
-            raise ErroEnvioEmail(f"Falha ao enviar e-mail via SMTP: {erro}") from erro
+        """
+        Entrega a mensagem com política de retries exponenciais para falhas transitórias.
+
+        Erros definitivos de autenticação (535) falham imediatamente (fail-fast).
+        Falhas de I/O de rede ou timeouts sofrem retries com backoff exponencial.
+        """
+        destinatario_mascarado = mascarar_email(str(mensagem.get("To", "")))
+        msg_id = str(mensagem.get("Message-ID", "(sem-id)"))
+        ultima_excecao: Optional[Exception] = None
+
+        for tentativa in range(1, self.max_tentativas + 1):
+            inicio = time.perf_counter()
+            try:
+                self._executar_disparo(mensagem)
+                duracao_ms = (time.perf_counter() - inicio) * 1000
+                logger.info(
+                    "E-mail entregue com sucesso via SMTP para %s em %.2fms (tentativa %d/%d, ID: %s)",
+                    destinatario_mascarado,
+                    duracao_ms,
+                    tentativa,
+                    self.max_tentativas,
+                    msg_id,
+                )
+                return
+            except smtplib.SMTPAuthenticationError as erro:
+                # Erro definitivo: credencial inválida não se resolve com retry
+                logger.error(
+                    "Falha irrecuperável de autenticação SMTP para %s: %s",
+                    destinatario_mascarado,
+                    erro,
+                )
+                raise ErroEnvioEmail(f"Falha de autenticação SMTP: {erro}") from erro
+            except (smtplib.SMTPException, OSError) as erro:
+                ultima_excecao = erro
+                if tentativa < self.max_tentativas:
+                    espera = self.backoff_inicial * (2 ** (tentativa - 1))
+                    logger.warning(
+                        "Falha transitória no envio SMTP para %s (tentativa %d/%d: %s). "
+                        "Nova tentativa em %.2fs...",
+                        destinatario_mascarado,
+                        tentativa,
+                        self.max_tentativas,
+                        erro,
+                        espera,
+                    )
+                    time.sleep(espera)
+                else:
+                    logger.error(
+                        "Esgotadas as %d tentativas de envio SMTP para %s. Último erro: %s",
+                        self.max_tentativas,
+                        destinatario_mascarado,
+                        erro,
+                    )
+
+        raise ErroEnvioEmail(
+            f"Falha ao enviar e-mail via SMTP após {self.max_tentativas} tentativas: {ultima_excecao}"
+        ) from ultima_excecao
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +315,8 @@ def app_base_url() -> str:
 
 
 def remetente() -> Tuple[str, str]:
-    """Retorna (nome, endereço) do remetente dos e-mails transacionais.
+    """
+    Retorna (nome, endereço) do remetente dos e-mails transacionais.
 
     Caso o endereço padrão seja um domínio fictício (ex.: .local) ou vazio,
     e houver um SMTP_USER configurado com formato de e-mail, adota o SMTP_USER
@@ -202,26 +348,21 @@ def obter_transporte() -> TransporteEmail:
         return TransporteMemoria(_CAIXA_DE_SAIDA)
 
     if backend == "smtp":
-        host = os.getenv("SMTP_HOST", "").strip()
-        if not host:
+        cfg = ConfiguracaoSmtp.do_ambiente()
+        if not cfg.host:
             raise ErroEnvioEmail(
                 "EMAIL_BACKEND=smtp exige a variável de ambiente SMTP_HOST."
             )
-        porta = int(os.getenv("SMTP_PORT", "587"))
-        usar_ssl = os.getenv("SMTP_USE_SSL", "false").strip().lower() in (
-            "1",
-            "true",
-            "yes",
-        )
         return TransporteSmtp(
-            host=host,
-            porta=porta,
-            usuario=os.getenv("SMTP_USER", "").strip(),
-            senha=os.getenv("SMTP_PASSWORD", ""),
-            usar_tls=os.getenv("SMTP_USE_TLS", "true").strip().lower()
-            in ("1", "true", "yes"),
-            timeout=int(os.getenv("SMTP_TIMEOUT", "10")),
-            usar_ssl=usar_ssl,
+            host=cfg.host,
+            porta=cfg.porta,
+            usuario=cfg.usuario,
+            senha=cfg.senha,
+            usar_tls=cfg.usar_tls,
+            timeout=cfg.timeout,
+            usar_ssl=cfg.usar_ssl,
+            max_tentativas=cfg.max_tentativas,
+            backoff_inicial=cfg.backoff_inicial,
         )
 
     if backend != "console":
@@ -254,20 +395,19 @@ def montar_mensagem_verificacao(
     token: str,
     expira_horas: int,
 ) -> EmailMessage:
-    """Compõe a mensagem (texto puro + HTML) de confirmação de e-mail.
+    """
+    Compõe a mensagem transacional (texto puro + HTML) com headers anti-spam RFC 5322.
 
-    O nome informado no cadastro é dado controlado pelo usuário e aceita
-    caracteres gerais. Por isso ele é **escapado** (`html.escape`) antes de ser
-    interpolado no corpo HTML, impedindo que um nome contendo marcação injete
-    tags no e-mail. No corpo em texto puro o nome vai sem escape, pois não há
-    interpretação de marcação. O link recebe o mesmo tratamento por rigor: é
-    montado a partir de uma URL base confiável e de um token URL-safe, mas
-    ainda assim é escapado para o atributo `href`.
+    Headers incluídos para máxima entregabilidade em provedores reais (Gmail, Outlook):
+    - `Date`: carimbo UTC/Local padronizado (RFC 5322)
+    - `Message-ID`: identificador único por domínio do remetente
+    - `Auto-Submitted`: marcação de mensagem gerada por sistema
+    - `Reply-To`: canal de resposta para atendimento ao usuário
+    - `X-Mailer`: identificação do software emissor
     """
     nome_remetente, endereco_remetente = remetente()
     link = montar_link_verificacao(token)
     primeiro_nome_puro = (nome or "").split(" ")[0] or "olá"
-    # Somente para interpolação em HTML — nunca no corpo em texto puro.
     primeiro_nome_html = html.escape(primeiro_nome_puro)
     link_html = html.escape(link, quote=True)
 
@@ -285,6 +425,11 @@ def montar_mensagem_verificacao(
 
     mensagem["Message-ID"] = make_msgid(domain=dominio)
     mensagem["Auto-Submitted"] = "auto-generated"
+    mensagem["X-Mailer"] = "RentalSpouse Transacional/1.0"
+
+    reply_to = (os.getenv("EMAIL_REPLY_TO") or "").strip() or endereco_remetente
+    if reply_to and "@" in reply_to:
+        mensagem["Reply-To"] = reply_to
 
     texto = (
         f"Olá, {primeiro_nome_puro}!\n\n"
@@ -358,12 +503,15 @@ def enviar_email_verificacao(
     expira_horas: int,
 ) -> None:
     """
-    Compõe e transporta o e-mail de verificação.
+    Compõe a mensagem de confirmação e a entrega através do transporte ativo.
 
-    Propaga `ErroEnvioEmail` em caso de falha — cabe à camada de serviço decidir
-    se o erro é fatal ou se deve ser apenas registrado.
+    Levanta `ErroEnvioEmail` se a entrega falhar após todas as tentativas.
     """
-    mensagem = montar_mensagem_verificacao(destinatario, nome, token, expira_horas)
     transporte = obter_transporte()
+    mensagem = montar_mensagem_verificacao(
+        destinatario=destinatario,
+        nome=nome,
+        token=token,
+        expira_horas=expira_horas,
+    )
     transporte.enviar(mensagem)
-    logger.info("E-mail de verificação enviado para %s", destinatario)
