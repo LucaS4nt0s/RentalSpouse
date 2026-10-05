@@ -442,3 +442,135 @@ class TestAdditionalCoverageEdgeCases:
         resp = client.get(f"/api/professionals/{prof_id}/documents/{doc_id}/download")
         assert resp.status_code == 400
         assert "Caminho de arquivo inválido" in resp.json()["detail"]
+
+
+class TestDocumentSecurityAndIntegrity:
+    """Testes adicionais de controle de acesso, integridade de magic bytes e remoção de diretório."""
+
+    def test_upload_invalid_magic_bytes_rejected(self, client: TestClient, temp_storage, created_professional):
+        """Arquivo com extensão .pdf mas conteúdo em texto puro deve ser rejeitado por assinatura inválida."""
+        prof_id = created_professional["id"]
+        fake_pdf = b"conteudo em texto puro que nao e pdf"
+        files = {"file": ("falso.pdf", io.BytesIO(fake_pdf), "application/pdf")}
+        response = client.post(
+            f"/api/professionals/{prof_id}/documents",
+            data={"document_type": "photo_id"},
+            files=files,
+        )
+        assert response.status_code == 400
+        assert "assinatura inválida" in response.json()["detail"]
+
+    def test_upload_webp_with_valid_magic_bytes(self, client: TestClient, temp_storage, created_professional):
+        """Arquivo WebP válido deve passar na validação de magic bytes."""
+        prof_id = created_professional["id"]
+        webp_bytes = b"RIFF\x14\x00\x00\x00WEBPVP8 " + b"\x00" * 10
+        files = {"file": ("foto.webp", io.BytesIO(webp_bytes), "image/webp")}
+        response = client.post(
+            f"/api/professionals/{prof_id}/documents",
+            data={"document_type": "profile_photo"},
+            files=files,
+        )
+        assert response.status_code == 201
+        assert response.json()["mime_type"] == "image/webp"
+
+    def test_download_document_access_control(self, client: TestClient, temp_storage, created_professional, db_session):
+        """
+        Valida que administradores e o próprio dono podem baixar o documento,
+        enquanto outros usuários recebem 403 Forbidden.
+        """
+        from security import create_access_token, hash_senha
+
+        prof_id = created_professional["id"]
+        prof_email = created_professional["email"]
+
+        # Cria admin
+        admin = models.User(
+            name="Admin Test",
+            email="admin.docs@rentalspouse.com",
+            hashed_password=hash_senha("Admin@123456"),
+            role="admin",
+            is_active=True,
+        )
+        # Cria dono
+        owner = models.User(
+            name="Dono Prof",
+            email=prof_email,
+            hashed_password=hash_senha("Prof@123456"),
+            role="professional",
+            is_active=True,
+        )
+        # Cria outro usuário
+        other = models.User(
+            name="Outro User",
+            email="outro@rentalspouse.com",
+            hashed_password=hash_senha("Outro@123456"),
+            role="client",
+            is_active=True,
+        )
+        db_session.add_all([admin, owner, other])
+        db_session.commit()
+
+        token_admin = create_access_token({"sub": admin.email, "role": "admin"})
+        token_owner = create_access_token({"sub": owner.email, "role": "professional"})
+        token_other = create_access_token({"sub": other.email, "role": "client"})
+
+        upload_resp = client.post(
+            f"/api/professionals/{prof_id}/documents",
+            data={"document_type": "photo_id"},
+            files={"file": ("rg.pdf", io.BytesIO(DUMMY_PDF_BYTES), "application/pdf")},
+        )
+        doc_id = upload_resp.json()["id"]
+
+        # Admin baixa -> 200
+        r_admin = client.get(
+            f"/api/professionals/{prof_id}/documents/{doc_id}/download",
+            headers={"Authorization": f"Bearer {token_admin}"},
+        )
+        assert r_admin.status_code == 200
+
+        # Dono baixa -> 200
+        r_owner = client.get(
+            f"/api/professionals/{prof_id}/documents/{doc_id}/download",
+            headers={"Authorization": f"Bearer {token_owner}"},
+        )
+        assert r_owner.status_code == 200
+
+        # Outro usuário baixa -> 403 Forbidden
+        r_other = client.get(
+            f"/api/professionals/{prof_id}/documents/{doc_id}/download",
+            headers={"Authorization": f"Bearer {token_other}"},
+        )
+        assert r_other.status_code == 403
+        assert "Acesso restrito" in r_other.json()["detail"]
+
+    def test_delete_professional_directory_cleans_folder(self, temp_storage):
+        """Garante que delete_professional_directory remove a pasta inteira do profissional."""
+        prof_dir = temp_storage / "12345"
+        prof_dir.mkdir(parents=True, exist_ok=True)
+        (prof_dir / "sample.txt").write_text("arquivo")
+        assert prof_dir.is_dir()
+
+        result = storage.delete_professional_directory(12345)
+        assert result is True
+        assert not prof_dir.exists()
+
+    def test_upload_concurrency_integrity_error_handling(self, client: TestClient, temp_storage, created_professional, monkeypatch):
+        """Simula falha de concorrência com IntegrityError e verifica rollback com remoção do arquivo novo."""
+        from sqlalchemy.exc import IntegrityError
+
+        prof_id = created_professional["id"]
+
+        def mock_commit(*args, **kwargs):
+            raise IntegrityError("mock unique violation", orig=Exception("unique"), params={})
+
+        monkeypatch.setattr("sqlalchemy.orm.Session.commit", mock_commit)
+
+        files = {"file": ("doc.pdf", io.BytesIO(DUMMY_PDF_BYTES), "application/pdf")}
+        response = client.post(
+            f"/api/professionals/{prof_id}/documents",
+            data={"document_type": "photo_id"},
+            files=files,
+        )
+        assert response.status_code == 409
+        assert "Já existe um documento" in response.json()["detail"]
+

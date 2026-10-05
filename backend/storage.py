@@ -20,6 +20,16 @@ ALLOWED_MIME_TYPES: Set[str] = {
 }
 
 
+# Assinaturas binárias (magic bytes) para validação de integridade de arquivos
+MAGIC_SIGNATURES: dict[str, list[bytes]] = {
+    ".pdf": [b"%PDF-"],
+    ".png": [b"\x89PNG\r\n\x1a\n"],
+    ".jpg": [b"\xff\xd8\xff"],
+    ".jpeg": [b"\xff\xd8\xff"],
+    ".webp": [b"RIFF"],
+}
+
+
 def get_storage_root() -> Path:
     """Retorna o caminho absoluto do diretório raiz de armazenamento de documentos."""
     upload_dir = os.getenv("DOCUMENTS_UPLOAD_DIR", DEFAULT_UPLOAD_DIR)
@@ -45,10 +55,10 @@ def sanitize_filename(filename: str) -> str:
 def validate_document_file(
     filename: Optional[str],
     mime_type: Optional[str],
-    file_size: int,
+    file_or_content: int | bytes,
 ) -> None:
     """
-    Valida formato, tipo MIME e tamanho do arquivo enviado.
+    Valida formato, tipo MIME, tamanho e assinatura binária (magic bytes) do arquivo enviado.
     Levanta ValueError caso o arquivo viole alguma das regras.
     """
     if not filename or not filename.strip():
@@ -59,6 +69,13 @@ def validate_document_file(
         raise ValueError(
             f"Extensão '{ext}' não suportada. Extensões permitidas: {', '.join(sorted(ALLOWED_EXTENSIONS))}."
         )
+
+    if isinstance(file_or_content, (bytes, bytearray)):
+        file_size = len(file_or_content)
+        content: Optional[bytes] = bytes(file_or_content)
+    else:
+        file_size = int(file_or_content)
+        content = None
 
     if file_size <= 0:
         raise ValueError("O arquivo enviado está vazio (0 bytes).")
@@ -73,6 +90,19 @@ def validate_document_file(
         if normalized_mime not in ALLOWED_MIME_TYPES:
             raise ValueError(
                 f"Tipo MIME '{mime_type}' não permitido. Formatos aceitos: PDF e imagens (JPEG, PNG, WebP)."
+            )
+
+    # Validação de magic bytes quando os bytes do arquivo são fornecidos
+    if content is not None:
+        signatures = MAGIC_SIGNATURES.get(ext, [])
+        if ext == ".webp":
+            is_valid_magic = content.startswith(b"RIFF") and len(content) >= 12 and content[8:12] == b"WEBP"
+        else:
+            is_valid_magic = any(content.startswith(sig) for sig in signatures)
+
+        if not is_valid_magic:
+            raise ValueError(
+                f"O conteúdo binário do arquivo não corresponde à extensão '{ext}' declarada (assinatura inválida)."
             )
 
 
@@ -134,3 +164,22 @@ def delete_document_file(relative_path: str) -> bool:
         return False
     except Exception:
         return False
+
+
+def delete_professional_directory(professional_id: int) -> bool:
+    """
+    Exclui o diretório de documentos do profissional e todos os arquivos contidos,
+    garantindo que não fiquem pastas órfãs no filesystem.
+    """
+    try:
+        root = get_storage_root()
+        prof_dir = (root / str(professional_id)).resolve()
+        if prof_dir.is_dir() and prof_dir != root:
+            prof_dir.relative_to(root)
+            import shutil
+            shutil.rmtree(prof_dir, ignore_errors=True)
+            return True
+        return False
+    except Exception:
+        return False
+

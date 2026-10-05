@@ -92,8 +92,26 @@ O sistema **RentalSpouse** adota a arquitetura de **Monorepo Modularizado**, sep
 | `city` | String(100) | Nullable | Cidade base de atendimento |
 | `state` | String(2) | Nullable | Unidade Federativa (UF) |
 | `is_active` | Boolean | Default True, Not Null | Status de ativação na plataforma |
+| `approval_status` | String(50) | Default 'pending_approval', Not Null, Index | Status de moderação (`pending_approval`, `approved`, `rejected`) |
+| `approval_notes` | Text | Nullable | Observações e parecer da moderação |
+| `approved_at` | DateTime | Nullable | Data/hora da aprovação |
+| `approved_by_id` | Integer | Nullable | ID do administrador que realizou a moderação |
 | `created_at` | DateTime | Default UTC Now, Not Null | Timestamp de cadastro |
 | `updated_at` | DateTime | Default UTC Now, Auto Update | Timestamp da última alteração |
+
+### Tabela: `professional_documents`
+| Coluna | Tipo | Restrições | Descrição |
+| :--- | :--- | :--- | :--- |
+| `id` | Integer | Primary Key, Auto Increment | Identificador único do documento |
+| `professional_id` | Integer | ForeignKey('professionals.id', CASCADE), Not Null, Index | ID do profissional associado |
+| `document_type` | String(50) | Not Null, Index | Tipo do documento (`photo_id`, `proof_of_residence`, etc.) |
+| `file_name` | String(255) | Not Null | Nome original sanitizado do arquivo |
+| `file_path` | String(500) | Not Null | Caminho relativo seguro do arquivo no filesystem |
+| `file_size` | Integer | Not Null | Tamanho do arquivo em bytes |
+| `mime_type` | String(100) | Not Null | Tipo MIME do arquivo (`application/pdf`, `image/png`, etc.) |
+| `uploaded_at` | DateTime | Default UTC Now, Not Null | Data e hora do envio |
+
+*Restrições de integridade:* Chave única composta `uq_professional_document_type(professional_id, document_type)` para garantir atomicidade.
 
 ---
 
@@ -112,11 +130,15 @@ O sistema **RentalSpouse** adota a arquitetura de **Monorepo Modularizado**, sep
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/clientes` | Pública | Cadastro de novos clientes com validações estritas |
 
-### Profissionais
+### Profissionais e Documentos
 | Método | Rota | Autenticação | Descrição |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/professionals` | Pública | Cadastro de novo profissional com validações |
 | `GET` | `/api/professionals` | Pública | Lista profissionais com paginação e filtros |
 | `GET` | `/api/professionals/{id}` | Pública | Detalhes de um profissional por ID |
 | `PUT` | `/api/professionals/{id}` | Pública | Atualiza dados cadastrais de um profissional |
-| `DELETE` | `/api/professionals/{id}` | Pública | Remove o cadastro de um profissional |
+| `DELETE` | `/api/professionals/{id}` | Pública | Remove o cadastro de um profissional e seus arquivos físicos |
+| `POST` | `/api/professionals/{id}/documents` | Pública / Autorizada | Upload multipart de documento probatório |
+| `GET` | `/api/professionals/{id}/documents` | Pública / Autorizada | Resumo da documentação e status de completude |
+| `GET` | `/api/professionals/{id}/documents/{doc_id}/download` | Autorizada (Admin ou Dono) | Download e conferência do arquivo binário |
+| `DELETE` | `/api/professionals/{id}/documents/{doc_id}` | Autorizada (Admin ou Dono) | Exclusão do documento e remoção física do disco |

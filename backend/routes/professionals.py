@@ -15,6 +15,7 @@ from schemas import (
     ProfessionalRead,
     ProfessionalUpdate,
 )
+from security import get_optional_current_user
 import storage
 
 router = APIRouter(prefix="/api/professionals", tags=["Profissionais"])
@@ -211,6 +212,7 @@ def delete_professional(
     # Remove também os arquivos físicos de documentos do profissional
     for doc in professional.documents:
         storage.delete_document_file(doc.file_path)
+    storage.delete_professional_directory(professional.id)
 
     db.delete(professional)
     db.commit()
@@ -267,7 +269,7 @@ async def upload_professional_document(
 
     content = await file.read()
     try:
-        storage.validate_document_file(file.filename, file.content_type, len(content))
+        storage.validate_document_file(file.filename, file.content_type, content)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -308,8 +310,16 @@ async def upload_professional_document(
         )
         db.add(doc)
 
-    db.commit()
-    db.refresh(doc)
+    try:
+        db.commit()
+        db.refresh(doc)
+    except IntegrityError:
+        db.rollback()
+        storage.delete_document_file(rel_path)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Já existe um documento do tipo '{clean_doc_type}' cadastrado para este profissional.",
+        )
 
     return ProfessionalDocumentRead(
         id=doc.id,
@@ -397,9 +407,12 @@ def download_professional_document(
     professional_id: int,
     document_id: int,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_optional_current_user),
 ):
     """
     Retorna o arquivo binário do documento para visualização ou download.
+    Garante controle de acesso: apenas administradores ou o próprio profissional
+    possuem permissão para baixar documentos sensíveis quando autenticados.
     """
     professional = (
         db.query(models.Professional)
@@ -410,6 +423,13 @@ def download_professional_document(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Profissional não encontrado.",
+        )
+
+    # Controle de autorização
+    if current_user and current_user.role != models.UserRole.ADMIN.value and current_user.email != professional.email:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso restrito: você não tem permissão para acessar este documento.",
         )
 
     doc = (
