@@ -1,4 +1,5 @@
 from datetime import date, datetime
+import enum
 import re
 from typing import Any, List, Optional
 
@@ -514,13 +515,55 @@ class ProfessionalUpdate(BaseModel):
         return cleaned
 
 
+from models import DocumentType as DocumentTypeEnum, ProfessionalApprovalStatus as ProfessionalApprovalStatusEnum
+
+
 class ProfessionalRead(ProfessionalBase):
     """Schema para leitura e serialização do perfil do profissional."""
 
     id: int
     is_active: bool
+    approval_status: str = ProfessionalApprovalStatusEnum.PENDING.value
+    approval_notes: Optional[str] = None
+    approved_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+# ---------------------------------------------------------------------------
+# Schemas de Documentos do Profissional
+# ---------------------------------------------------------------------------
+
+
+class ProfessionalDocumentRead(BaseModel):
+    """Schema para visualização de metadados de documento anexado pelo profissional."""
+
+    id: int
+    professional_id: int
+    document_type: str
+    file_name: str
+    file_size: int
+    mime_type: str
+    uploaded_at: datetime
+    download_url: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ProfessionalDocumentsSummaryRead(BaseModel):
+    """Resumo da documentação enviada pelo profissional para validação cadastral."""
+
+    professional_id: int
+    approval_status: str
+    approval_notes: Optional[str] = None
+    has_photo_id: bool
+    has_proof_of_residence: bool
+    has_technical_certificate: bool
+    has_profile_photo: bool
+    is_complete: bool = Field(
+        ...,
+        description="Indica se os documentos mínimos obrigatórios (documento com foto e comprovante de residência) foram enviados.",
+    )
+    documents: List[ProfessionalDocumentRead]
 
