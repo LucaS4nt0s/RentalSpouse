@@ -24,6 +24,8 @@ import {
 } from '../../../components/sections/PasswordSection';
 import { Button } from '../../../components/ui/Button';
 import { ThemeToggle } from '../../../components/ui/ThemeToggle';
+import { ArrowLeft } from 'lucide-react';
+
 import {
   validateFullName,
   validateEmail,
@@ -41,11 +43,14 @@ import { cleanDigits, formatDateToISO } from '../../../utils/formatters';
 
 interface SuccessResponseData {
   id: number;
-  nome: string;
+  nome?: string;
+  name?: string;
   email: string;
-  cpf: string;
-  data_nascimento: string;
+  cpf?: string;
+  data_nascimento?: string;
   criado_em?: string;
+  created_at?: string;
+  is_active?: boolean;
 }
 
 export default function CadastroProfissionalPage() {
@@ -180,6 +185,7 @@ export default function CadastroProfissionalPage() {
       switch (field) {
         case 'nome_completo':
         case 'nome':
+        case 'name':
           nextPersonalErrors.nomeCompleto = message;
           break;
         case 'email':
@@ -192,19 +198,23 @@ export default function CadastroProfissionalPage() {
           nextPersonalErrors.dataNascimento = message;
           break;
         case 'telefone':
+        case 'phone':
           nextSkillsErrors.telefone = message;
           break;
         case 'especialidades':
+        case 'specialties':
           nextSkillsErrors.especialidades = message;
           break;
         case 'raio_atendimento_km':
         case 'raio_atendimento':
+        case 'service_radius_km':
           nextSkillsErrors.raioAtendimento = message;
           break;
         case 'bio':
           nextSkillsErrors.bio = message;
           break;
         case 'senha':
+        case 'password':
           nextPasswordErrors.senha = message;
           break;
         case 'confirmar_senha':
@@ -228,10 +238,12 @@ export default function CadastroProfissionalPage() {
           nextAddressErrors.bairro = message;
           break;
         case 'cidade':
+        case 'city':
           nextAddressErrors.cidade = message;
           break;
         case 'estado_uf':
         case 'estado':
+        case 'state':
           nextAddressErrors.estado_uf = message;
           break;
         default:
@@ -360,31 +372,21 @@ export default function CadastroProfissionalPage() {
     setIsSubmitting(true);
 
     const payload = {
-      nome: personalData.nomeCompleto.trim(),
+      name: personalData.nomeCompleto.trim(),
       email: personalData.email.trim().toLowerCase(),
-      cpf: cleanDigits(personalData.cpf),
-      data_nascimento: formatDateToISO(personalData.dataNascimento),
-      telefone: cleanDigits(skillsData.telefone),
-      especialidades: skillsData.especialidades,
-      raio_atendimento_km: skillsData.raioAtendimento,
+      phone: cleanDigits(skillsData.telefone) || undefined,
       bio: skillsData.bio.trim(),
-      senha: passwordData.senha,
-      confirmar_senha: passwordData.confirmacaoSenha,
-      endereco: {
-        cep: cleanDigits(addressData.cep),
-        logradouro: addressData.logradouro.trim(),
-        numero: addressData.numero.trim(),
-        complemento: addressData.complemento.trim() || undefined,
-        bairro: addressData.bairro.trim(),
-        cidade: addressData.cidade.trim(),
-        estado: addressData.estado_uf.trim().toUpperCase(),
-      },
+      service_radius_km: skillsData.raioAtendimento,
+      specialties: skillsData.especialidades,
+      city: addressData.cidade.trim() || undefined,
+      state: addressData.estado_uf.trim().toUpperCase() || undefined,
+      password: passwordData.senha,
     };
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
     try {
-      const response = await fetch(`${apiUrl}/api/profissionais`, {
+      const response = await fetch(`${apiUrl}/api/professionals`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -469,7 +471,7 @@ export default function CadastroProfissionalPage() {
             <p className="text-sm text-[#64748B] dark:text-[#93A5C0] max-w-md mx-auto leading-relaxed">
               Cadastro realizado com sucesso,{' '}
               <strong className="text-[#1D4ED8] dark:text-[var(--rs-primary)] font-semibold">
-                {successData.nome}
+                {successData.nome || successData.name}
               </strong>
               ! Seu perfil está pronto para receber clientes.
             </p>
@@ -493,7 +495,7 @@ export default function CadastroProfissionalPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 w-full pt-2">
-            <Link href="/" className="flex-1">
+            <Link href="/entrar?mode=signin" className="flex-1">
               <Button variant="primary" size="lg" className="w-full">
                 Ir para Minha Conta / Login
               </Button>
@@ -512,12 +514,22 @@ export default function CadastroProfissionalPage() {
 
       <div className="relative max-w-3xl mx-auto flex flex-col gap-6">
         <div className="flex items-center justify-between w-full">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold glass-card-subtle text-[#16263F] dark:text-[#93A5C0] hover:text-[#0E1B2E] dark:hover:text-[var(--rs-primary)] border border-slate-200/80 dark:border-white/10 transition-colors"
-          >
-            <span>← Início</span>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/entrar?mode=signup"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold glass-card-subtle text-[#16263F] dark:text-[#93A5C0] hover:text-[#0E1B2E] dark:hover:text-[var(--rs-primary)] border border-slate-200/80 dark:border-white/10 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Voltar</span>
+            </Link>
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold glass-card-subtle text-[#16263F] dark:text-[#93A5C0] hover:text-[#0E1B2E] dark:hover:text-[var(--rs-primary)] border border-slate-200/80 dark:border-white/10 transition-colors"
+            >
+              <span>Início</span>
+            </Link>
+          </div>
+
 
           <div className="flex items-center gap-2">
             <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#1D4ED8]/20 dark:bg-[#1D4ED8]/10 text-[#1E40AF] dark:text-[var(--rs-primary)] border border-[#1D4ED8]/30">
@@ -569,7 +581,7 @@ export default function CadastroProfissionalPage() {
 
             <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
               {globalError.type === 'conflict' && (
-                <Link href="/">
+                <Link href="/entrar?mode=signin">
                   <Button variant="outline" size="sm">
                     Ir para Login
                   </Button>

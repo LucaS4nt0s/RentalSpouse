@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 
 from schemas import ProfessionalUpdate
+import models
 
 SAMPLE_PROFESSIONAL = {
     "name": "Carlos Marido de Aluguel",
@@ -360,3 +361,97 @@ class TestUpdateAndRemoveProfessional:
         assert update.specialties is None
         assert update.name is None
         assert update.model_dump(exclude_unset=True) == {}
+
+    def test_create_professional_with_portuguese_aliases_and_nested_address(self, client: TestClient):
+        """Valida que o backend aceita o payload com nomes em pt-BR e endereço aninhado."""
+        payload = {
+            "nome": "Marcos Eletricista",
+            "email": "marcos.eletricista@email.com",
+            "telefone": "11987654321",
+            "bio": "Eletricista residencial com mais de 10 anos de experiência em reparos.",
+            "raio_atendimento_km": 25.0,
+            "especialidades": ["Elétrica", "Instalações"],
+            "senha": "senhaSegura123",
+            "confirmar_senha": "senhaSegura123",
+            "endereco": {
+                "cep": "01310100",
+                "logradouro": "Av Paulista",
+                "numero": "1000",
+                "bairro": "Bela Vista",
+                "cidade": "São Paulo",
+                "estado_uf": "SP",
+            },
+        }
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["name"] == "Marcos Eletricista"
+        assert data["phone"] == "11987654321"
+        assert data["service_radius_km"] == 25.0
+        assert data["city"] == "São Paulo"
+        assert data["state"] == "SP"
+
+    def test_create_and_list_via_profissionais_alias_route(self, client: TestClient):
+        """Valida que a rota /api/profissionais funciona como alias para /api/professionals."""
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["email"] = "alias.route@teste.com"
+
+        post_resp = client.post("/api/profissionais", json=payload)
+        assert post_resp.status_code == 201
+        prof_id = post_resp.json()["id"]
+
+        get_resp = client.get(f"/api/profissionais/{prof_id}")
+        assert get_resp.status_code == 200
+        assert get_resp.json()["email"] == "alias.route@teste.com"
+
+        list_resp = client.get("/api/profissionais")
+        assert list_resp.status_code == 200
+        assert any(p["id"] == prof_id for p in list_resp.json())
+
+    def test_create_professional_cross_table_email_conflict_with_user(self, client: TestClient, db_session):
+        """Valida que conflito de e-mail existente em users retorna 409 com mensagem apropriada."""
+        existing_user = models.User(
+            name="Usuário Existente",
+            email="conflito.user@teste.com",
+            hashed_password="dummy_password_hash",
+            role=models.UserRole.CLIENT.value,
+        )
+        db_session.add(existing_user)
+        db_session.commit()
+
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["email"] = "conflito.user@teste.com"
+        payload["password"] = "senhaSegura123"
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 409
+        assert "E-mail já cadastrado" in response.json()["detail"]
+
+    def test_create_professional_cross_table_email_conflict_with_cliente(self, client: TestClient, db_session):
+        """Valida que conflito de e-mail existente em clientes retorna 409 com mensagem apropriada."""
+        from datetime import date
+        cliente = models.Cliente(
+            nome="Cliente Existente",
+            email="conflito.cliente@teste.com",
+            cpf="12345678909",
+            data_nascimento=date(1995, 5, 20),
+            senha_hash="dummy_hash",
+            cep="01001000",
+            logradouro="Praça da Sé",
+            numero="100",
+            bairro="Sé",
+            cidade="São Paulo",
+            estado="SP",
+        )
+        db_session.add(cliente)
+        db_session.commit()
+
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["email"] = "conflito.cliente@teste.com"
+        payload["password"] = "senhaSegura123"
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 409
+        assert "E-mail já cadastrado" in response.json()["detail"]
+
+
