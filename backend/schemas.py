@@ -414,21 +414,7 @@ class ProfessionalUpdate(BaseModel):
         return cleaned
 
 
-class ProfessionalApprovalStatusEnum(str, enum.Enum):
-    """Status possíveis de aprovação cadastral de um profissional."""
-
-    PENDING = "pending_approval"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-
-
-class DocumentTypeEnum(str, enum.Enum):
-    """Tipos de documentos aceitos para análise cadastral."""
-
-    PHOTO_ID = "photo_id"
-    PROOF_OF_RESIDENCE = "proof_of_residence"
-    TECHNICAL_CERTIFICATE = "technical_certificate"
-    PROFILE_PHOTO = "profile_photo"
+from models import DocumentType as DocumentTypeEnum, ProfessionalApprovalStatus as ProfessionalApprovalStatusEnum
 
 
 class ProfessionalRead(ProfessionalBase):
@@ -482,9 +468,3 @@ class ProfessionalDocumentsSummaryRead(BaseModel):
     documents: List[ProfessionalDocumentRead]
 
 
-class ProfessionalDocumentDeleteResponse(BaseModel):
-    """Resposta após remoção de documento."""
-
-    mensagem: str
-    document_id: int
-    professional_id: int

@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -150,6 +150,9 @@ class ProfessionalDocument(Base):
     """Documento anexado pelo profissional para validação cadastral ou exibição de perfil."""
 
     __tablename__ = "professional_documents"
+    __table_args__ = (
+        UniqueConstraint("professional_id", "document_type", name="uq_professional_document_type"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     professional_id = Column(
