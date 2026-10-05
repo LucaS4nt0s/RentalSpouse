@@ -339,40 +339,18 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
           </View>
 
           <View style={styles.successBadge}>
-            <Text style={styles.successBadgeText}>
-              {successData.email_verificado
-                ? 'Cadastro Realizado com Sucesso'
-                : 'Aguardando Confirmação de E-mail'}
-            </Text>
+            <Text style={styles.successBadgeText}>Cadastro Realizado com Sucesso</Text>
           </View>
 
           <Text style={[styles.successTitle, { color: colors.textPrimary }]}>
-            {successData.email_verificado
-              ? 'Bem-vindo ao RentalSpouse!'
-              : 'Falta pouco!'}
+            Bem-vindo ao RentalSpouse!
           </Text>
           <Text style={[styles.successSubtitle, { color: colors.textSecondary }]}>
-            {successData.email_verificado ? (
-              <>
-                Olá,{' '}
-                <Text style={[styles.goldText, { color: colors.primary }]}>
-                  {successData.nome}
-                </Text>
-                ! Sua conta está pronta para solicitar manutenções e reparos.
-              </>
-            ) : (
-              <>
-                Olá,{' '}
-                <Text style={[styles.goldText, { color: colors.primary }]}>
-                  {successData.nome}
-                </Text>
-                ! Enviamos um link de confirmação para{' '}
-                <Text style={{ fontWeight: '700', color: colors.textPrimary }}>
-                  {successData.email}
-                </Text>
-                . Acesse sua caixa de entrada (ou pasta de spam) para validar seu e-mail antes do primeiro login.
-              </>
-            )}
+            Olá,{' '}
+            <Text style={[styles.goldText, { color: colors.primary }]}>
+              {successData.nome}
+            </Text>
+            ! Sua conta está pronta para solicitar manutenções e reparos.
           </Text>
 
           <View
@@ -395,17 +373,7 @@ export const ClientRegisterScreen = ({ onNavigateBack }) => {
             </View>
             <View style={styles.infoRowNoBorder}>
               <Text style={styles.infoLabel}>Status:</Text>
-              <Text
-                style={
-                  successData.email_verificado
-                    ? styles.activeStatusText
-                    : [styles.activeStatusText, { color: colors.primary }]
-                }
-              >
-                {successData.email_verificado
-                  ? 'Ativa & Verificada'
-                  : 'Pendente de Confirmação'}
-              </Text>
+              <Text style={styles.activeStatusText}>Ativa & Verificada</Text>
             </View>
           </View>
 

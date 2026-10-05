@@ -502,18 +502,6 @@ class TestConfiguracaoEmail:
         assert isinstance(transporte, email_service.TransporteSmtp)
         assert transporte.host == "localhost"
         assert transporte.porta == 1025
-        assert transporte.usar_ssl is False
-
-    def test_backend_smtp_com_ssl_configurado(self, monkeypatch):
-        monkeypatch.setenv("EMAIL_BACKEND", "smtp")
-        monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
-        monkeypatch.setenv("SMTP_PORT", "465")
-        monkeypatch.setenv("SMTP_USE_SSL", "true")
-
-        transporte = email_service.obter_transporte()
-        assert isinstance(transporte, email_service.TransporteSmtp)
-        assert transporte.usar_ssl is True
-        assert transporte.porta == 465
 
     def test_backend_desconhecido_cai_para_console(self, monkeypatch):
         monkeypatch.setenv("EMAIL_BACKEND", "transporte-inexistente")
@@ -541,29 +529,6 @@ class TestConfiguracaoEmail:
         assert "plain" in subtipos
         assert "html" in subtipos
         assert "Maria" in mensagem.get_body(preferencelist=("plain",)).get_content()
-
-    def test_mensagem_possui_cabecalhos_anti_spam(self):
-        mensagem = email_service.montar_mensagem_verificacao(
-            destinatario=EMAIL_PRINCIPAL,
-            nome="Carlos Teste",
-            token="xyz789",
-            expira_horas=24,
-        )
-        assert "Date" in mensagem
-        assert "Message-ID" in mensagem
-        assert mensagem["Auto-Submitted"] == "auto-generated"
-
-    def test_remetente_fallback_para_smtp_user(self, monkeypatch):
-        monkeypatch.setenv("EMAIL_FROM_ADDRESS", "nao-responda@rentalspouse.local")
-        monkeypatch.setenv("SMTP_USER", "real.sender@gmail.com")
-        nome, endereco = email_service.remetente()
-        assert endereco == "real.sender@gmail.com"
-
-    def test_remetente_preserva_endereco_customizado(self, monkeypatch):
-        monkeypatch.setenv("EMAIL_FROM_ADDRESS", "contato@rentalspouse.com")
-        monkeypatch.setenv("SMTP_USER", "outro.usuario@gmail.com")
-        nome, endereco = email_service.remetente()
-        assert endereco == "contato@rentalspouse.com"
 
     def test_mensagem_escapa_html_no_nome(self):
         mensagem = email_service.montar_mensagem_verificacao(
@@ -676,34 +641,6 @@ class TestTransportes:
         conexao = falso_smtp.__enter__.return_value
         conexao.starttls.assert_not_called()
         conexao.login.assert_not_called()
-        conexao.send_message.assert_called_once()
-
-    def test_transporte_smtp_ssl_direto_porta_465(self, monkeypatch):
-        monkeypatch.setenv("EMAIL_BACKEND", "smtp")
-        monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
-        monkeypatch.setenv("SMTP_PORT", "465")
-        monkeypatch.setenv("SMTP_USER", "usuario@gmail.com")
-        monkeypatch.setenv("SMTP_PASSWORD", "senha-app")
-        monkeypatch.setenv("SMTP_USE_SSL", "true")
-
-        falso_ssl = MagicMock()
-        with patch("smtplib.SMTP_SSL", return_value=falso_ssl) as construtor_ssl:
-            email_service.enviar_email_verificacao(
-                destinatario=EMAIL_PRINCIPAL,
-                nome="Cliente SSL",
-                token="token465",
-                expira_horas=24,
-            )
-
-        assert construtor_ssl.call_count == 1
-        args, kwargs = construtor_ssl.call_args
-        assert args[0] == "smtp.gmail.com"
-        assert args[1] == 465
-        assert kwargs["timeout"] == 10
-        assert "context" in kwargs
-
-        conexao = falso_ssl.__enter__.return_value
-        conexao.login.assert_called_once_with("usuario@gmail.com", "senha-app")
         conexao.send_message.assert_called_once()
 
 

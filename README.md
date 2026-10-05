@@ -263,7 +263,7 @@ Todo cliente criado por `POST /api/clientes` nasce com `email_verificado = false
 
 ### Visualizando os e-mails em desenvolvimento
 
-Por padrão (`EMAIL_BACKEND=console`) o e-mail é escrito no **log do backend** — o link de verificação aparece direto no terminal. Para uma caixa de entrada local em desenvolvimento:
+Por padrão (`EMAIL_BACKEND=console`) o e-mail é escrito no **log do backend** — o link de verificação aparece direto no terminal. Para uma caixa de entrada real:
 
 ```bash
 docker compose up -d mailpit
@@ -276,45 +276,9 @@ EMAIL_BACKEND=smtp
 SMTP_HOST=mailpit
 SMTP_PORT=1025
 SMTP_USE_TLS=false
-SMTP_USE_SSL=false
 ```
 
 A caixa de entrada fica em `http://localhost:8025`.
-
-### 🚀 Envio Real de E-mails (Gmail, Brevo, Provedores SMTP)
-
-Para disparar e-mails para caixas de entrada reais (Gmail, Outlook, caixas postais corporativas) e validar o link de ativação:
-
-1. Configure no `.env`:
-   - **Gmail** (com Senha de App Google):
-     ```env
-     EMAIL_BACKEND=smtp
-     SMTP_HOST=smtp.gmail.com
-     SMTP_PORT=587
-     SMTP_USER=seu-email@gmail.com
-     SMTP_PASSWORD=xxxx xxxx xxxx xxxx  # Senha de App de 16 caracteres
-     SMTP_USE_TLS=true
-     SMTP_USE_SSL=false
-     ```
-     *(Suporte também a SSL direto na porta 465 com `SMTP_USE_SSL=true`).*
-   - **Brevo / Sendinblue / Resend / SES**:
-     ```env
-     EMAIL_BACKEND=smtp
-     SMTP_HOST=smtp-relay.brevo.com
-     SMTP_PORT=587
-     SMTP_USER=seu-login-smtp
-     SMTP_PASSWORD=sua-chave-smtp
-     SMTP_USE_TLS=true
-     SMTP_USE_SSL=false
-     ```
-
-2. **Testar envio imediatamente via CLI**:
-   ```bash
-   python backend/scripts/testar_envio_email.py seu-email@exemplo.com
-   ```
-
-3. **Entregabilidade e Tratamento de Spam**:
-   O sistema injeta automaticamente cabeçalhos RFC 5322 (`Date`, `Message-ID`, `Auto-Submitted`) e fallback de remetente para maximizar a entregabilidade na Caixa de Entrada. Caso o e-mail seja recebido na pasta de Spam / Lixo Eletrônico, basta clicar no link ou botão de confirmação e marcar como "Não é spam" para validar a conta com sucesso.
 
 > ⚙️ Todas as variáveis relacionadas estão documentadas em `.env.example`: `APP_BASE_URL`, `EMAIL_BACKEND`, `EMAIL_FROM_*`, `EMAIL_VERIFICACAO_*` e `SMTP_*`.
 

@@ -24,11 +24,10 @@ import html
 import logging
 import os
 import smtplib
-import ssl
 from email.message import EmailMessage
-from email.utils import formataddr, formatdate, make_msgid
+from email.utils import formataddr
 from typing import List, Protocol, Tuple
-from urllib.parse import quote, urlparse
+from urllib.parse import quote
 
 logger = logging.getLogger("rentalspouse.email")
 
@@ -89,7 +88,7 @@ class TransporteMemoria:
 
 
 class TransporteSmtp:
-    """Transporte real via SMTP (suporta STARTTLS na porta 587 e SSL/TLS direto na porta 465)."""
+    """Transporte real via SMTP (com STARTTLS por padrão)."""
 
     def __init__(
         self,
@@ -99,7 +98,6 @@ class TransporteSmtp:
         senha: str,
         usar_tls: bool,
         timeout: int,
-        usar_ssl: bool = False,
     ) -> None:
         self.host = host
         self.porta = porta
@@ -107,32 +105,17 @@ class TransporteSmtp:
         self.senha = senha
         self.usar_tls = usar_tls
         self.timeout = timeout
-        # Se usar_ssl não for explícito, infere SSL direto se a porta for 465
-        self.usar_ssl = usar_ssl or (porta == 465)
 
     def enviar(self, mensagem: EmailMessage) -> None:
         try:
-            if self.usar_ssl:
-                contexto_ssl = ssl.create_default_context()
-                with smtplib.SMTP_SSL(
-                    self.host,
-                    self.porta,
-                    timeout=self.timeout,
-                    context=contexto_ssl,
-                ) as smtp:
+            with smtplib.SMTP(self.host, self.porta, timeout=self.timeout) as smtp:
+                smtp.ehlo()
+                if self.usar_tls:
+                    smtp.starttls()
                     smtp.ehlo()
-                    if self.usuario:
-                        smtp.login(self.usuario, self.senha)
-                    smtp.send_message(mensagem)
-            else:
-                with smtplib.SMTP(self.host, self.porta, timeout=self.timeout) as smtp:
-                    smtp.ehlo()
-                    if self.usar_tls:
-                        smtp.starttls()
-                        smtp.ehlo()
-                    if self.usuario:
-                        smtp.login(self.usuario, self.senha)
-                    smtp.send_message(mensagem)
+                if self.usuario:
+                    smtp.login(self.usuario, self.senha)
+                smtp.send_message(mensagem)
         except (smtplib.SMTPException, OSError) as erro:
             raise ErroEnvioEmail(f"Falha ao enviar e-mail via SMTP: {erro}") from erro
 
@@ -170,23 +153,11 @@ def app_base_url() -> str:
 
 
 def remetente() -> Tuple[str, str]:
-    """Retorna (nome, endereço) do remetente dos e-mails transacionais.
-
-    Caso o endereço padrão seja um domínio fictício (ex.: .local) ou vazio,
-    e houver um SMTP_USER configurado com formato de e-mail, adota o SMTP_USER
-    como remetente para evitar rejeições de envio (ex.: erro 550 por SPF/spoofing).
-    """
-    nome = (os.getenv("EMAIL_FROM_NAME") or "RentalSpouse").strip()
-    endereco = (os.getenv("EMAIL_FROM_ADDRESS") or "").strip()
-    smtp_user = (os.getenv("SMTP_USER") or "").strip()
-
-    if not endereco or endereco.endswith(".local"):
-        if "@" in smtp_user:
-            endereco = smtp_user
-        elif not endereco:
-            endereco = "nao-responda@rentalspouse.local"
-
-    return (nome, endereco)
+    """Retorna (nome, endereço) do remetente dos e-mails transacionais."""
+    return (
+        os.getenv("EMAIL_FROM_NAME", "RentalSpouse"),
+        os.getenv("EMAIL_FROM_ADDRESS", "nao-responda@rentalspouse.local"),
+    )
 
 
 def obter_transporte() -> TransporteEmail:
@@ -207,21 +178,14 @@ def obter_transporte() -> TransporteEmail:
             raise ErroEnvioEmail(
                 "EMAIL_BACKEND=smtp exige a variável de ambiente SMTP_HOST."
             )
-        porta = int(os.getenv("SMTP_PORT", "587"))
-        usar_ssl = os.getenv("SMTP_USE_SSL", "false").strip().lower() in (
-            "1",
-            "true",
-            "yes",
-        )
         return TransporteSmtp(
             host=host,
-            porta=porta,
+            porta=int(os.getenv("SMTP_PORT", "587")),
             usuario=os.getenv("SMTP_USER", "").strip(),
             senha=os.getenv("SMTP_PASSWORD", ""),
             usar_tls=os.getenv("SMTP_USE_TLS", "true").strip().lower()
             in ("1", "true", "yes"),
             timeout=int(os.getenv("SMTP_TIMEOUT", "10")),
-            usar_ssl=usar_ssl,
         )
 
     if backend != "console":
@@ -275,16 +239,6 @@ def montar_mensagem_verificacao(
     mensagem["Subject"] = "Confirme seu e-mail na RentalSpouse"
     mensagem["From"] = formataddr((nome_remetente, endereco_remetente))
     mensagem["To"] = destinatario
-    mensagem["Date"] = formatdate(localtime=True)
-
-    dominio = "rentalspouse.com"
-    if "@" in endereco_remetente:
-        dominio_candidato = endereco_remetente.split("@")[-1].strip()
-        if dominio_candidato and "." in dominio_candidato:
-            dominio = dominio_candidato
-
-    mensagem["Message-ID"] = make_msgid(domain=dominio)
-    mensagem["Auto-Submitted"] = "auto-generated"
 
     texto = (
         f"Olá, {primeiro_nome_puro}!\n\n"
@@ -292,8 +246,6 @@ def montar_mensagem_verificacao(
         "Confirme seu endereço de e-mail acessando o link abaixo:\n\n"
         f"{link}\n\n"
         f"Este link é de uso único e expira em {expira_horas} hora(s).\n\n"
-        "Dica: caso esta mensagem tenha caído na sua pasta de Spam ou Lixo Eletrônico, "
-        "marque-a como 'Não é spam' para receber futuras notificações com tranquilidade.\n\n"
         "Se você não realizou esse cadastro, basta ignorar esta mensagem.\n\n"
         "Equipe RentalSpouse"
     )
@@ -317,22 +269,15 @@ def montar_mensagem_verificacao(
                 <p style="margin:0 0 24px;font-size:14px;line-height:22px;">
                   Confirme seu endereço de e-mail clicando no botão abaixo:
                 </p>
-                <p style="margin:0 0 20px;">
+                <p style="margin:0 0 24px;">
                   <a href="{link_html}"
                      style="display:inline-block;background:#1D4ED8;color:#ffffff;text-decoration:none;
                             font-size:14px;font-weight:bold;padding:12px 24px;border-radius:12px;">
                     Confirmar meu e-mail
                   </a>
                 </p>
-                <p style="margin:0 0 20px;font-size:12px;line-height:18px;color:#64748B;">
-                  Se o botão não funcionar, copie e cole este link no navegador:<br/>
-                  <a href="{link_html}" style="color:#1D4ED8;word-break:break-all;">{link_html}</a>
-                </p>
                 <p style="margin:0 0 16px;font-size:12px;line-height:20px;color:#64748B;">
                   Este link é de uso único e expira em {expira_horas} hora(s).
-                </p>
-                <p style="margin:0 0 16px;font-size:12px;line-height:20px;color:#64748B;background:#F8FAFC;padding:12px;border-radius:8px;border:1px dashed #CBD5E1;">
-                  <strong>Dica:</strong> Se esta mensagem foi parar no Spam ou Lixo Eletrônico, marque-a como &ldquo;Não é spam&rdquo; para que os próximos e-mails de orçamentos e serviços cheguem diretamente à sua Caixa de Entrada.
                 </p>
                 <p style="margin:0;font-size:12px;line-height:20px;color:#64748B;">
                   Se você não realizou esse cadastro, basta ignorar esta mensagem.
