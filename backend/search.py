@@ -11,6 +11,7 @@ testes e PostgreSQL em produção) e testável sem subir a aplicação.
 
 import re
 import unicodedata
+from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -73,6 +74,23 @@ def clean_text(text: Optional[str]) -> str:
     return re.sub(r"\s+", " ", without_symbols).strip()
 
 
+# Lookup do catálogo indexado pela versão normalizada, para casar a especialidade
+# salva mesmo que o valor no banco venha sem acento ou em caixa diferente.
+_SYNONYMS_BY_NORMALIZED = {
+    clean_text(category): synonyms for category, synonyms in SPECIALTY_SYNONYMS.items()
+}
+
+
+def synonyms_for(specialty: Optional[str]) -> List[str]:
+    """Retorna os sinônimos canônicos de uma especialidade, tolerante a acento/caixa."""
+    return _SYNONYMS_BY_NORMALIZED.get(clean_text(specialty), [])
+
+
+# Limites defensivos para evitar custo quadrático descontrolado em buscas longas.
+MAX_QUERY_TOKENS = 12
+MAX_TOKEN_LENGTH = 40
+
+
 def damerau_levenshtein(a: str, b: str) -> int:
     """Distância de Damerau-Levenshtein (inserção, deleção, substituição e transposição)."""
     al, bl = len(a), len(b)
@@ -101,6 +119,7 @@ def damerau_levenshtein(a: str, b: str) -> int:
     return matrix[al][bl]
 
 
+@lru_cache(maxsize=32768)
 def calculate_similarity(a: str, b: str) -> float:
     """Similaridade normalizada entre duas strings no intervalo [0, 1]."""
     if a == b:
@@ -108,9 +127,14 @@ def calculate_similarity(a: str, b: str) -> float:
     max_len = max(len(a), len(b))
     if max_len == 0:
         return 1.0
+    # Poda: a distância é sempre >= diferença de tamanho. Se a diferença já
+    # ultrapassa o limiar usado pelo matching (0.75), o resultado seria 0.
+    if abs(len(a) - len(b)) > max_len * 0.25:
+        return 0.0
     return max(0.0, 1 - damerau_levenshtein(a, b) / max_len)
 
 
+@lru_cache(maxsize=32768)
 def is_fuzzy_word_match(query_word: str, target_word: str) -> Tuple[bool, float]:
     """Avalia se uma palavra da busca aproxima-se de uma palavra alvo com tolerância a erros."""
     if query_word == target_word:
@@ -119,6 +143,11 @@ def is_fuzzy_word_match(query_word: str, target_word: str) -> Tuple[bool, float]
         return False, 0.0
     if target_word.startswith(query_word) and len(query_word) >= 4:
         return True, 0.95
+
+    # Poda barata: a distância nunca é menor que a diferença de tamanho, então
+    # pares com tamanhos muito distantes não passariam do limiar e nem calculam a matriz.
+    if abs(len(query_word) - len(target_word)) > 2:
+        return False, 0.0
 
     dist = damerau_levenshtein(query_word, target_word)
     sim = 1 - dist / max(len(query_word), len(target_word))
@@ -159,15 +188,18 @@ def match_synonym_or_term(
         ):
             return True, 88, False
 
-    if len(clean_q) >= 4:
+    # Comparação da busca inteira só vale a pena para consultas curtas; para
+    # consultas longas o loop por token abaixo cobre a tolerância a erros.
+    if 4 <= len(clean_q) <= 40:
         sim = calculate_similarity(clean_q, clean_target)
         if sim >= 0.75:
             return True, round(sim * 85), True
-        for q_token in q_tokens:
-            if len(q_token) >= 4:
-                token_sim = calculate_similarity(q_token, clean_target)
-                if token_sim >= 0.78:
-                    return True, round(token_sim * 85), True
+
+    for q_token in q_tokens:
+        if len(q_token) >= 4:
+            token_sim = calculate_similarity(q_token, clean_target)
+            if token_sim >= 0.78:
+                return True, round(token_sim * 85), True
 
     return False, 0, False
 
@@ -232,8 +264,8 @@ def filter_professionals_intelligent(
 
     clean_specialty = clean_text(specialty)
     clean_city = clean_text(city)
-    clean_q = clean_text(q)
-    q_tokens = [t for t in clean_q.split() if t]
+    clean_q = clean_text(q)[:120]
+    q_tokens = [t[:MAX_TOKEN_LENGTH] for t in clean_q.split() if t][:MAX_QUERY_TOKENS]
 
     suggestion = find_best_category_suggestion(clean_q) if clean_q else None
     detected_suggestion = suggestion[0] if suggestion else None
@@ -255,6 +287,10 @@ def filter_professionals_intelligent(
 
         if clean_city:
             prof_city = clean_text(_field(prof, "city"))
+            # Profissionais sem cidade cadastrada não podem "casar" com a cidade
+            # buscada (evita que "" seja substring de qualquer termo).
+            if not prof_city:
+                continue
             is_city_match = (
                 prof_city == clean_city
                 or clean_city in prof_city
@@ -280,7 +316,7 @@ def filter_professionals_intelligent(
             if is_match and score > best_score:
                 best_score = score
 
-            for syn in SPECIALTY_SYNONYMS.get(spec, []):
+            for syn in synonyms_for(spec):
                 is_match, score, _ = match_synonym_or_term(syn, clean_q, q_tokens)
                 if is_match and score > best_score:
                     best_score = score

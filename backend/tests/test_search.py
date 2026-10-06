@@ -60,6 +60,12 @@ class TestSearchModule:
         assert search.find_best_category_suggestion("encanador")[0] == "Hidráulica"
         assert search.find_best_category_suggestion("reparo")[0] == "Reparos Gerais"
 
+    def test_sinonimos_por_especialidade_sem_acento_ou_caixa(self):
+        assert "torneira" in search.synonyms_for("Hidraulica")
+        assert "torneira" in search.synonyms_for("HIDRÁULICA")
+        assert "disjuntor" in search.synonyms_for("eletrica")
+        assert search.synonyms_for("Inexistente") == []
+
     def test_filtra_ranqueia_e_tolera_erros(self):
         profissionais = [
             {"id": 1, "name": "Carlos Silva", "bio": "Instalações elétricas", "specialties": ["Elétrica"], "city": "São Paulo"},
@@ -126,3 +132,49 @@ class TestIntelligentSearchAPI:
             resp = client.get("/api/professionals", params={"q": termo})
             assert resp.status_code == 200
             assert resp.json() == []
+
+    def test_sinonimo_funciona_com_especialidade_sem_acento(self, client: TestClient, db_session):
+        p = dict(SAMPLE)
+        p["email"] = "semacento@search.com"
+        p["name"] = "Paulo Reformas"
+        p["bio"] = "Atendimento residencial."
+        p["specialties"] = ["Hidraulica"]
+        p["city"] = "Santos"
+        client.post("/api/professionals", json=p)
+        _approve(db_session)
+
+        resp = client.get("/api/professionals", params={"q": "torneira"})
+        assert resp.status_code == 200
+        assert [x["email"] for x in resp.json()] == ["semacento@search.com"]
+
+    def test_cidade_com_q_exclui_profissional_sem_cidade(self, client: TestClient, db_session):
+        p1 = dict(SAMPLE)
+        p1["email"] = "comcidade@search.com"
+        p1["name"] = "Ana Hidráulica"
+        p1["bio"] = "Conserto de vazamentos."
+        p1["specialties"] = ["Hidráulica"]
+        p1["city"] = "Niterói"
+        client.post("/api/professionals", json=p1)
+
+        p2 = dict(SAMPLE)
+        p2["email"] = "semcidade@search.com"
+        p2["name"] = "Beto Hidráulica"
+        p2["bio"] = "Conserto de vazamentos."
+        p2["specialties"] = ["Hidráulica"]
+        p2["city"] = None
+        client.post("/api/professionals", json=p2)
+        _approve(db_session)
+
+        resp = client.get("/api/professionals", params={"q": "vazamentos", "city": "niteroi"})
+        assert resp.status_code == 200
+        assert [x["email"] for x in resp.json()] == ["comcidade@search.com"]
+
+    def test_specialty_todas_nao_filtra(self, client: TestClient, db_session):
+        self._criar_profissionais(client, db_session)
+        resp = client.get("/api/professionals", params={"specialty": "Todas"})
+        assert resp.status_code == 200
+        assert len(resp.json()) == 2
+
+    def test_q_acima_do_limite_retorna_422(self, client: TestClient):
+        resp = client.get("/api/professionals", params={"q": "a" * 200})
+        assert resp.status_code == 422

@@ -132,12 +132,16 @@ MAX_SEARCH_CANDIDATES = 2000
 @profissionais_router.get("", response_model=List[ProfessionalRead], include_in_schema=False)
 def list_professionals(
     q: Optional[str] = Query(
-        None, description="Busca textual por nome, bio ou especialidade"
+        None,
+        max_length=120,
+        description="Busca textual por nome, bio ou especialidade (máx. 120 caracteres)",
     ),
     specialty: Optional[str] = Query(
-        None, description="Filtra por especialidade do profissional"
+        None, max_length=100, description="Filtra por especialidade do profissional"
     ),
-    city: Optional[str] = Query(None, description="Filtra por cidade base"),
+    city: Optional[str] = Query(
+        None, max_length=100, description="Filtra por cidade base"
+    ),
     approval_status: Optional[str] = Query(
         models.ProfessionalApprovalStatus.APPROVED.value,
         description="Filtra por status de aprovação cadastral (padrão: approved; use 'all' para desativar filtro)",
@@ -170,7 +174,8 @@ def list_professionals(
             )
         )
 
-    if specialty and specialty.strip():
+    # "Todas" é o chip neutro do frontend e equivale a não filtrar por especialidade.
+    if specialty and specialty.strip() and specialty.strip().lower() != "todas":
         norm_spec = normalize_text(specialty)
         escaped_norm_spec = _escape_like(norm_spec)
         escaped_spec = _escape_like(specialty.strip())
