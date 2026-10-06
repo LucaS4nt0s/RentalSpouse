@@ -1,0 +1,9 @@
+{
+  "name": "@rentalspouse/shared-search",
+  "version": "1.0.0",
+  "description": "Motor de busca e similaridade inteligente unificado para RentalSpouse Web e Mobile",
+  "main": "index.js",
+  "module": "index.js",
+  "types": "index.d.ts",
+  "private": true
+}

@@ -51,14 +51,18 @@ export default function Home() {
             <div className="h-8 w-28 animate-pulse rounded-xl bg-rental-surface2" />
           ) : isAuthenticated && user ? (
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 text-xs font-semibold">
+              <Link
+                href="/entrar"
+                className="flex items-center gap-2 text-xs font-semibold hover:opacity-85 transition-opacity"
+                title="Minha Conta"
+              >
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-rental-primary/10 text-rental-primary">
                   <User className="h-4 w-4" />
                 </span>
                 <span className="hidden sm:inline font-bold text-rental-ink">
                   Olá, {user.nome.split(' ')[0]}
                 </span>
-              </div>
+              </Link>
               <button
                 type="button"
                 onClick={logout}
@@ -115,20 +119,37 @@ export default function Home() {
             <ArrowRight className="h-4 w-4" />
           </Link>
           {isAuthenticated && user ? (
-            <Link
-              href="/cadastro/profissional"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
-            >
-              <Wrench className="h-4 w-4 text-rental-primary" />
-              Sou profissional
-            </Link>
+            <>
+              <Link
+                href="/entrar"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+              >
+                <User className="h-4 w-4 text-rental-primary" />
+                Minha Conta ({user.nome.split(' ')[0]})
+              </Link>
+              <Link
+                href="/cadastro/profissional"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+              >
+                <Wrench className="h-4 w-4 text-rental-primary" />
+                Sou profissional
+              </Link>
+            </>
           ) : (
-            <Link
-              href="/entrar?mode=signup"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
-            >
-              Criar conta
-            </Link>
+            <>
+              <Link
+                href="/entrar?mode=signin"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+              >
+                Entrar na minha conta
+              </Link>
+              <Link
+                href="/entrar?mode=signup"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+              >
+                Criar conta
+              </Link>
+            </>
           )}
         </div>
 

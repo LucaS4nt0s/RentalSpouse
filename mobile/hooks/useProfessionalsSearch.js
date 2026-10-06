@@ -16,7 +16,6 @@ export function useProfessionalsSearch({
   specialty = '',
   city = '',
   q = '',
-  radius = null,
 } = {}) {
   const [data, setData] = useState([]);
   const [detectedSuggestion, setDetectedSuggestion] = useState(null);
@@ -41,15 +40,15 @@ export function useProfessionalsSearch({
       setError(null);
 
       try {
-        let endpoint = `${BASE_URL}/api/professionals?limit=100`;
-        // Se não houver busca textual livre, repassa filtros para o backend
-        if (!q.trim()) {
-          if (specialty && specialty !== 'Todas') {
-            endpoint += `&specialty=${encodeURIComponent(specialty)}`;
-          }
-          if (city && city.trim()) {
-            endpoint += `&city=${encodeURIComponent(city.trim())}`;
-          }
+        let endpoint = `${BASE_URL}/api/professionals?limit=50`;
+        if (specialty && specialty !== 'Todas') {
+          endpoint += `&specialty=${encodeURIComponent(specialty)}`;
+        }
+        if (city && city.trim()) {
+          endpoint += `&city=${encodeURIComponent(city.trim())}`;
+        }
+        if (q && q.trim()) {
+          endpoint += `&q=${encodeURIComponent(q.trim())}`;
         }
 
         const response = await fetch(endpoint, {
@@ -70,7 +69,6 @@ export function useProfessionalsSearch({
           q,
           specialty,
           city,
-          radius,
         });
 
         setData(list);
@@ -87,7 +85,7 @@ export function useProfessionalsSearch({
         setIsRefreshing(false);
       }
     },
-    [specialty, city, q, radius]
+    [specialty, city, q]
   );
 
   useEffect(() => {

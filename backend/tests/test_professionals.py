@@ -194,6 +194,53 @@ class TestListAndFilterProfessionals:
         assert len(data) == 1
         assert data[0]["email"] == "page1@test.com"
 
+    def test_search_free_text_q(self, client: TestClient):
+        """Deve buscar profissionais pelo parâmetro livre q (nome, bio, especialidade com/sem acento)."""
+        p1 = dict(SAMPLE_PROFESSIONAL)
+        p1["email"] = "marido1@test.com"
+        p1["name"] = "José Eletricista"
+        p1["bio"] = "Especialista em iluminação residencial e quadros elétricos de alta voltagem."
+        p1["specialties"] = ["Elétrica"]
+        p1["city"] = "Campinas"
+        client.post("/api/professionals", json=p1)
+
+        p2 = dict(SAMPLE_PROFESSIONAL)
+        p2["email"] = "marido2@test.com"
+        p2["name"] = "Marcos Encanador"
+        p2["bio"] = "Conserto de vazamentos em canos de cobre e pvc, desentupimentos rápidos."
+        p2["specialties"] = ["Hidráulica"]
+        p2["city"] = "Niterói"
+        client.post("/api/professionals", json=p2)
+
+        # Busca por nome
+        resp = client.get("/api/professionals?q=jose")
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+        assert resp.json()[0]["email"] == "marido1@test.com"
+
+        # Busca por especialidade no q (SEM ACENTO)
+        resp_q_spec = client.get("/api/professionals?q=eletrica")
+        assert resp_q_spec.status_code == 200
+        assert len(resp_q_spec.json()) == 1
+        assert resp_q_spec.json()[0]["email"] == "marido1@test.com"
+
+        # Busca por termo na bio (SEM ACENTO: "iluminacao" casa com "iluminação")
+        resp_bio = client.get("/api/professionals?q=iluminacao")
+        assert resp_bio.status_code == 200
+        assert len(resp_bio.json()) == 1
+        assert resp_bio.json()[0]["email"] == "marido1@test.com"
+
+        # Busca combinada com q e city
+        resp_comb = client.get("/api/professionals?q=encanador&city=niteroi")
+        assert resp_comb.status_code == 200
+        assert len(resp_comb.json()) == 1
+        assert resp_comb.json()[0]["email"] == "marido2@test.com"
+
+        # Busca com termo inexistente
+        resp_vazio = client.get("/api/professionals?q=termoinexistentexyz")
+        assert resp_vazio.status_code == 200
+        assert len(resp_vazio.json()) == 0
+
 
 class TestGetProfessionalById:
     """Testes de busca por ID (GET /api/professionals/{id})."""

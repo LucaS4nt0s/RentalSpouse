@@ -51,16 +51,16 @@ export function useProfessionalsSearch({
 
     try {
       const url = new URL(`${API_BASE_URL}/api/professionals`);
-      // Se não houver busca textual livre (q), aplica filtros no backend diretamente
-      if (!q.trim()) {
-        if (specialty && specialty !== 'Todas') {
-          url.searchParams.set('specialty', specialty);
-        }
-        if (city && city.trim()) {
-          url.searchParams.set('city', city.trim());
-        }
+      if (specialty && specialty !== 'Todas') {
+        url.searchParams.set('specialty', specialty);
       }
-      url.searchParams.set('limit', '100');
+      if (city && city.trim()) {
+        url.searchParams.set('city', city.trim());
+      }
+      if (q && q.trim()) {
+        url.searchParams.set('q', q.trim());
+      }
+      url.searchParams.set('limit', '50');
 
       const response = await fetch(url.toString(), {
         signal: controller.signal,

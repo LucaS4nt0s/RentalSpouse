@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -10,37 +10,33 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { X, MapPin, SlidersHorizontal, Check } from 'lucide-react-native';
+import { X, MapPin, SlidersHorizontal } from 'lucide-react-native';
 import { useAppTheme } from '../../theme/ThemeContext';
 
 export const FilterBottomSheet = ({
   visible,
   onClose,
   initialCity = '',
-  initialRadius = null,
   onApply,
   onReset,
 }) => {
   const { colors } = useAppTheme();
   const [city, setCity] = useState(initialCity);
-  const [radius, setRadius] = useState(initialRadius);
 
-  const radiusOptions = [
-    { label: 'Qualquer raio', value: null },
-    { label: 'Até 10 km', value: 10 },
-    { label: 'Até 25 km', value: 25 },
-    { label: 'Até 50 km', value: 50 },
-    { label: 'Até 100 km', value: 100 },
-  ];
+  // Sincroniza o estado interno sempre que o bottom sheet abrir ou a prop mudar
+  useEffect(() => {
+    if (visible) {
+      setCity(initialCity || '');
+    }
+  }, [visible, initialCity]);
 
   const handleApply = () => {
-    onApply({ city: city.trim(), radius });
+    onApply({ city: city.trim() });
     onClose();
   };
 
   const handleReset = () => {
     setCity('');
-    setRadius(null);
     if (onReset) onReset();
     onClose();
   };
@@ -70,7 +66,7 @@ export const FilterBottomSheet = ({
                 <View style={styles.titleRow}>
                   <SlidersHorizontal size={18} color={colors.primary} />
                   <Text style={[styles.title, { color: colors.textPrimary }]}>
-                    Filtros Avançados
+                    Filtrar por Cidade
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -99,56 +95,17 @@ export const FilterBottomSheet = ({
                   <MapPin size={16} color={colors.primary} style={styles.inputIcon} />
                   <TextInput
                     style={[styles.input, { color: colors.textPrimary }]}
-                    placeholder="Ex: São Paulo, Campinas..."
+                    placeholder="Ex: São Paulo, Campinas, Niterói..."
                     placeholderTextColor={colors.textSoft}
                     value={city}
                     onChangeText={setCity}
+                    autoFocus={Platform.OS !== 'ios'}
                   />
                   {city ? (
                     <TouchableOpacity onPress={() => setCity('')}>
                       <X size={16} color={colors.textSecondary} />
                     </TouchableOpacity>
                   ) : null}
-                </View>
-              </View>
-
-              {/* Raio */}
-              <View style={styles.section}>
-                <Text style={[styles.sectionLabel, { color: colors.textPrimary }]}>
-                  Raio Máximo de Deslocamento
-                </Text>
-                <View style={styles.radiusOptions}>
-                  {radiusOptions.map((opt) => {
-                    const isSelected = radius === opt.value;
-                    return (
-                      <TouchableOpacity
-                        key={String(opt.value)}
-                        onPress={() => setRadius(opt.value)}
-                        style={[
-                          styles.radiusChip,
-                          {
-                            backgroundColor: isSelected ? colors.primary : colors.surface2,
-                            borderColor: isSelected ? colors.primary : colors.border,
-                          },
-                        ]}
-                      >
-                        {isSelected && (
-                          <Check size={14} color={colors.primaryText} style={{ marginRight: 4 }} />
-                        )}
-                        <Text
-                          style={[
-                            styles.radiusText,
-                            {
-                              color: isSelected ? colors.primaryText : colors.textSecondary,
-                              fontWeight: isSelected ? '700' : '500',
-                            },
-                          ]}
-                        >
-                          {opt.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
                 </View>
               </View>
 
@@ -168,7 +125,7 @@ export const FilterBottomSheet = ({
                   style={[styles.applyBtn, { backgroundColor: colors.primary }]}
                 >
                   <Text style={[styles.applyText, { color: colors.primaryText }]}>
-                    Aplicar Filtros
+                    Aplicar Filtro
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -212,7 +169,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   section: {
-    marginBottom: 18,
+    marginBottom: 20,
   },
   sectionLabel: {
     fontSize: 13,
@@ -225,7 +182,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 12,
-    height: 44,
+    height: 46,
   },
   inputIcon: {
     marginRight: 8,
@@ -233,22 +190,6 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 14,
-  },
-  radiusOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  radiusChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  radiusText: {
-    fontSize: 12,
   },
   actions: {
     flexDirection: 'row',

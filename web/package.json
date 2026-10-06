@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --test ../packages/shared-search/searchMatching.test.js"
   },
   "dependencies": {
     "lucide-react": "^1.48.0",

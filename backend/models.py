@@ -1,6 +1,8 @@
 import enum
+import unicodedata
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, Date, DateTime, Float, Integer, JSON, String, Text
+from typing import Optional
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, Integer, JSON, String, Text, event
 
 from database import Base
 
@@ -113,3 +115,34 @@ class Professional(Base):
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+    # Colunas normalizadas para busca eficiente e indexada no banco de dados (sem acentos/minúsculas)
+    normalized_city = Column(String(100), nullable=True, index=True)
+    normalized_specialties = Column(Text, nullable=True, index=True)
+    normalized_search = Column(Text, nullable=True, index=True)
+
+    def update_normalized_fields(self):
+        """Atualiza os campos normalizados para busca insensível a acentos e maiúsculas."""
+        self.normalized_city = normalize_text(self.city)
+        specs = " ".join(normalize_text(s) for s in (self.specialties or []) if isinstance(s, str))
+        self.normalized_specialties = specs
+        self.normalized_search = f"{normalize_text(self.name)} {normalize_text(self.bio)} {self.normalized_city} {specs}".strip()
+
+
+def normalize_text(text: Optional[str]) -> str:
+    """Remove acentos, converte para minúsculas e normaliza espaços."""
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKD", str(text))
+    return "".join(c for c in normalized if not unicodedata.combining(c)).lower().strip()
+
+
+@event.listens_for(Professional, "before_insert")
+def _before_insert_professional(mapper, connection, target: Professional):
+    target.update_normalized_fields()
+
+
+@event.listens_for(Professional, "before_update")
+def _before_update_professional(mapper, connection, target: Professional):
+    target.update_normalized_fields()
+

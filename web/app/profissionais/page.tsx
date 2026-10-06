@@ -6,11 +6,6 @@ import {
   Zap,
   User,
   LogOut,
-  X,
-  Phone,
-  Mail,
-  CheckCircle2,
-  Send,
   MessageSquare,
   Sparkles,
 } from 'lucide-react';
@@ -26,6 +21,7 @@ import { ProfessionalCard } from '../../components/profissionais/ProfessionalCar
 import { ProfessionalCardSkeleton } from '../../components/profissionais/ProfessionalCardSkeleton';
 import { SearchEmptyState } from '../../components/profissionais/SearchEmptyState';
 import { SearchErrorState } from '../../components/profissionais/SearchErrorState';
+import { QuoteModal } from '../../components/profissionais/QuoteModal';
 import { Professional } from '../../types/professional';
 
 function ProfissionaisSearchContent() {
@@ -49,17 +45,19 @@ function ProfissionaisSearchContent() {
 
   // Modal de Solicitação de Orçamento
   const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
-  const [quoteSuccess, setQuoteSuccess] = useState<boolean>(false);
-  const [quoteMessage, setQuoteMessage] = useState<string>('');
 
-  // Sincroniza estado de digitação do input com a URL e busca
+  // Sincroniza estado de digitação do input com a URL e busca apenas quando houver alteração
   useEffect(() => {
-    setQ(debouncedSearch);
-  }, [debouncedSearch, setQ]);
+    if (debouncedSearch !== q) {
+      setQ(debouncedSearch);
+    }
+  }, [debouncedSearch, q, setQ]);
 
   useEffect(() => {
-    setCity(debouncedCity);
-  }, [debouncedCity, setCity]);
+    if (debouncedCity !== city) {
+      setCity(debouncedCity);
+    }
+  }, [debouncedCity, city, setCity]);
 
   // Se a URL mudou externamente (ex: botão limpar filtros), atualiza inputs locais
   useEffect(() => {
@@ -85,18 +83,6 @@ function ProfissionaisSearchContent() {
 
   const handleOpenQuoteModal = (prof: Professional) => {
     setSelectedProfessional(prof);
-    setQuoteSuccess(false);
-    setQuoteMessage('');
-  };
-
-  const handleSendQuote = (e: React.FormEvent) => {
-    e.preventDefault();
-    setQuoteSuccess(true);
-    setTimeout(() => {
-      setSelectedProfessional(null);
-      setQuoteSuccess(false);
-      setQuoteMessage('');
-    }, 2000);
   };
 
   return (
@@ -241,111 +227,11 @@ function ProfissionaisSearchContent() {
         </section>
       </main>
 
-      {/* Modal de Solicitação de Orçamento */}
-      {selectedProfessional && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fadeIn"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-title"
-        >
-          <div className="w-full max-w-lg rounded-3xl glass-panel p-6 shadow-2xl relative">
-            <button
-              type="button"
-              onClick={() => setSelectedProfessional(null)}
-              className="absolute right-4 top-4 rounded-xl p-1.5 text-rental-muted hover:text-rental-ink hover:bg-rental-surface2 transition-colors"
-              aria-label="Fechar modal"
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            {quoteSuccess ? (
-              <div className="flex flex-col items-center py-6 text-center">
-                <CheckCircle2 className="h-14 w-14 text-rental-success mb-3 animate-scaleCheck" />
-                <h3 className="text-xl font-bold text-rental-ink">Solicitação Enviada!</h3>
-                <p className="mt-2 text-sm text-rental-muted">
-                  O profissional <strong>{selectedProfessional.name}</strong> recebeu sua solicitação e entrará em contato em breve.
-                </p>
-              </div>
-            ) : (
-              <div>
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rental-primary/10 text-rental-primary font-bold text-base">
-                    {selectedProfessional.name.substring(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <h3 id="modal-title" className="text-lg font-bold text-rental-ink">
-                      Solicitar Orçamento
-                    </h3>
-                    <p className="text-xs text-rental-muted">
-                      Para {selectedProfessional.name} • {selectedProfessional.city || 'Atendimento local'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-1.5">
-                  {selectedProfessional.specialties.map((spec) => (
-                    <span
-                      key={spec}
-                      className="rounded-lg bg-rental-surface2 px-2.5 py-1 text-xs font-semibold text-rental-muted"
-                    >
-                      {spec}
-                    </span>
-                  ))}
-                </div>
-
-                <form onSubmit={handleSendQuote} className="mt-5 space-y-4">
-                  <div>
-                    <label
-                      htmlFor="quote-message"
-                      className="block text-xs font-bold text-rental-ink mb-1.5"
-                    >
-                      Descreva o serviço necessário:
-                    </label>
-                    <textarea
-                      id="quote-message"
-                      required
-                      rows={4}
-                      value={quoteMessage}
-                      onChange={(e) => setQuoteMessage(e.target.value)}
-                      placeholder="Ex: Preciso trocar a fiação da sala e instalar 3 tomadas novas..."
-                      className="w-full rounded-2xl glass-input p-3 text-xs sm:text-sm placeholder:text-rental-muted focus:outline-none focus:ring-2 focus:ring-rental-primary/40 resize-none"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between gap-3 text-xs text-rental-muted pt-2">
-                    <span className="flex items-center gap-1">
-                      <Phone className="h-3.5 w-3.5 text-rental-primary" />
-                      {selectedProfessional.phone || 'Telefone verificado'}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Mail className="h-3.5 w-3.5 text-rental-primary" />
-                      {selectedProfessional.email}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedProfessional(null)}
-                      className="rounded-xl border border-rental-border px-4 py-2.5 text-xs font-semibold text-rental-muted hover:text-rental-ink transition-colors"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      className="inline-flex items-center gap-2 rounded-xl bg-rental-primary px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-primary hover:bg-[var(--rs-primary-hover)] transition-all"
-                    >
-                      <Send className="h-4 w-4" />
-                      <span>Enviar Solicitação</span>
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Modal de Solicitação de Orçamento Acessível com Focus Trap */}
+      <QuoteModal
+        professional={selectedProfessional}
+        onClose={() => setSelectedProfessional(null)}
+      />
 
       {/* Footer */}
       <footer className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 sm:px-6 py-6 text-xs text-rental-muted mt-12">

@@ -1,11 +1,14 @@
+import unicodedata
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import String, cast, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import models
 from database import get_db
+from models import normalize_text
 from schemas import ProfessionalCreate, ProfessionalRead, ProfessionalUpdate
 from security import hash_senha
 
@@ -104,19 +107,12 @@ def create_professional(
     return professional
 
 
-import unicodedata
-
-def normalize_text(text: Optional[str]) -> str:
-    """Remove acentos, converte para minúsculas e normaliza espaços."""
-    if not text:
-        return ""
-    normalized = unicodedata.normalize("NFKD", str(text))
-    return "".join(c for c in normalized if not unicodedata.combining(c)).lower().strip()
-
-
 @router.get("", response_model=List[ProfessionalRead], summary="Listar profissionais")
 @profissionais_router.get("", response_model=List[ProfessionalRead], include_in_schema=False)
 def list_professionals(
+    q: Optional[str] = Query(
+        None, description="Busca textual por nome, bio ou especialidade"
+    ),
     specialty: Optional[str] = Query(
         None, description="Filtra por especialidade do profissional"
     ),
@@ -126,29 +122,49 @@ def list_professionals(
     db: Session = Depends(get_db),
 ):
     """
-    Lista profissionais cadastrados ativos, com suporte a busca e filtros por
-    especialidade, cidade e paginação de forma insensível a maiúsculas e acentos.
+    Lista profissionais cadastrados ativos, com suporte a busca textual (q), filtros por
+    especialidade, cidade e paginação executados diretamente no banco de dados.
     """
     query = db.query(models.Professional).filter(models.Professional.is_active.is_(True))
-    professionals = query.order_by(models.Professional.id.asc()).all()
 
-    filtered = professionals
-    if city:
-        target_city = normalize_text(city)
-        filtered = [
-            p for p in filtered
-            if target_city in normalize_text(p.city)
-        ]
+    if city and city.strip():
+        norm_city = normalize_text(city)
+        query = query.filter(
+            or_(
+                models.Professional.normalized_city.ilike(f"%{norm_city}%"),
+                models.Professional.city.ilike(f"%{city.strip()}%"),
+            )
+        )
 
-    if specialty:
-        target_spec = normalize_text(specialty)
-        filtered = [
-            p
-            for p in filtered
-            if any(target_spec in normalize_text(s) for s in (p.specialties or []))
-        ]
+    if specialty and specialty.strip():
+        norm_spec = normalize_text(specialty)
+        query = query.filter(
+            or_(
+                models.Professional.normalized_specialties.ilike(f"%{norm_spec}%"),
+                cast(models.Professional.specialties, String).ilike(f"%{specialty.strip()}%"),
+            )
+        )
 
-    return filtered[skip : skip + limit]
+    if q and q.strip():
+        norm_q = normalize_text(q)
+        tokens = norm_q.split()
+        for token in tokens:
+            if token:
+                query = query.filter(
+                    or_(
+                        models.Professional.normalized_search.ilike(f"%{token}%"),
+                        models.Professional.name.ilike(f"%{token}%"),
+                        models.Professional.bio.ilike(f"%{token}%"),
+                        cast(models.Professional.specialties, String).ilike(f"%{token}%"),
+                    )
+                )
+
+    return (
+        query.order_by(models.Professional.id.asc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 @router.get("/{professional_id}", response_model=ProfessionalRead, summary="Obter profissional por ID")

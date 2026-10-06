@@ -34,7 +34,6 @@ export const ProfessionalSearchScreen = ({ onNavigateBack }) => {
   // Filtros
   const [specialty, setSpecialty] = useState('');
   const [city, setCity] = useState('');
-  const [radius, setRadius] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [filterModalVisible, setFilterModalVisible] = useState(false);
@@ -61,17 +60,15 @@ export const ProfessionalSearchScreen = ({ onNavigateBack }) => {
     specialty,
     city,
     q: debouncedQuery,
-    radius,
   });
 
   const hasActiveFilters = useMemo(() => {
     return Boolean(
       (specialty && specialty !== 'Todas') ||
         city ||
-        radius ||
         debouncedQuery
     );
-  }, [specialty, city, radius, debouncedQuery]);
+  }, [specialty, city, debouncedQuery]);
 
   const handleSelectCategory = (cat) => {
     if (cat === 'Todas' || cat === specialty) {
@@ -84,7 +81,6 @@ export const ProfessionalSearchScreen = ({ onNavigateBack }) => {
   const handleClearAllFilters = () => {
     setSpecialty('');
     setCity('');
-    setRadius(null);
     setSearchQuery('');
     setDebouncedQuery('');
   };
@@ -155,25 +151,25 @@ export const ProfessionalSearchScreen = ({ onNavigateBack }) => {
             style={[
               styles.filterBtn,
               {
-                backgroundColor: city || radius ? colors.primary : colors.surface2,
+                backgroundColor: city ? colors.primary : colors.surface2,
                 borderColor: colors.border,
               },
             ]}
           >
             <SlidersHorizontal
               size={14}
-              color={city || radius ? colors.primaryText : colors.textSecondary}
+              color={city ? colors.primaryText : colors.textSecondary}
             />
             <Text
               style={[
                 styles.filterBtnText,
                 {
-                  color: city || radius ? colors.primaryText : colors.textSecondary,
-                  fontWeight: city || radius ? '700' : '600',
+                  color: city ? colors.primaryText : colors.textSecondary,
+                  fontWeight: city ? '700' : '600',
                 },
               ]}
             >
-              {city ? city : 'Localização'}
+              {city ? city : 'Cidade'}
             </Text>
           </TouchableOpacity>
 
@@ -348,14 +344,11 @@ export const ProfessionalSearchScreen = ({ onNavigateBack }) => {
         visible={filterModalVisible}
         onClose={() => setFilterModalVisible(false)}
         initialCity={city}
-        initialRadius={radius}
-        onApply={({ city: c, radius: r }) => {
+        onApply={({ city: c }) => {
           setCity(c);
-          setRadius(r);
         }}
         onReset={() => {
           setCity('');
-          setRadius(null);
         }}
       />
     </SafeAreaView>
