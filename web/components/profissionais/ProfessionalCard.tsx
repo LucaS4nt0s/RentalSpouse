@@ -69,13 +69,15 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
             </div>
           </div>
 
-          <div
-            className="flex items-center gap-1 rounded-full bg-rental-success/10 px-2 py-0.5 text-[11px] font-semibold text-rental-success shrink-0"
-            title="Profissional Verificado pelo RentalSpouse"
-          >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Verificado</span>
-          </div>
+          {professional.approval_status === 'approved' && (
+            <div
+              className="flex items-center gap-1 rounded-full bg-rental-success/10 px-2 py-0.5 text-[11px] font-semibold text-rental-success shrink-0"
+              title="Profissional Verificado pelo RentalSpouse"
+            >
+              <ShieldCheck className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Verificado</span>
+            </div>
+          )}
         </div>
 
         {/* Chips de Especialidades */}
@@ -120,11 +122,7 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
       <div className="mt-5 pt-1 flex items-center gap-2">
         <button
           type="button"
-          onClick={() =>
-            onRequestQuote
-              ? onRequestQuote(professional)
-              : alert(`Solicitar orçamento para ${professional.name}`)
-          }
+          onClick={() => onRequestQuote && onRequestQuote(professional)}
           className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-rental-primary px-3.5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-primary transition-all hover:bg-[var(--rs-primary-hover)] active:scale-[0.98]"
         >
           <MessageSquare className="h-4 w-4" />

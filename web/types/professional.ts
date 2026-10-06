@@ -14,6 +14,7 @@ export interface Professional {
   city?: string | null;
   state?: string | null;
   is_active: boolean;
+  approval_status?: string;
   created_at?: string;
   updated_at?: string;
 }

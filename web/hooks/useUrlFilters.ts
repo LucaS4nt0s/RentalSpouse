@@ -23,9 +23,10 @@ export function useUrlFilters(): UrlFilters {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const searchParamsString = searchParams.toString();
 
-  const searchParamsRef = useRef(searchParams);
-  searchParamsRef.current = searchParams;
+  const pendingParamsRef = useRef<URLSearchParams>(new URLSearchParams(searchParamsString));
+  pendingParamsRef.current = new URLSearchParams(searchParamsString);
 
   const specialty = searchParams.get('specialty') || '';
   const city = searchParams.get('city') || '';
@@ -36,7 +37,7 @@ export function useUrlFilters(): UrlFilters {
 
   const updateUrl = useCallback(
     (params: Record<string, string | null>) => {
-      const current = new URLSearchParams(searchParamsRef.current.toString());
+      const current = pendingParamsRef.current;
       let hasChanged = false;
 
       Object.entries(params).forEach(([key, val]) => {
@@ -92,7 +93,7 @@ export function useUrlFilters(): UrlFilters {
   );
 
   const clearFilters = useCallback(() => {
-    const current = new URLSearchParams(searchParamsRef.current.toString());
+    const current = pendingParamsRef.current;
     const hadFilters = current.has('specialty') || current.has('city') || current.has('q');
 
     if (!hadFilters) return;

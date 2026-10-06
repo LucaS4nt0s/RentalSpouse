@@ -15,6 +15,7 @@ export interface UseProfessionalsSearchOptions {
 export interface UseProfessionalsSearchResult {
   data: Professional[];
   isLoading: boolean;
+  isRetrying: boolean;
   error: string | null;
   isEmpty: boolean;
   detectedSuggestion: string | null;
@@ -35,6 +36,7 @@ export function useProfessionalsSearch({
   const [data, setData] = useState<Professional[]>([]);
   const [detectedSuggestion, setDetectedSuggestion] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isRetrying, setIsRetrying] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -54,13 +56,8 @@ export function useProfessionalsSearch({
       if (specialty && specialty !== 'Todas') {
         url.searchParams.set('specialty', specialty);
       }
-      if (city && city.trim()) {
-        url.searchParams.set('city', city.trim());
-      }
-      if (q && q.trim()) {
-        url.searchParams.set('q', q.trim());
-      }
-      url.searchParams.set('limit', '50');
+      url.searchParams.set('approval_status', 'approved');
+      url.searchParams.set('limit', '100');
 
       const response = await fetch(url.toString(), {
         signal: controller.signal,
@@ -107,15 +104,23 @@ export function useProfessionalsSearch({
     };
   }, [fetchData]);
 
+  const retry = useCallback(async () => {
+    setIsRetrying(true);
+    await fetchData();
+    setIsRetrying(false);
+  }, [fetchData]);
+
   const isEmpty = !isLoading && !error && data.length === 0;
 
   return {
     data,
     isLoading,
+    isRetrying,
     error,
     isEmpty,
     detectedSuggestion,
     refetch: fetchData,
-    retry: fetchData,
+    retry,
   };
 }
+

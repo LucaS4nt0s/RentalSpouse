@@ -87,33 +87,35 @@ def migrate_columns_and_indexes(engine: Engine) -> None:
                 )
 
 
-def backfill_normalized_fields(session_factory: Callable[[], Session]) -> int:
+def backfill_normalized_fields(session_factory: Callable[[], Session], batch_size: int = 200) -> int:
     """
-    Percorre profissionais que possuem campos normalizados como NULL
-    e executa a rotina update_normalized_fields() para preencher os dados.
+    Percorre profissionais que possuem campos normalizados como NULL em lotes
+    e executa a rotina update_normalized_fields() para preencher os dados sem sobrecarregar a memória.
     """
+    total_updated = 0
     with session_factory() as db:
-        profs = (
-            db.query(models.Professional)
-            .filter(
-                (models.Professional.normalized_search.is_(None))
-                | (models.Professional.normalized_city.is_(None))
-                | (models.Professional.normalized_specialties.is_(None))
+        while True:
+            profs = (
+                db.query(models.Professional)
+                .filter(
+                    (models.Professional.normalized_search.is_(None))
+                    | (models.Professional.normalized_city.is_(None))
+                    | (models.Professional.normalized_specialties.is_(None))
+                )
+                .limit(batch_size)
+                .all()
             )
-            .all()
-        )
-        if not profs:
-            return 0
+            if not profs:
+                break
 
-        logger.info(
-            "Migração RentalSpouse: executando backfill de campos normalizados para %d registros...",
-            len(profs),
-        )
-        for prof in profs:
-            prof.update_normalized_fields()
-        db.commit()
-        logger.info("Migração RentalSpouse: backfill de normalização concluído com sucesso.")
-        return len(profs)
+            for prof in profs:
+                prof.update_normalized_fields()
+            db.commit()
+            total_updated += len(profs)
+
+        if total_updated > 0:
+            logger.info("Migração RentalSpouse: backfill de normalização concluído para %d registros.", total_updated)
+        return total_updated
 
 
 def run_all_migrations(engine: Engine, session_factory: Callable[[], Session]) -> None:

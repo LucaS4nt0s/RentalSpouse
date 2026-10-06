@@ -131,7 +131,8 @@ def list_professionals(
     ),
     city: Optional[str] = Query(None, description="Filtra por cidade base"),
     approval_status: Optional[str] = Query(
-        None, description="Filtra por status de aprovação cadastral (ex: pending_approval, approved, rejected)"
+        models.ProfessionalApprovalStatus.APPROVED.value,
+        description="Filtra por status de aprovação cadastral (padrão: approved; use 'all' para desativar filtro)",
     ),
     skip: int = Query(0, ge=0, description="Número de registros a pular"),
     limit: int = Query(50, ge=1, le=100, description="Limite máximo de registros"),
@@ -139,11 +140,11 @@ def list_professionals(
 ):
     """
     Lista profissionais cadastrados ativos, com suporte a busca textual (q), filtros por
-    especialidade, cidade, status de aprovação e paginação executados diretamente no banco de dados.
+    especialidade, cidade, status de aprovação (padrão: aprovados) e paginação executados no banco de dados.
     """
     query = db.query(models.Professional).filter(models.Professional.is_active.is_(True))
 
-    if approval_status and approval_status.strip():
+    if approval_status and approval_status.strip().lower() != "all":
         query = query.filter(models.Professional.approval_status == approval_status.strip().lower())
 
     if city and city.strip():

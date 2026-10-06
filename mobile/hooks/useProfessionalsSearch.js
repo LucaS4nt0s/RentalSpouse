@@ -40,15 +40,9 @@ export function useProfessionalsSearch({
       setError(null);
 
       try {
-        let endpoint = `${BASE_URL}/api/professionals?limit=50`;
+        let endpoint = `${BASE_URL}/api/professionals?approval_status=approved&limit=100`;
         if (specialty && specialty !== 'Todas') {
           endpoint += `&specialty=${encodeURIComponent(specialty)}`;
-        }
-        if (city && city.trim()) {
-          endpoint += `&city=${encodeURIComponent(city.trim())}`;
-        }
-        if (q && q.trim()) {
-          endpoint += `&q=${encodeURIComponent(q.trim())}`;
         }
 
         const response = await fetch(endpoint, {
@@ -73,6 +67,8 @@ export function useProfessionalsSearch({
 
         setData(list);
         setDetectedSuggestion(sugg);
+        setIsLoading(false);
+        setIsRefreshing(false);
       } catch (err) {
         if (err.name === 'AbortError') {
           return;
@@ -80,12 +76,12 @@ export function useProfessionalsSearch({
         setError(
           'Não foi possível carregar os profissionais. Verifique sua conexão com a internet.'
         );
-      } finally {
         setIsLoading(false);
         setIsRefreshing(false);
       }
     },
     [specialty, city, q]
+
   );
 
   useEffect(() => {

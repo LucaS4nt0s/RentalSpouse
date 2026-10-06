@@ -167,11 +167,12 @@ class Professional(Base):
 
 
 def normalize_text(text: Optional[str]) -> str:
-    """Remove acentos, converte para minúsculas e normaliza espaços."""
+    """Remove acentos, converte para minúsculas e normaliza espaços múltiplos."""
     if not text:
         return ""
     normalized = unicodedata.normalize("NFKD", str(text))
-    return "".join(c for c in normalized if not unicodedata.combining(c)).lower().strip()
+    cleaned = "".join(c for c in normalized if not unicodedata.combining(c)).lower()
+    return " ".join(cleaned.split())
 
 
 @event.listens_for(Professional, "before_insert")

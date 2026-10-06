@@ -9,7 +9,7 @@ const {
   findBestCategorySuggestion,
   filterProfessionalsIntelligent,
   SPECIALTY_SYNONYMS,
-} = require('./index.js');
+} = require('./dist/index.js');
 
 describe('Motor de Busca Inteligente RentalSpouse', () => {
   describe('Normalização de Texto', () => {

@@ -24,3 +24,8 @@ node_modules/
 *.env
 !.env.example
 uploads/
+
+# Artefatos compilados de pacotes compartilhados
+packages/shared-search/dist/
+packages/shared-search/index.js
+packages/shared-search/index.d.ts
