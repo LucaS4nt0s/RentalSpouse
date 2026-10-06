@@ -142,6 +142,18 @@ cd backend
 ./venv/Scripts/python.exe -m pytest tests/test_professional_documents_me.py -q  # Fase B
 ```
 
+### Pela interface web
+
+Com o backend no ar (`docker compose up -d db backend`) e o frontend (`cd web && npm run dev`),
+entre em `http://localhost:3000/entrar` com uma conta de **profissional**. O acesso à tela
+aparece em três lugares, **somente para profissionais** (visitantes, clientes e administradores
+não veem o link):
+
+- na home, no cabeçalho ("Meus documentos") e no bloco principal (no lugar de "Sou profissional");
+- no `/entrar`, nos cartões "Bem-vindo(a) de volta!" e "Você já está conectado" ("Enviar meus documentos").
+
+O destino é `/profissional/documentos`.
+
 ## Escopo e convivência
 
 - As rotas legadas `/api/professionals/{professional_id}/documents` (PR #58 / #17)
