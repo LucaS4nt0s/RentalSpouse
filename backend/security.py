@@ -206,6 +206,32 @@ def get_current_user(
     return user
 
 
+def get_optional_current_user(
+    auth: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    db: Session = Depends(get_db),
+) -> models.User | None:
+    """
+    Dependency que extrai e valida o token Bearer caso presente na requisição.
+    Retorna a entidade User autenticada, ou None se a requisição não possuir credenciais.
+    """
+    if auth is None or not auth.credentials:
+        return None
+
+    try:
+        payload = decode_access_token(auth.credentials)
+        email: str | None = payload.get("sub")
+        if email is None:
+            return None
+    except jwt.PyJWTError:
+        return None
+
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if user is None or not user.is_active:
+        return None
+
+    return user
+
+
 def get_current_admin(
     current_user: models.User = Depends(get_current_user),
 ) -> models.User:

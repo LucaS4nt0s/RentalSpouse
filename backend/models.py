@@ -2,7 +2,8 @@ import enum
 import unicodedata
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import Boolean, Column, Date, DateTime, Float, Integer, JSON, String, Text, event
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, event
+from sqlalchemy.orm import relationship
 
 from database import Base
 
@@ -92,6 +93,23 @@ class Cliente(Base):
         }
 
 
+class DocumentType(str, enum.Enum):
+    """Tipos de documentos aceitos para análise cadastral do profissional."""
+
+    PHOTO_ID = "photo_id"                      # Documento com foto (RG, CNH) - Obrigatório
+    PROOF_OF_RESIDENCE = "proof_of_residence"  # Comprovante de residência - Obrigatório
+    TECHNICAL_CERTIFICATE = "technical_certificate"  # Comprovante técnico / certificação - Opcional
+    PROFILE_PHOTO = "profile_photo"            # Foto de perfil - Opcional / público
+
+
+class ProfessionalApprovalStatus(str, enum.Enum):
+    """Status de aprovação cadastral de um profissional."""
+
+    PENDING = "pending_approval"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class Professional(Base):
     """Tabela de profissionais com especialidades e raio de atendimento."""
 
@@ -108,12 +126,27 @@ class Professional(Base):
     state = Column(String(2), nullable=True)
     senha_hash = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    approval_status = Column(
+        String(50),
+        default=ProfessionalApprovalStatus.PENDING.value,
+        nullable=False,
+        index=True,
+    )
+    approval_notes = Column(Text, nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    approved_by_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
+    )
+
+    documents = relationship(
+        "ProfessionalDocument",
+        back_populates="professional",
+        cascade="all, delete-orphan",
     )
 
     # Colunas normalizadas para busca eficiente e indexada no banco de dados (sem acentos/minúsculas)
@@ -146,3 +179,31 @@ def _before_insert_professional(mapper, connection, target: Professional):
 def _before_update_professional(mapper, connection, target: Professional):
     target.update_normalized_fields()
 
+
+class ProfessionalDocument(Base):
+    """Documento anexado pelo profissional para validação cadastral ou exibição de perfil."""
+
+    __tablename__ = "professional_documents"
+    __table_args__ = (
+        UniqueConstraint("professional_id", "document_type", name="uq_professional_document_type"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    professional_id = Column(
+        Integer,
+        ForeignKey("professionals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    document_type = Column(String(50), nullable=False, index=True)
+    file_name = Column(String(255), nullable=False)
+    file_path = Column(String(500), nullable=False)
+    file_size = Column(Integer, nullable=False)
+    mime_type = Column(String(100), nullable=False)
+    uploaded_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    professional = relationship("Professional", back_populates="documents")

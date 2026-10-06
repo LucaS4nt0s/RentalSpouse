@@ -502,6 +502,18 @@ class TestConfiguracaoEmail:
         assert isinstance(transporte, email_service.TransporteSmtp)
         assert transporte.host == "localhost"
         assert transporte.porta == 1025
+        assert transporte.usar_ssl is False
+
+    def test_backend_smtp_com_ssl_configurado(self, monkeypatch):
+        monkeypatch.setenv("EMAIL_BACKEND", "smtp")
+        monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
+        monkeypatch.setenv("SMTP_PORT", "465")
+        monkeypatch.setenv("SMTP_USE_SSL", "true")
+
+        transporte = email_service.obter_transporte()
+        assert isinstance(transporte, email_service.TransporteSmtp)
+        assert transporte.usar_ssl is True
+        assert transporte.porta == 465
 
     def test_backend_desconhecido_cai_para_console(self, monkeypatch):
         monkeypatch.setenv("EMAIL_BACKEND", "transporte-inexistente")
@@ -529,6 +541,29 @@ class TestConfiguracaoEmail:
         assert "plain" in subtipos
         assert "html" in subtipos
         assert "Maria" in mensagem.get_body(preferencelist=("plain",)).get_content()
+
+    def test_mensagem_possui_cabecalhos_anti_spam(self):
+        mensagem = email_service.montar_mensagem_verificacao(
+            destinatario=EMAIL_PRINCIPAL,
+            nome="Carlos Teste",
+            token="xyz789",
+            expira_horas=24,
+        )
+        assert "Date" in mensagem
+        assert "Message-ID" in mensagem
+        assert mensagem["Auto-Submitted"] == "auto-generated"
+
+    def test_remetente_fallback_para_smtp_user(self, monkeypatch):
+        monkeypatch.setenv("EMAIL_FROM_ADDRESS", "nao-responda@rentalspouse.local")
+        monkeypatch.setenv("SMTP_USER", "real.sender@gmail.com")
+        nome, endereco = email_service.remetente()
+        assert endereco == "real.sender@gmail.com"
+
+    def test_remetente_preserva_endereco_customizado(self, monkeypatch):
+        monkeypatch.setenv("EMAIL_FROM_ADDRESS", "contato@rentalspouse.com")
+        monkeypatch.setenv("SMTP_USER", "outro.usuario@gmail.com")
+        nome, endereco = email_service.remetente()
+        assert endereco == "contato@rentalspouse.com"
 
     def test_mensagem_escapa_html_no_nome(self):
         mensagem = email_service.montar_mensagem_verificacao(
@@ -559,6 +594,8 @@ class TestConfiguracaoEmail:
         monkeypatch.setenv("SMTP_HOST", "localhost")
         monkeypatch.setenv("SMTP_PORT", "1")
         monkeypatch.setenv("SMTP_TIMEOUT", "1")
+        monkeypatch.setenv("SMTP_MAX_RETRIES", "1")
+        monkeypatch.setattr("time.sleep", lambda _: None)
 
         with patch("smtplib.SMTP", side_effect=OSError("conexão recusada")):
             with pytest.raises(email_service.ErroEnvioEmail):
@@ -641,6 +678,34 @@ class TestTransportes:
         conexao = falso_smtp.__enter__.return_value
         conexao.starttls.assert_not_called()
         conexao.login.assert_not_called()
+        conexao.send_message.assert_called_once()
+
+    def test_transporte_smtp_ssl_direto_porta_465(self, monkeypatch):
+        monkeypatch.setenv("EMAIL_BACKEND", "smtp")
+        monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
+        monkeypatch.setenv("SMTP_PORT", "465")
+        monkeypatch.setenv("SMTP_USER", "usuario@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "senha-app")
+        monkeypatch.setenv("SMTP_USE_SSL", "true")
+
+        falso_ssl = MagicMock()
+        with patch("smtplib.SMTP_SSL", return_value=falso_ssl) as construtor_ssl:
+            email_service.enviar_email_verificacao(
+                destinatario=EMAIL_PRINCIPAL,
+                nome="Cliente SSL",
+                token="token465",
+                expira_horas=24,
+            )
+
+        assert construtor_ssl.call_count == 1
+        args, kwargs = construtor_ssl.call_args
+        assert args[0] == "smtp.gmail.com"
+        assert args[1] == 465
+        assert kwargs["timeout"] == 10
+        assert "context" in kwargs
+
+        conexao = falso_ssl.__enter__.return_value
+        conexao.login.assert_called_once_with("usuario@gmail.com", "senha-app")
         conexao.send_message.assert_called_once()
 
 
@@ -794,3 +859,173 @@ class TestEmailPendenteEPreparacao:
         assert enviado is True
         assert len(caixa_de_entrada) == 1
         assert extrair_token(caixa_de_entrada[0]) == token
+
+
+# ===========================================================================
+# Refatoração Sênior: Retries, Configuração Defensiva, LGPD e Headers RFC
+# ===========================================================================
+
+
+class TestRefatoracaoSeniorEmail:
+    """Valida resiliência de transporte, retries exponenciais, parsing e privacidade."""
+
+    def test_mascarar_email_protege_privacidade_lgpd(self):
+        assert email_service.mascarar_email("") == "***"
+        assert email_service.mascarar_email("invalido") == "***"
+        assert email_service.mascarar_email("a@exemplo.com") == "a*@exemplo.com"
+        assert email_service.mascarar_email("ab@exemplo.com") == "a*@exemplo.com"
+        assert email_service.mascarar_email("usuario@exemplo.com") == "u***o@exemplo.com"
+        assert email_service.mascarar_email("carlos.silva@aluguel.com") == "c***a@aluguel.com"
+
+    @pytest.mark.parametrize(
+        "valor,padrao,minimo,maximo,esperado",
+        [
+            ("465", 587, 1, 65535, 465),
+            ("", 587, 1, 65535, 587),
+            ("invalido", 587, 1, 65535, 587),
+            ("0", 587, 1, 65535, 587),  # abaixo do mínimo
+            ("70000", 587, 1, 65535, 587),  # acima do máximo
+            ("10", 10, 1, 120, 10),
+        ],
+    )
+    def test_parse_int_seguro_aplica_limites_e_fallbacks(
+        self, valor, padrao, minimo, maximo, esperado
+    ):
+        assert (
+            email_service._parse_int_seguro(valor, padrao, minimo, maximo) == esperado
+        )
+
+    def test_configuracao_smtp_carrega_do_ambiente_com_defaults(self, monkeypatch):
+        monkeypatch.setenv("SMTP_HOST", "smtp.provedor.com")
+        monkeypatch.setenv("SMTP_PORT", "465")
+        monkeypatch.setenv("SMTP_USE_SSL", "true")
+        monkeypatch.setenv("SMTP_MAX_RETRIES", "5")
+        monkeypatch.setenv("SMTP_TIMEOUT", "15")
+
+        cfg = email_service.ConfiguracaoSmtp.do_ambiente()
+        assert cfg.host == "smtp.provedor.com"
+        assert cfg.porta == 465
+        assert cfg.usar_ssl is True
+        assert cfg.max_tentativas == 5
+        assert cfg.timeout == 15
+
+    def test_transporte_smtp_reintenta_apos_falha_transitoria_e_tem_sucesso(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("EMAIL_BACKEND", "smtp")
+        transporte = email_service.TransporteSmtp(
+            host="smtp.example.com",
+            porta=587,
+            usuario="user",
+            senha="pwd",
+            usar_tls=True,
+            timeout=5,
+            max_tentativas=3,
+            backoff_inicial=0.01,
+        )
+
+        mock_disparo = MagicMock(side_effect=[OSError("Rede instável"), None])
+        monkeypatch.setattr(transporte, "_executar_disparo", mock_disparo)
+
+        msg = email_service.EmailMessage()
+        msg["To"] = EMAIL_PRINCIPAL
+        transporte.enviar(msg)
+
+        assert mock_disparo.call_count == 2
+
+    def test_transporte_smtp_falha_rapido_em_erro_de_autenticacao_sem_retry(
+        self, monkeypatch
+    ):
+        transporte = email_service.TransporteSmtp(
+            host="smtp.example.com",
+            porta=587,
+            usuario="user",
+            senha="wrong",
+            usar_tls=True,
+            timeout=5,
+            max_tentativas=3,
+            backoff_inicial=0.01,
+        )
+
+        erro_auth = email_service.smtplib.SMTPAuthenticationError(535, b"Bad credentials")
+        mock_disparo = MagicMock(side_effect=erro_auth)
+        monkeypatch.setattr(transporte, "_executar_disparo", mock_disparo)
+
+        msg = email_service.EmailMessage()
+        msg["To"] = EMAIL_PRINCIPAL
+        with pytest.raises(email_service.ErroEnvioEmail) as exc:
+            transporte.enviar(msg)
+
+        assert "Falha de autenticação SMTP" in str(exc.value)
+        assert mock_disparo.call_count == 1  # Fail-fast, sem gastar retries
+
+    def test_transporte_smtp_esgota_tentativas_e_lanca_erro(self, monkeypatch):
+        transporte = email_service.TransporteSmtp(
+            host="smtp.example.com",
+            porta=587,
+            usuario="user",
+            senha="pwd",
+            usar_tls=True,
+            timeout=5,
+            max_tentativas=2,
+            backoff_inicial=0.01,
+        )
+
+        mock_disparo = MagicMock(side_effect=OSError("Timeout de socket"))
+        monkeypatch.setattr(transporte, "_executar_disparo", mock_disparo)
+
+        msg = email_service.EmailMessage()
+        msg["To"] = EMAIL_PRINCIPAL
+        with pytest.raises(email_service.ErroEnvioEmail) as exc:
+            transporte.enviar(msg)
+
+        assert "após 2 tentativas" in str(exc.value)
+        assert mock_disparo.call_count == 2
+
+    def test_mensagem_inclui_cabecalhos_rfc_e_reply_to_customizado(self, monkeypatch):
+        monkeypatch.setenv("EMAIL_REPLY_TO", "atendimento@rentalspouse.com")
+        msg = email_service.montar_mensagem_verificacao(
+            destinatario=EMAIL_PRINCIPAL,
+            nome="Mariana",
+            token="token-teste-rfc",
+            expira_horas=12,
+        )
+
+        assert msg["Reply-To"] == "atendimento@rentalspouse.com"
+        assert msg["X-Mailer"] == "RentalSpouse Transacional/1.0"
+        assert msg["Auto-Submitted"] == "auto-generated"
+        assert "Date" in msg
+        assert "Message-ID" in msg
+
+    @pytest.mark.parametrize(
+        "valor,padrao,esperado",
+        [
+            ("true", False, True),
+            ("1", False, True),
+            ("yes", False, True),
+            ("sim", False, True),
+            ("false", True, False),
+            ("0", True, False),
+            ("no", True, False),
+            ("", True, True),
+            ("   ", True, True),
+            (None, True, True),
+            ("", False, False),
+            ("invalido", True, False),
+        ],
+    )
+    def test_parse_bool_seguro_trata_vazio_e_fallbacks(self, valor, padrao, esperado):
+        assert email_service._parse_bool_seguro(valor, padrao) == esperado
+
+    def test_conectividade_tcp_sucesso_e_falha(self):
+        from scripts.testar_envio_email import testar_conectividade_tcp
+        with patch("socket.create_connection") as mock_conn:
+            ok, msg, lat = testar_conectividade_tcp("127.0.0.1", 25, timeout=1)
+            assert ok is True
+            assert "acessível" in msg
+            assert lat >= 0
+
+        with patch("socket.create_connection", side_effect=TimeoutError()):
+            ok, msg, lat = testar_conectividade_tcp("127.0.0.1", 25, timeout=1)
+            assert ok is False
+            assert "Timeout" in msg
