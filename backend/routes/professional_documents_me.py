@@ -25,6 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import models
+import notificacoes
 import schemas
 import storage
 from database import get_db
@@ -265,3 +266,43 @@ def delete_my_document(
     db.commit()
 
     return None
+
+
+@router.post(
+    "/submit",
+    response_model=schemas.ProfessionalDocumentsMeSummaryRead,
+    summary="Enviar documentos para análise",
+    description=(
+        "Valida os documentos obrigatórios, marca o envio para análise e notifica "
+        "os administradores ativos por e-mail. Retorna 422 com `missing_required` "
+        "quando faltam documentos obrigatórios e 409 quando já existe um envio em "
+        "andamento/aprovado (reenvio permitido apenas após rejeição)."
+    ),
+)
+def submit_my_documents(
+    professional: models.Professional = Depends(get_current_professional),
+    db: Session = Depends(get_db),
+):
+    """Envia os documentos do próprio profissional para análise de um administrador."""
+    _garantir_edicao_permitida(professional)
+
+    docs = _documentos_do(professional.id, db)
+    faltantes = _faltantes_obrigatorios(docs)
+    if faltantes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": "Anexe os documentos obrigatórios antes de enviar para análise.",
+                "missing_required": faltantes,
+            },
+        )
+
+    professional.documents_submitted_at = datetime.now(timezone.utc)
+    professional.approval_status = models.ProfessionalApprovalStatus.PENDING.value
+    db.commit()
+    db.refresh(professional)
+
+    # Notificação best-effort: falha de e-mail nunca quebra a submissão.
+    notificacoes.notificar_admins_documentos_enviados(db, professional)
+
+    return montar_resumo(professional, docs)

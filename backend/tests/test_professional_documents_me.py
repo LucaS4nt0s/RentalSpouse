@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import models
+import notificacoes
 from security import create_access_token, hash_senha
 
 URL_ME = "/api/professionals/me/documents"
@@ -75,7 +76,7 @@ def arquivo_png(nome: str = "conta_luz.png") -> dict:
 
 
 def requisicoes_protegidas(client: TestClient, headers: dict | None = None) -> list:
-    """Dispara as três rotas protegidas da Fase B e devolve as respostas."""
+    """Dispara as rotas protegidas do router /me e devolve as respostas."""
     return [
         client.get(URL_ME, headers=headers),
         client.post(
@@ -85,6 +86,7 @@ def requisicoes_protegidas(client: TestClient, headers: dict | None = None) -> l
             headers=headers,
         ),
         client.delete(f"{URL_ME}/1", headers=headers),
+        client.post(f"{URL_ME}/submit", headers=headers),
     ]
 
 
@@ -454,3 +456,215 @@ class TestBloqueioAposEnvio:
         corpo = client.get(URL_ME, headers=headers).json()
         assert corpo["missing_required"] == []
         assert corpo["can_submit"] is True
+
+
+def criar_admin(db_session, email: str = "admin.submit@rentalspouse.com") -> models.User:
+    """Cria um administrador ativo diretamente no banco de testes."""
+    admin = models.User(
+        name="Administrador de Teste",
+        email=email,
+        hashed_password="hash-nao-usado-nos-testes",
+        role=models.UserRole.ADMIN.value,
+        is_active=True,
+    )
+    db_session.add(admin)
+    db_session.commit()
+    return admin
+
+
+def anexar_obrigatorios(client: TestClient, headers: dict) -> None:
+    """Anexa os dois documentos obrigatórios (photo_id + proof_of_residence)."""
+    resposta_foto = client.post(
+        URL_ME,
+        data={"document_type": "photo_id"},
+        files=arquivo_pdf(),
+        headers=headers,
+    )
+    assert resposta_foto.status_code == 201, resposta_foto.text
+
+    resposta_comprovante = client.post(
+        URL_ME,
+        data={"document_type": "proof_of_residence"},
+        files=arquivo_png(),
+        headers=headers,
+    )
+    assert resposta_comprovante.status_code == 201, resposta_comprovante.text
+
+
+class TestSubmitMeDocuments:
+    """Envio para análise: validação de obrigatórios, estado, bloqueio e notificação."""
+
+    def test_submit_sem_documentos_retorna_422_com_faltantes(
+        self, client: TestClient, temp_storage
+    ):
+        profissional = criar_profissional(client, "prof.submit.vazio@exemplo.com")
+
+        resposta = client.post(
+            f"{URL_ME}/submit", headers=cabecalho(profissional["email"])
+        )
+
+        assert resposta.status_code == 422
+        detalhe = resposta.json()["detail"]
+        assert detalhe["missing_required"] == ["photo_id", "proof_of_residence"]
+        assert "obrigatórios" in detalhe["message"]
+
+    def test_submit_com_apenas_um_obrigatorio_ainda_retorna_422(
+        self, client: TestClient, temp_storage
+    ):
+        profissional = criar_profissional(client, "prof.submit.parcial@exemplo.com")
+        headers = cabecalho(profissional["email"])
+
+        assert (
+            client.post(
+                URL_ME,
+                data={"document_type": "photo_id"},
+                files=arquivo_pdf(),
+                headers=headers,
+            ).status_code
+            == 201
+        )
+
+        resposta = client.post(f"{URL_ME}/submit", headers=headers)
+
+        assert resposta.status_code == 422
+        assert resposta.json()["detail"]["missing_required"] == ["proof_of_residence"]
+
+        # Envio não marcado: continua em rascunho
+        corpo = client.get(URL_ME, headers=headers).json()
+        assert corpo["submitted_at"] is None
+        assert corpo["can_submit"] is False
+
+    def test_submit_sucesso_marca_envio_e_notifica_admins(
+        self, client: TestClient, temp_storage, db_session, caixa_de_entrada
+    ):
+        criar_admin(db_session, "admin.submit@rentalspouse.com")
+        profissional = criar_profissional(client, "prof.submit.ok@exemplo.com")
+        headers = cabecalho(profissional["email"])
+        anexar_obrigatorios(client, headers)
+
+        resposta = client.post(f"{URL_ME}/submit", headers=headers)
+
+        assert resposta.status_code == 200, resposta.text
+        corpo = resposta.json()
+        assert corpo["professional_id"] == profissional["id"]
+        assert corpo["submitted_at"] is not None
+        assert corpo["approval_status"] == "pending_approval"
+        assert corpo["is_complete"] is True
+        assert corpo["can_submit"] is False
+        assert corpo["missing_required"] == []
+
+        # O estado também é refletido na listagem
+        assert client.get(URL_ME, headers=headers).json()["submitted_at"] == corpo["submitted_at"]
+
+        # Administrador ativo recebeu o e-mail simples
+        assert len(caixa_de_entrada) == 1
+        mensagem = caixa_de_entrada[0]
+        assert mensagem["To"] == "admin.submit@rentalspouse.com"
+        assert mensagem["Subject"] == notificacoes.ASSUNTO_DOCUMENTOS_ENVIADOS
+        texto = mensagem.get_body(preferencelist=("plain",)).get_content()
+        assert profissional["email"] in texto
+        assert SAMPLE_PROF["name"] in texto
+
+    def test_submit_repetido_retorna_409(self, client: TestClient, temp_storage):
+        profissional = criar_profissional(client, "prof.submit.repetido@exemplo.com")
+        headers = cabecalho(profissional["email"])
+        anexar_obrigatorios(client, headers)
+
+        assert client.post(f"{URL_ME}/submit", headers=headers).status_code == 200
+
+        repetido = client.post(f"{URL_ME}/submit", headers=headers)
+        assert repetido.status_code == 409
+        assert "não podem ser alterados" in repetido.json()["detail"]
+
+    def test_upload_e_delete_bloqueados_apos_submit_real(
+        self, client: TestClient, temp_storage
+    ):
+        profissional = criar_profissional(client, "prof.submit.bloqueio@exemplo.com")
+        headers = cabecalho(profissional["email"])
+        anexar_obrigatorios(client, headers)
+
+        assert client.post(f"{URL_ME}/submit", headers=headers).status_code == 200
+
+        doc_id = client.get(URL_ME, headers=headers).json()["documents"][0]["id"]
+
+        upload_bloqueado = client.post(
+            URL_ME,
+            data={"document_type": "profile_photo"},
+            files=arquivo_png("foto.png"),
+            headers=headers,
+        )
+        assert upload_bloqueado.status_code == 409
+
+        delete_bloqueado = client.delete(f"{URL_ME}/{doc_id}", headers=headers)
+        assert delete_bloqueado.status_code == 409
+
+    def test_reenvio_apos_rejeicao_atualiza_data_e_notifica_de_novo(
+        self, client: TestClient, temp_storage, db_session, caixa_de_entrada
+    ):
+        criar_admin(db_session)
+        profissional = criar_profissional(client, "prof.reenvio@exemplo.com")
+        headers = cabecalho(profissional["email"])
+        anexar_obrigatorios(client, headers)
+
+        primeiro = client.post(f"{URL_ME}/submit", headers=headers)
+        assert primeiro.status_code == 200
+        assert len(caixa_de_entrada) == 1
+
+        # Administrador rejeita o envio
+        registro = (
+            db_session.query(models.Professional)
+            .filter(models.Professional.id == profissional["id"])
+            .first()
+        )
+        registro.approval_status = models.ProfessionalApprovalStatus.REJECTED.value
+        db_session.commit()
+
+        reenvio = client.post(f"{URL_ME}/submit", headers=headers)
+
+        assert reenvio.status_code == 200, reenvio.text
+        corpo = reenvio.json()
+        assert corpo["approval_status"] == "pending_approval"
+        assert corpo["submitted_at"] is not None
+        assert datetime.fromisoformat(corpo["submitted_at"]) >= datetime.fromisoformat(
+            primeiro.json()["submitted_at"]
+        )
+        assert len(caixa_de_entrada) == 2
+
+    def test_submit_considera_apenas_documentos_do_proprio_profissional(
+        self, client: TestClient, temp_storage
+    ):
+        profissional_a = criar_profissional(client, "prof.a@exemplo.com")
+        profissional_b = criar_profissional(client, "prof.b@exemplo.com")
+        headers_a = cabecalho(profissional_a["email"])
+        headers_b = cabecalho(profissional_b["email"])
+
+        anexar_obrigatorios(client, headers_a)
+
+        # B não possui documentos; os de A não podem habilitar o envio de B
+        resposta = client.post(f"{URL_ME}/submit", headers=headers_b)
+        assert resposta.status_code == 422
+        assert resposta.json()["detail"]["missing_required"] == [
+            "photo_id",
+            "proof_of_residence",
+        ]
+
+        # E o envio de A permanece intacto
+        assert client.get(URL_ME, headers=headers_a).json()["submitted_at"] is None
+
+    def test_falha_de_email_nao_impede_submissao(
+        self, client: TestClient, temp_storage, db_session, monkeypatch, caixa_de_entrada
+    ):
+        criar_admin(db_session, "admin.sem.smtp@rentalspouse.com")
+        profissional = criar_profissional(client, "prof.sem.smtp@exemplo.com")
+        headers = cabecalho(profissional["email"])
+        anexar_obrigatorios(client, headers)
+
+        # SMTP mal configurado: obter_transporte levanta ErroEnvioEmail
+        monkeypatch.setenv("EMAIL_BACKEND", "smtp")
+        monkeypatch.delenv("SMTP_HOST", raising=False)
+
+        resposta = client.post(f"{URL_ME}/submit", headers=headers)
+
+        assert resposta.status_code == 200
+        assert resposta.json()["submitted_at"] is not None
+        assert caixa_de_entrada == []
