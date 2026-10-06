@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import models
+import search
 import storage
 from database import get_db
 from models import normalize_text
@@ -120,6 +121,13 @@ def _escape_like(val: str) -> str:
     return val.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+# Teto de candidatos carregados para o ranking inteligente. A busca textual (q)
+# precisa avaliar tolerância a erros e sinônimos, o que não é expressável de forma
+# portável em SQL; os filtros de banco (status/especialidade) reduzem o conjunto
+# antes desta etapa.
+MAX_SEARCH_CANDIDATES = 2000
+
+
 @router.get("", response_model=List[ProfessionalRead], summary="Listar profissionais")
 @profissionais_router.get("", response_model=List[ProfessionalRead], include_in_schema=False)
 def list_professionals(
@@ -147,7 +155,11 @@ def list_professionals(
     if approval_status and approval_status.strip().lower() != "all":
         query = query.filter(models.Professional.approval_status == approval_status.strip().lower())
 
-    if city and city.strip():
+    has_query = bool(q and q.strip())
+
+    # A cidade é filtrada no banco apenas quando não há busca textual. Com "q", o
+    # ranking inteligente aplica tolerância a acentos/erros de digitação na cidade.
+    if city and city.strip() and not has_query:
         norm_city = normalize_text(city)
         escaped_norm_city = _escape_like(norm_city)
         escaped_city = _escape_like(city.strip())
@@ -169,20 +181,23 @@ def list_professionals(
             )
         )
 
-    if q and q.strip():
-        norm_q = normalize_text(q)
-        tokens = norm_q.split()
-        for token in tokens:
-            if token:
-                escaped_token = _escape_like(token)
-                query = query.filter(
-                    or_(
-                        models.Professional.normalized_search.ilike(f"%{escaped_token}%", escape="\\"),
-                        models.Professional.name.ilike(f"%{escaped_token}%", escape="\\"),
-                        models.Professional.bio.ilike(f"%{escaped_token}%", escape="\\"),
-                        cast(models.Professional.specialties, String).ilike(f"%{escaped_token}%", escape="\\"),
-                    )
-                )
+    if has_query:
+        # Termo composto apenas por símbolos (ex: "%", "_") não é uma busca válida.
+        if not search.clean_text(q):
+            return []
+
+        candidates = (
+            query.order_by(models.Professional.id.asc())
+            .limit(MAX_SEARCH_CANDIDATES)
+            .all()
+        )
+        ranked, _ = search.filter_professionals_intelligent(
+            candidates,
+            q=q or "",
+            specialty=specialty or "",
+            city=city or "",
+        )
+        return ranked[skip : skip + limit]
 
     return (
         query.order_by(models.Professional.id.asc())

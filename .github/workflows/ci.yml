@@ -33,7 +33,7 @@ jobs:
         run: pytest tests/ -v
 
   frontend:
-    name: Build & Test Frontend (Node.js 20)
+    name: Build & Test Frontend (Node.js 24)
     runs-on: ubuntu-latest
 
     steps:
@@ -43,7 +43,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: "npm"
           cache-dependency-path: web/package-lock.json
 
