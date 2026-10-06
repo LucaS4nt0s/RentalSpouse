@@ -131,6 +131,10 @@ class Professional(Base):
         index=True,
     )
     approval_notes = Column(Text, nullable=True)
+    # Momento (UTC) do último envio dos documentos para análise (issue #55).
+    # Nulo enquanto o profissional ainda está montando o rascunho; após o envio,
+    # os documentos ficam bloqueados para edição enquanto o status não for "rejected".
+    documents_submitted_at = Column(DateTime, nullable=True)
     approved_at = Column(DateTime, nullable=True)
     approved_by_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
