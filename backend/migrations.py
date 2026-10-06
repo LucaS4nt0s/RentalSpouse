@@ -28,6 +28,7 @@ def migrate_columns_and_indexes(engine: Engine) -> None:
     existing_columns = {col["name"] for col in inspector.get_columns("professionals")}
 
     columns_to_add = [
+        ("documents_submitted_at", "TIMESTAMP"),
         ("normalized_city", "VARCHAR(100)"),
         ("normalized_specialties", "TEXT"),
         ("normalized_search", "TEXT"),

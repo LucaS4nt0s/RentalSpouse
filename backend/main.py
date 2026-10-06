@@ -10,6 +10,9 @@ from routes.admins import router as admins_router
 from routes.auth import router as auth_router
 from routes.clientes import router as clientes_router
 from routes.hello import router as hello_router
+from routes.professional_documents_me import (
+    router as professional_documents_me_router,
+)
 from routes.professionals import (
     profissionais_router,
     router as professionals_router,
@@ -68,6 +71,9 @@ app.add_middleware(
 app.include_router(hello_router)
 app.include_router(clientes_router)
 app.include_router(verificacao_router)
+# /api/professionals/me/documents precisa vir ANTES do router de profissionais:
+# caso contrário, "me" casaria com o path param {professional_id} e viraria 422.
+app.include_router(professional_documents_me_router)
 app.include_router(professionals_router)
 app.include_router(profissionais_router)
 app.include_router(auth_router)

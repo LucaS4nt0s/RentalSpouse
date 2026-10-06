@@ -76,9 +76,10 @@ def test_migrations_alter_table_and_backfill():
             {"specs": json.dumps(["Hidráulica"])},
         )
 
-    # Verifica que as colunas normalizadas NÃO existem antes da migração
+    # Verifica que as colunas normalizadas e documents_submitted_at NÃO existem antes da migração
     inspector = inspect(engine)
     cols_before = {c["name"] for c in inspector.get_columns("professionals")}
+    assert "documents_submitted_at" not in cols_before
     assert "normalized_city" not in cols_before
     assert "normalized_specialties" not in cols_before
     assert "normalized_search" not in cols_before
@@ -89,6 +90,7 @@ def test_migrations_alter_table_and_backfill():
     # Verifica que as colunas foram criadas com sucesso
     inspector_after = inspect(engine)
     cols_after = {c["name"] for c in inspector_after.get_columns("professionals")}
+    assert "documents_submitted_at" in cols_after
     assert "normalized_city" in cols_after
     assert "normalized_specialties" in cols_after
     assert "normalized_search" in cols_after
