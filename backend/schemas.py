@@ -567,3 +567,27 @@ class ProfessionalDocumentsSummaryRead(BaseModel):
     )
     documents: List[ProfessionalDocumentRead]
 
+
+class ProfessionalDocumentsMeSummaryRead(ProfessionalDocumentsSummaryRead):
+    """
+    Resumo dos documentos do profissional autenticado (`/me`), com o estado do
+    envio para análise derivado — sem novo enum:
+
+    - `submitted_at` nulo -> rascunho;
+    - `approval_status == "rejected"` -> pode corrigir e reenviar;
+    - caso contrário (com `submitted_at` preenchido) -> em análise/aprovado, edição bloqueada.
+    """
+
+    submitted_at: Optional[datetime] = Field(
+        None,
+        description="Momento (UTC) do último envio para análise; nulo enquanto o envio for rascunho.",
+    )
+    can_submit: bool = Field(
+        ...,
+        description="True quando os 2 documentos obrigatórios estão anexados e o envio não está bloqueado.",
+    )
+    missing_required: List[str] = Field(
+        ...,
+        description="Tipos de documento obrigatórios ainda ausentes (photo_id, proof_of_residence).",
+    )
+
