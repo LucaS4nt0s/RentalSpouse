@@ -79,8 +79,8 @@ def _parse_int_seguro(
 
 
 def _parse_bool_seguro(valor: Optional[str], padrao: bool = False) -> bool:
-    """Converte valor de ambiente em booleano estrito."""
-    if valor is None:
+    """Converte valor de ambiente em booleano estrito com fallback defensivo para vazio."""
+    if valor is None or not str(valor).strip():
         return padrao
     return str(valor).strip().lower() in ("1", "true", "yes", "on", "sim")
 

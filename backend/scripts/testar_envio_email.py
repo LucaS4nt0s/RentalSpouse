@@ -34,7 +34,7 @@ import email_service
 import security
 
 
-def testar_conectividade_tcp(host: str, porta: int, timeout: int = 5) -> Tuple[bool, str, float]:
+def testar_conectividade_tcp(host: str, porta: int, timeout: int = 5) -> tuple[bool, str, float]:
     """Testa a abertura direta de socket TCP para identificar bloqueios de firewall ou rede."""
     inicio = time.perf_counter()
     try:
@@ -147,9 +147,9 @@ def diagnosticar_e_enviar(destinatario: str) -> bool:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2 or not sys.argv[1].strip():
+    if len(sys.argv) < 2 or not sys.argv[1].strip() or sys.argv[1].strip() in ("-h", "--help"):
         print("Uso: python backend/scripts/testar_envio_email.py <email-do-destinatario>")
-        sys.exit(1)
+        sys.exit(0 if len(sys.argv) >= 2 and sys.argv[1].strip() in ("-h", "--help") else 1)
 
     alvo = sys.argv[1].strip()
     sucesso = diagnosticar_e_enviar(alvo)

@@ -594,6 +594,8 @@ class TestConfiguracaoEmail:
         monkeypatch.setenv("SMTP_HOST", "localhost")
         monkeypatch.setenv("SMTP_PORT", "1")
         monkeypatch.setenv("SMTP_TIMEOUT", "1")
+        monkeypatch.setenv("SMTP_MAX_RETRIES", "1")
+        monkeypatch.setattr("time.sleep", lambda _: None)
 
         with patch("smtplib.SMTP", side_effect=OSError("conexão recusada")):
             with pytest.raises(email_service.ErroEnvioEmail):
@@ -994,3 +996,36 @@ class TestRefatoracaoSeniorEmail:
         assert msg["Auto-Submitted"] == "auto-generated"
         assert "Date" in msg
         assert "Message-ID" in msg
+
+    @pytest.mark.parametrize(
+        "valor,padrao,esperado",
+        [
+            ("true", False, True),
+            ("1", False, True),
+            ("yes", False, True),
+            ("sim", False, True),
+            ("false", True, False),
+            ("0", True, False),
+            ("no", True, False),
+            ("", True, True),
+            ("   ", True, True),
+            (None, True, True),
+            ("", False, False),
+            ("invalido", True, False),
+        ],
+    )
+    def test_parse_bool_seguro_trata_vazio_e_fallbacks(self, valor, padrao, esperado):
+        assert email_service._parse_bool_seguro(valor, padrao) == esperado
+
+    def test_conectividade_tcp_sucesso_e_falha(self):
+        from scripts.testar_envio_email import testar_conectividade_tcp
+        with patch("socket.create_connection") as mock_conn:
+            ok, msg, lat = testar_conectividade_tcp("127.0.0.1", 25, timeout=1)
+            assert ok is True
+            assert "acessível" in msg
+            assert lat >= 0
+
+        with patch("socket.create_connection", side_effect=TimeoutError()):
+            ok, msg, lat = testar_conectividade_tcp("127.0.0.1", 25, timeout=1)
+            assert ok is False
+            assert "Timeout" in msg
