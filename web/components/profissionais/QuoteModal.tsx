@@ -9,6 +9,20 @@ export interface QuoteModalProps {
   onClose: () => void;
 }
 
+function maskEmail(email?: string | null): string {
+  if (!email || !email.includes('@')) return 'E-mail protegido';
+  const [user, domain] = email.split('@');
+  if (user.length <= 2) return `${user[0]}***@${domain}`;
+  return `${user.slice(0, 2)}***${user.slice(-1)}@${domain}`;
+}
+
+function maskPhone(phone?: string | null): string {
+  if (!phone) return 'Telefone protegido';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 8) return 'Telefone protegido';
+  return phone.replace(/(\d{2,3})\D*(\d{1})\d+(\d{2})$/, '$1 $2****-**$3');
+}
+
 export function QuoteModal({ professional, onClose }: QuoteModalProps) {
   const [quoteMessage, setQuoteMessage] = useState<string>('');
   const [quoteSuccess, setQuoteSuccess] = useState<boolean>(false);
@@ -16,6 +30,11 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   // Focus trap e controle de teclado (Acessibilidade)
   useEffect(() => {
@@ -37,7 +56,7 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -80,7 +99,7 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
         previouslyFocusedElementRef.current.focus();
       }
     };
-  }, [professional, onClose]);
+  }, [professional]);
 
   if (!professional) return null;
 
@@ -175,13 +194,13 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
               </div>
 
               <div className="flex items-center justify-between gap-3 text-xs text-rental-muted pt-2">
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1" title="Contato protegido">
                   <Phone className="h-3.5 w-3.5 text-rental-primary" />
-                  {professional.phone || 'Telefone verificado'}
+                  {maskPhone(professional.phone)}
                 </span>
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1" title="Contato protegido">
                   <Mail className="h-3.5 w-3.5 text-rental-primary" />
-                  {professional.email}
+                  {maskEmail(professional.email)}
                 </span>
               </div>
 

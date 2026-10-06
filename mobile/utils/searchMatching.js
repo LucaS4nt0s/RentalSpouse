@@ -1,7 +1,7 @@
 /**
  * Adaptador e Re-exportação do Motor de Busca Inteligente para Mobile.
- * Utiliza o pacote canônico compartilhado @rentalspouse/shared-search
- * garantindo consistência semântica e paridade total com o ambiente Web.
+ * Importa direto do código-fonte TypeScript do pacote compartilhado para que o
+ * Metro/Babel compile sem depender do diretório `dist/` (que não é versionado).
  */
 
-export * from '../../packages/shared-search/src/searchMatching';
+export * from '../../packages/shared-search/src';

@@ -93,17 +93,19 @@ export const ProfessionalCardMobile = ({
           </View>
         </View>
 
-        <View
-          style={[
-            styles.verifiedBadge,
-            { backgroundColor: `${colors.success}18` },
-          ]}
-        >
-          <ShieldCheck size={14} color={colors.success} />
-          <Text style={[styles.verifiedText, { color: colors.success }]}>
-            Verificado
-          </Text>
-        </View>
+        {professional.approval_status === 'approved' && (
+          <View
+            style={[
+              styles.verifiedBadge,
+              { backgroundColor: `${colors.success}18` },
+            ]}
+          >
+            <ShieldCheck size={14} color={colors.success} />
+            <Text style={[styles.verifiedText, { color: colors.success }]}>
+              Verificado
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Specialties Badges */}

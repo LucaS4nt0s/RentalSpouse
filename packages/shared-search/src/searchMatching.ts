@@ -15,6 +15,7 @@ export interface ProfessionalData {
   city?: string | null;
   state?: string | null;
   is_active?: boolean;
+  approval_status?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -50,6 +51,17 @@ export function normalizeText(str: string | null | undefined): string {
  */
 export function cleanText(str: string | null | undefined): string {
   return normalizeText(str).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Casa a busca no texto: substring para termos longos, token isolado para curtos.
+ * Evita falsos positivos como "ar" em "carlos" ou "pia" em "terapia".
+ */
+export function containsQuery(text: string, cleanQ: string): boolean {
+  if (cleanQ.length < 4) {
+    return text.split(/\s+/).includes(cleanQ);
+  }
+  return text.includes(cleanQ);
 }
 
 /**
@@ -370,8 +382,9 @@ export function findBestCategorySuggestion(
 
     if (cleanQ.length >= 4) {
       const simCat = calculateSimilarity(cleanQ, cleanCat);
-      if (simCat > highestScore && simCat >= 0.75) {
-        highestScore = simCat;
+      const simScore = Math.round(simCat * 85);
+      if (simScore > highestScore && simCat >= 0.75) {
+        highestScore = simScore;
         bestCat = category;
         isSynonym = false;
       }
@@ -484,7 +497,7 @@ export function filterProfessionalsIntelligent<T extends ProfessionalData = Prof
     }
 
     // B. Match no Nome do Profissional
-    if (nameText.includes(cleanQ)) {
+    if (containsQuery(nameText, cleanQ)) {
       bestScore = Math.max(bestScore, 100);
       matchReason = 'Nome correspondente';
     } else {
@@ -501,13 +514,13 @@ export function filterProfessionalsIntelligent<T extends ProfessionalData = Prof
     }
 
     // C. Match na Cidade
-    if (profCityText && (profCityText === cleanQ || profCityText.includes(cleanQ))) {
+    if (profCityText && (profCityText === cleanQ || containsQuery(profCityText, cleanQ))) {
       bestScore = Math.max(bestScore, 80);
       matchReason = 'Cidade correspondente';
     }
 
     // D. Match na Biografia
-    if (bioText.includes(cleanQ)) {
+    if (containsQuery(bioText, cleanQ)) {
       bestScore = Math.max(bestScore, 70);
       matchReason = 'Biografia';
     } else {

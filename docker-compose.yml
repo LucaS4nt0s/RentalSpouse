@@ -56,8 +56,8 @@ services:
 
   web:
     build:
-      context: ./web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: web/Dockerfile
     container_name: rentalspouse_web
     restart: unless-stopped
     environment:
@@ -67,9 +67,10 @@ services:
     depends_on:
       - backend
     volumes:
-      - ./web:/app
-      - /app/node_modules
-      - /app/.next
+      - ./web:/app/web
+      - ./packages:/app/packages
+      - /app/web/node_modules
+      - /app/web/.next
 
   # ---------------------------------------------------------------------------
   # Mailpit — capturador de e-mails para DESENVOLVIMENTO (opcional).

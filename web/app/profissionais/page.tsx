@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   Zap,
@@ -69,11 +69,18 @@ function ProfissionaisSearchContent() {
   }, [city]);
 
   // Hook central de busca e gestão dos 3 estados
-  const { data, isLoading, error, isEmpty, detectedSuggestion, retry } = useProfessionalsSearch({
+  const { data, isLoading, isRetrying, error, isEmpty, detectedSuggestion, retry } = useProfessionalsSearch({
     specialty,
     city: debouncedCity,
     q: debouncedSearch,
   });
+
+  // Paginação progressiva sob demanda (LoadMoreControl - PRD §3.1)
+  const [visibleCount, setVisibleCount] = useState<number>(12);
+
+  useEffect(() => {
+    setVisibleCount(12);
+  }, [specialty, debouncedCity, debouncedSearch]);
 
   const handleClearAll = () => {
     setSearchInput('');
@@ -81,9 +88,13 @@ function ProfissionaisSearchContent() {
     clearFilters();
   };
 
-  const handleOpenQuoteModal = (prof: Professional) => {
+  const handleOpenQuoteModal = useCallback((prof: Professional) => {
     setSelectedProfessional(prof);
-  };
+  }, []);
+
+  const handleCloseQuoteModal = useCallback(() => {
+    setSelectedProfessional(null);
+  }, []);
 
   return (
     <div className="flex min-h-screen flex-col bg-rental-bg text-rental-ink">
@@ -203,6 +214,7 @@ function ProfissionaisSearchContent() {
             <SearchErrorState
               message={error}
               onRetry={retry}
+              isRetrying={isRetrying}
             />
           ) : isEmpty ? (
             /* Estado 3: Empty State (Zero registros encontrados) */
@@ -212,16 +224,30 @@ function ProfissionaisSearchContent() {
             />
           ) : (
             /* Estado 3: Sucesso com Registros */
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-              {data.map((prof) => (
-                <ProfessionalCard
-                  key={prof.id}
-                  professional={prof}
-                  activeSpecialty={specialty}
-                  onSpecialtyClick={setSpecialty}
-                  onRequestQuote={handleOpenQuoteModal}
-                />
-              ))}
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                {data.slice(0, visibleCount).map((prof) => (
+                  <ProfessionalCard
+                    key={prof.id}
+                    professional={prof}
+                    activeSpecialty={specialty}
+                    onSpecialtyClick={setSpecialty}
+                    onRequestQuote={handleOpenQuoteModal}
+                  />
+                ))}
+              </div>
+
+              {visibleCount < data.length && (
+                <div className="flex justify-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((prev) => prev + 12)}
+                    className="inline-flex items-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-6 py-3 text-xs sm:text-sm font-bold text-rental-ink shadow-sm transition-all hover:border-rental-primary/50 hover:bg-rental-surface2 active:scale-[0.98]"
+                  >
+                    Carregar mais profissionais ({data.length - visibleCount} restantes)
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -230,7 +256,7 @@ function ProfissionaisSearchContent() {
       {/* Modal de Solicitação de Orçamento Acessível com Focus Trap */}
       <QuoteModal
         professional={selectedProfessional}
-        onClose={() => setSelectedProfessional(null)}
+        onClose={handleCloseQuoteModal}
       />
 
       {/* Footer */}
