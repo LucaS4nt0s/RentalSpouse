@@ -4,6 +4,10 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Zap, ArrowRight, Wrench, ShieldCheck, Star, Clock, User, LogOut } from 'lucide-react';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
+import {
+  ProfessionalDocumentsLink,
+  useIsProfessional,
+} from '../components/documentos/ProfessionalDocumentsLink';
 import { useAuth } from '../context/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
@@ -14,6 +18,7 @@ interface StatusResponse {
 
 export default function Home() {
   const { user, isAuthenticated, logout, isLoading } = useAuth();
+  const isProfessional = useIsProfessional();
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [offline, setOffline] = useState(false);
 
@@ -63,6 +68,7 @@ export default function Home() {
                   Olá, {user.nome.split(' ')[0]}
                 </span>
               </Link>
+              <ProfessionalDocumentsLink variant="header" />
               <button
                 type="button"
                 onClick={logout}
@@ -127,13 +133,17 @@ export default function Home() {
                 <User className="h-4 w-4 text-rental-primary" />
                 Minha Conta ({user.nome.split(' ')[0]})
               </Link>
-              <Link
-                href="/cadastro/profissional"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
-              >
-                <Wrench className="h-4 w-4 text-rental-primary" />
-                Sou profissional
-              </Link>
+              {isProfessional ? (
+                <ProfessionalDocumentsLink variant="hero" />
+              ) : (
+                <Link
+                  href="/cadastro/profissional"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+                >
+                  <Wrench className="h-4 w-4 text-rental-primary" />
+                  Sou profissional
+                </Link>
+              )}
             </>
           ) : (
             <>

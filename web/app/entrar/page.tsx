@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { ThemeToggle } from '../../components/ui/ThemeToggle';
 import { Button } from '../../components/ui/Button';
+import { ProfessionalDocumentsLink } from '../../components/documentos/ProfessionalDocumentsLink';
 import { useAuth, AuthUser } from '../../context/AuthContext';
 import { validateEmail } from '../../utils/validators';
 
@@ -240,6 +241,7 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
               Ir para a Página Inicial
             </Button>
           </Link>
+          <ProfessionalDocumentsLink variant="card" />
           <Button
             variant="secondary"
             size="md"
@@ -276,6 +278,7 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
           >
             Acessar Plataforma
           </Button>
+          <ProfessionalDocumentsLink variant="card" />
         </div>
       </div>
     );
