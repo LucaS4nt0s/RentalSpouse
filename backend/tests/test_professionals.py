@@ -127,7 +127,14 @@ class TestListAndFilterProfessionals:
         assert response.status_code == 200
         assert response.json() == []
 
-    def test_list_and_filter_by_specialty(self, client: TestClient):
+    @staticmethod
+    def _approve_all(db_session):
+        db_session.query(models.Professional).update(
+            {models.Professional.approval_status: models.ProfessionalApprovalStatus.APPROVED.value}
+        )
+        db_session.commit()
+
+    def test_list_and_filter_by_specialty(self, client: TestClient, db_session):
         """Deve listar profissionais e filtrar por especialidade com sucesso."""
         p1 = dict(SAMPLE_PROFESSIONAL)
         p1["email"] = "prof1@test.com"
@@ -138,6 +145,7 @@ class TestListAndFilterProfessionals:
         p2["email"] = "prof2@test.com"
         p2["specialties"] = ["Encanamento", "Desentupimento"]
         client.post("/api/professionals", json=p2)
+        self._approve_all(db_session)
 
         # Sem filtro: 2 registros
         all_resp = client.get("/api/professionals")
@@ -153,8 +161,13 @@ class TestListAndFilterProfessionals:
         assert len(encanamento_resp.json()) == 1
         assert encanamento_resp.json()[0]["email"] == "prof2@test.com"
 
-    def test_filter_by_city(self, client: TestClient):
-        """Deve filtrar profissionais por cidade."""
+        # Filtrando por eletrica (SEM ACENTO) deve encontrar Elétrica
+        sem_acento_resp = client.get("/api/professionals?specialty=eletrica")
+        assert len(sem_acento_resp.json()) == 1
+        assert sem_acento_resp.json()[0]["email"] == "prof1@test.com"
+
+    def test_filter_by_city(self, client: TestClient, db_session):
+        """Deve filtrar profissionais por cidade (com e sem acentos)."""
         p1 = dict(SAMPLE_PROFESSIONAL)
         p1["email"] = "sp@test.com"
         p1["city"] = "Campinas"
@@ -164,24 +177,115 @@ class TestListAndFilterProfessionals:
         p2["email"] = "rj@test.com"
         p2["city"] = "Niterói"
         client.post("/api/professionals", json=p2)
+        self._approve_all(db_session)
 
         resp = client.get("/api/professionals?city=Campinas")
         assert resp.status_code == 200
         assert len(resp.json()) == 1
         assert resp.json()[0]["email"] == "sp@test.com"
 
-    def test_pagination_skip_limit(self, client: TestClient):
+        # Filtrando por niteroi (SEM ACENTO) deve encontrar Niterói
+        resp_sem_acento = client.get("/api/professionals?city=niteroi")
+        assert resp_sem_acento.status_code == 200
+        assert len(resp_sem_acento.json()) == 1
+        assert resp_sem_acento.json()[0]["email"] == "rj@test.com"
+
+    def test_pagination_skip_limit(self, client: TestClient, db_session):
         """Deve respeitar paginação via skip e limit no banco."""
         for i in range(3):
             p = dict(SAMPLE_PROFESSIONAL)
             p["email"] = f"page{i}@test.com"
             client.post("/api/professionals", json=p)
+        self._approve_all(db_session)
 
         resp = client.get("/api/professionals?skip=1&limit=1")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
         assert data[0]["email"] == "page1@test.com"
+
+    def test_search_free_text_q(self, client: TestClient, db_session):
+        """Deve buscar profissionais pelo parâmetro livre q (nome, bio, especialidade com/sem acento)."""
+        p1 = dict(SAMPLE_PROFESSIONAL)
+        p1["email"] = "marido1@test.com"
+        p1["name"] = "José Eletricista"
+        p1["bio"] = "Especialista em iluminação residencial e quadros elétricos de alta voltagem."
+        p1["specialties"] = ["Elétrica"]
+        p1["city"] = "Campinas"
+        client.post("/api/professionals", json=p1)
+
+        p2 = dict(SAMPLE_PROFESSIONAL)
+        p2["email"] = "marido2@test.com"
+        p2["name"] = "Marcos Encanador"
+        p2["bio"] = "Conserto de vazamentos em canos de cobre e pvc, desentupimentos rápidos."
+        p2["specialties"] = ["Hidráulica"]
+        p2["city"] = "Niterói"
+        client.post("/api/professionals", json=p2)
+        self._approve_all(db_session)
+
+        # Busca por nome
+        resp = client.get("/api/professionals?q=jose")
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+        assert resp.json()[0]["email"] == "marido1@test.com"
+
+        # Busca por especialidade no q (SEM ACENTO)
+        resp_q_spec = client.get("/api/professionals?q=eletrica")
+        assert resp_q_spec.status_code == 200
+        assert len(resp_q_spec.json()) == 1
+        assert resp_q_spec.json()[0]["email"] == "marido1@test.com"
+
+        # Busca por termo na bio (SEM ACENTO: "iluminacao" casa com "iluminação")
+        resp_bio = client.get("/api/professionals?q=iluminacao")
+        assert resp_bio.status_code == 200
+        assert len(resp_bio.json()) == 1
+        assert resp_bio.json()[0]["email"] == "marido1@test.com"
+
+        # Busca combinada com q e city
+        resp_comb = client.get("/api/professionals?q=encanador&city=niteroi")
+        assert resp_comb.status_code == 200
+        assert len(resp_comb.json()) == 1
+        assert resp_comb.json()[0]["email"] == "marido2@test.com"
+
+        # Busca com termo inexistente
+        resp_vazio = client.get("/api/professionals?q=termoinexistentexyz")
+        assert resp_vazio.status_code == 200
+        assert len(resp_vazio.json()) == 0
+
+        # Busca com caracteres curinga do LIKE (% e _) - devem ser tratados literalmente
+        resp_wildcard_pct = client.get("/api/professionals?q=%")
+        assert resp_wildcard_pct.status_code == 200
+        assert len(resp_wildcard_pct.json()) == 0
+
+        resp_wildcard_underscore = client.get("/api/professionals?q=_")
+        assert resp_wildcard_underscore.status_code == 200
+        assert len(resp_wildcard_underscore.json()) == 0
+
+    def test_list_defaults_to_approved_professionals_only(self, client: TestClient, db_session):
+        """Garante que profissionais pendentes não aparecem no catálogo público por padrão."""
+        p1 = dict(SAMPLE_PROFESSIONAL)
+        p1["email"] = "pendente@test.com"
+        client.post("/api/professionals", json=p1)
+
+        p2 = dict(SAMPLE_PROFESSIONAL)
+        p2["email"] = "aprovado@test.com"
+        r2 = client.post("/api/professionals", json=p2).json()
+        db_session.query(models.Professional).filter_by(id=r2["id"]).update(
+            {models.Professional.approval_status: models.ProfessionalApprovalStatus.APPROVED.value}
+        )
+        db_session.commit()
+
+        # Listagem padrão (público) só retorna o aprovado
+        resp = client.get("/api/professionals")
+        assert resp.status_code == 200
+        emails = [p["email"] for p in resp.json()]
+        assert "aprovado@test.com" in emails
+        assert "pendente@test.com" not in emails
+
+        # Listagem com approval_status=all retorna ambos
+        resp_all = client.get("/api/professionals?approval_status=all")
+        assert len(resp_all.json()) == 2
+
 
 
 class TestGetProfessionalById:
@@ -391,7 +495,7 @@ class TestUpdateAndRemoveProfessional:
         assert data["city"] == "São Paulo"
         assert data["state"] == "SP"
 
-    def test_create_and_list_via_profissionais_alias_route(self, client: TestClient):
+    def test_create_and_list_via_profissionais_alias_route(self, client: TestClient, db_session):
         """Valida que a rota /api/profissionais funciona como alias para /api/professionals."""
         payload = dict(SAMPLE_PROFESSIONAL)
         payload["email"] = "alias.route@teste.com"
@@ -403,6 +507,11 @@ class TestUpdateAndRemoveProfessional:
         get_resp = client.get(f"/api/profissionais/{prof_id}")
         assert get_resp.status_code == 200
         assert get_resp.json()["email"] == "alias.route@teste.com"
+
+        db_session.query(models.Professional).filter_by(id=prof_id).update(
+            {models.Professional.approval_status: models.ProfessionalApprovalStatus.APPROVED.value}
+        )
+        db_session.commit()
 
         list_resp = client.get("/api/profissionais")
         assert list_resp.status_code == 200

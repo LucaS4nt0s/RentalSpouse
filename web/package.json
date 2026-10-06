@@ -7,9 +7,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build:search": "tsc -p ../packages/shared-search/tsconfig.json",
+    "build": "npm run build:search && next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "npm run build:search && node --test ../packages/shared-search/searchMatching.test.js"
   },
   "dependencies": {
     "lucide-react": "^1.48.0",

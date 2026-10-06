@@ -1,0 +1,11 @@
+node_modules
+*/node_modules
+web/node_modules
+mobile/node_modules
+web/.next
+.next
+.git
+.pytest_cache
+backend/.venv
+backend/__pycache__
+backend/uploads

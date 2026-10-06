@@ -3,11 +3,15 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
+from sqlalchemy import String, cast, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import models
+import search
+import storage
 from database import get_db
+from models import normalize_text
 from schemas import (
     ProfessionalCreate,
     ProfessionalDocumentRead,
@@ -16,7 +20,6 @@ from schemas import (
     ProfessionalUpdate,
 )
 from security import get_optional_current_user, hash_senha
-import storage
 
 router = APIRouter(prefix="/api/professionals", tags=["Profissionais"])
 profissionais_router = APIRouter(prefix="/api/profissionais", tags=["Profissionais"])
@@ -113,49 +116,100 @@ def create_professional(
     return professional
 
 
+def _escape_like(val: str) -> str:
+    """Escapa caracteres especiais do SQL LIKE/ILIKE (% e _ e \\) para evitar desvios semânticos."""
+    return val.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+# Teto de candidatos carregados para o ranking inteligente. A busca textual (q)
+# precisa avaliar tolerância a erros e sinônimos, o que não é expressável de forma
+# portável em SQL; os filtros de banco (status/especialidade) reduzem o conjunto
+# antes desta etapa.
+MAX_SEARCH_CANDIDATES = 2000
+
+
 @router.get("", response_model=List[ProfessionalRead], summary="Listar profissionais")
 @profissionais_router.get("", response_model=List[ProfessionalRead], include_in_schema=False)
 def list_professionals(
-    specialty: Optional[str] = Query(
-        None, description="Filtra por especialidade do profissional"
+    q: Optional[str] = Query(
+        None,
+        max_length=120,
+        description="Busca textual por nome, bio ou especialidade (máx. 120 caracteres)",
     ),
-    city: Optional[str] = Query(None, description="Filtra por cidade base"),
+    specialty: Optional[str] = Query(
+        None, max_length=100, description="Filtra por especialidade do profissional"
+    ),
+    city: Optional[str] = Query(
+        None, max_length=100, description="Filtra por cidade base"
+    ),
     approval_status: Optional[str] = Query(
-        None, description="Filtra por status de aprovação cadastral (ex: pending_approval, approved, rejected)"
+        models.ProfessionalApprovalStatus.APPROVED.value,
+        description="Filtra por status de aprovação cadastral (padrão: approved; use 'all' para desativar filtro)",
     ),
     skip: int = Query(0, ge=0, description="Número de registros a pular"),
     limit: int = Query(50, ge=1, le=100, description="Limite máximo de registros"),
     db: Session = Depends(get_db),
 ):
     """
-    Lista profissionais cadastrados ativos, com suporte a busca e filtros por
-    especialidade, cidade, status de aprovação e paginação.
+    Lista profissionais cadastrados ativos, com suporte a busca textual (q), filtros por
+    especialidade, cidade, status de aprovação (padrão: aprovados) e paginação executados no banco de dados.
     """
     query = db.query(models.Professional).filter(models.Professional.is_active.is_(True))
 
-    if approval_status:
+    if approval_status and approval_status.strip().lower() != "all":
         query = query.filter(models.Professional.approval_status == approval_status.strip().lower())
 
-    if city:
-        query = query.filter(models.Professional.city.ilike(f"%{city.strip()}%"))
+    has_query = bool(q and q.strip())
 
-    if not specialty:
-        return (
-            query.order_by(models.Professional.id.asc())
-            .offset(skip)
-            .limit(limit)
-            .all()
+    # A cidade é sempre filtrada no banco (normalized_city já é sem acento). Isso
+    # evita esgotar o teto de candidatos globais antes do filtro de cidade rodar.
+    if city and city.strip():
+        norm_city = normalize_text(city)
+        escaped_norm_city = _escape_like(norm_city)
+        escaped_city = _escape_like(city.strip())
+        query = query.filter(
+            or_(
+                models.Professional.normalized_city.ilike(f"%{escaped_norm_city}%", escape="\\"),
+                models.Professional.city.ilike(f"%{escaped_city}%", escape="\\"),
+            )
         )
 
-    target_spec = specialty.strip().lower()
-    professionals = query.order_by(models.Professional.id.asc()).all()
-    filtered = [
-        p
-        for p in professionals
-        if any(target_spec in (s.lower() if isinstance(s, str) else "") for s in (p.specialties or []))
-    ]
+    # "Todas" é o chip neutro do frontend e equivale a não filtrar por especialidade.
+    if specialty and specialty.strip() and specialty.strip().lower() != "todas":
+        norm_spec = normalize_text(specialty)
+        escaped_norm_spec = _escape_like(norm_spec)
+        escaped_spec = _escape_like(specialty.strip())
+        query = query.filter(
+            or_(
+                models.Professional.normalized_specialties.ilike(f"%{escaped_norm_spec}%", escape="\\"),
+                cast(models.Professional.specialties, String).ilike(f"%{escaped_spec}%", escape="\\"),
+            )
+        )
 
-    return filtered[skip : skip + limit]
+    if has_query:
+        # Termo composto apenas por símbolos (ex: "%", "_") não é uma busca válida.
+        if not search.clean_text(q):
+            return []
+
+        candidates = (
+            query.order_by(models.Professional.id.asc())
+            .limit(MAX_SEARCH_CANDIDATES)
+            .all()
+        )
+        ranked, _ = search.filter_professionals_intelligent(
+            candidates,
+            q=q or "",
+            specialty=specialty or "",
+            city=city or "",
+        )
+        return ranked[skip : skip + limit]
+
+    return (
+        query.order_by(models.Professional.id.asc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 @router.get("/{professional_id}", response_model=ProfessionalRead, summary="Obter profissional por ID")
