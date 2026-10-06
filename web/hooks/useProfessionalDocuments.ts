@@ -89,7 +89,6 @@ export function useProfessionalDocuments() {
           ? err.message
           : 'Falha ao submeter documentos para análise.';
       setError(message);
-      throw err;
     } finally {
       setIsSubmitting(false);
     }

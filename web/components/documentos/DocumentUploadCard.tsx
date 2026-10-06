@@ -15,6 +15,7 @@ import {
   DocumentTypeMeta,
   ProfessionalDocument,
 } from '../../types/professionalDocuments';
+import { resolveApiUrl } from '../../services/professionalDocuments';
 import { Button } from '../ui/Button';
 
 interface DocumentUploadCardProps {
@@ -221,7 +222,7 @@ export const DocumentUploadCard: React.FC<DocumentUploadCardProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-rental-border/60">
             {document.download_url ? (
               <a
-                href={document.download_url}
+                href={resolveApiUrl(document.download_url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-rental-primary hover:underline py-1"

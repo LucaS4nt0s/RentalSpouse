@@ -23,6 +23,20 @@ export class ApiError extends Error {
   }
 }
 
+export function resolveApiUrl(path: string): string {
+  if (!path) return '';
+  if (
+    path.startsWith('http://') ||
+    path.startsWith('https://') ||
+    path.startsWith('blob:')
+  ) {
+    return path;
+  }
+  const cleanBase = API_BASE_URL.replace(/\/+$/, '');
+  const cleanPath = path.replace(/^\/+/, '');
+  return `${cleanBase}/${cleanPath}`;
+}
+
 function parseErrorMessage(body: unknown, fallback: string): string {
   if (body && typeof body === 'object') {
     if ('detail' in body) {
@@ -32,6 +46,11 @@ function parseErrorMessage(body: unknown, fallback: string): string {
         return detail
           .map((item) => (typeof item === 'object' && item?.msg ? item.msg : String(item)))
           .join(', ');
+      }
+      if (typeof detail === 'object' && detail !== null) {
+        if ('message' in detail && typeof (detail as { message: unknown }).message === 'string') {
+          return (detail as { message: string }).message;
+        }
       }
     }
     if ('message' in body && typeof (body as { message: unknown }).message === 'string') {
@@ -130,7 +149,7 @@ export async function deleteDocument(
     },
   );
 
-  if (!response.ok && response.status !== 204) {
+  if (!response.ok) {
     const errorBody = await response.json().catch(() => null);
     throw new ApiError(
       response.status,
