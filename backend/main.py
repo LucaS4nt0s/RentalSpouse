@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import database
+from migrations import run_all_migrations
 from routes.admins import router as admins_router
 from routes.auth import router as auth_router
 from routes.clientes import router as clientes_router
@@ -21,8 +22,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Cria todas as tabelas no banco de dados e semeia o admin inicial ao iniciar a aplicação."""
+    """Cria todas as tabelas no banco de dados, executa migrações defensivas e semeia o admin inicial."""
     database.Base.metadata.create_all(bind=database.engine)
+    try:
+        run_all_migrations(database.engine, database.SessionLocal)
+    except Exception:
+        logger.exception("Falha ao executar migrações ou backfill durante o startup da aplicação.")
+
     db = database.SessionLocal()
     try:
         seed_initial_admin(db)

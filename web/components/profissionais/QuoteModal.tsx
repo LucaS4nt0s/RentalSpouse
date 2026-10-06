@@ -16,6 +16,11 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   // Focus trap e controle de teclado (Acessibilidade)
   useEffect(() => {
@@ -37,7 +42,7 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -80,7 +85,7 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
         previouslyFocusedElementRef.current.focus();
       }
     };
-  }, [professional, onClose]);
+  }, [professional]);
 
   if (!professional) return null;
 

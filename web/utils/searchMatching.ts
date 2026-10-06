@@ -4,4 +4,4 @@
  * para garantir sincronização entre plataformas e eliminar divergências.
  */
 
-export * from '../../packages/shared-search/src/searchMatching';
+export * from '../../packages/shared-search';

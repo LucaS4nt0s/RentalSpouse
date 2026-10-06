@@ -4,4 +4,4 @@
  * garantindo consistência semântica e paridade total com o ambiente Web.
  */
 
-export * from '../../packages/shared-search/src/searchMatching';
+export * from '../../packages/shared-search';

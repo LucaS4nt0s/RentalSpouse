@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   Zap,
@@ -81,9 +81,13 @@ function ProfissionaisSearchContent() {
     clearFilters();
   };
 
-  const handleOpenQuoteModal = (prof: Professional) => {
+  const handleOpenQuoteModal = useCallback((prof: Professional) => {
     setSelectedProfessional(prof);
-  };
+  }, []);
+
+  const handleCloseQuoteModal = useCallback(() => {
+    setSelectedProfessional(null);
+  }, []);
 
   return (
     <div className="flex min-h-screen flex-col bg-rental-bg text-rental-ink">
@@ -230,7 +234,7 @@ function ProfissionaisSearchContent() {
       {/* Modal de Solicitação de Orçamento Acessível com Focus Trap */}
       <QuoteModal
         professional={selectedProfessional}
-        onClose={() => setSelectedProfessional(null)}
+        onClose={handleCloseQuoteModal}
       />
 
       {/* Footer */}

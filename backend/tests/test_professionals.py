@@ -241,6 +241,15 @@ class TestListAndFilterProfessionals:
         assert resp_vazio.status_code == 200
         assert len(resp_vazio.json()) == 0
 
+        # Busca com caracteres curinga do LIKE (% e _) - devem ser tratados literalmente
+        resp_wildcard_pct = client.get("/api/professionals?q=%")
+        assert resp_wildcard_pct.status_code == 200
+        assert len(resp_wildcard_pct.json()) == 0
+
+        resp_wildcard_underscore = client.get("/api/professionals?q=_")
+        assert resp_wildcard_underscore.status_code == 200
+        assert len(resp_wildcard_underscore.json()) == 0
+
 
 class TestGetProfessionalById:
     """Testes de busca por ID (GET /api/professionals/{id})."""

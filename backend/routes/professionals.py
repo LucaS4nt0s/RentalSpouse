@@ -1,4 +1,3 @@
-import unicodedata
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -116,6 +115,11 @@ def create_professional(
     return professional
 
 
+def _escape_like(val: str) -> str:
+    """Escapa caracteres especiais do SQL LIKE/ILIKE (% e _ e \\) para evitar desvios semânticos."""
+    return val.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 @router.get("", response_model=List[ProfessionalRead], summary="Listar profissionais")
 @profissionais_router.get("", response_model=List[ProfessionalRead], include_in_schema=False)
 def list_professionals(
@@ -144,19 +148,23 @@ def list_professionals(
 
     if city and city.strip():
         norm_city = normalize_text(city)
+        escaped_norm_city = _escape_like(norm_city)
+        escaped_city = _escape_like(city.strip())
         query = query.filter(
             or_(
-                models.Professional.normalized_city.ilike(f"%{norm_city}%"),
-                models.Professional.city.ilike(f"%{city.strip()}%"),
+                models.Professional.normalized_city.ilike(f"%{escaped_norm_city}%", escape="\\"),
+                models.Professional.city.ilike(f"%{escaped_city}%", escape="\\"),
             )
         )
 
     if specialty and specialty.strip():
         norm_spec = normalize_text(specialty)
+        escaped_norm_spec = _escape_like(norm_spec)
+        escaped_spec = _escape_like(specialty.strip())
         query = query.filter(
             or_(
-                models.Professional.normalized_specialties.ilike(f"%{norm_spec}%"),
-                cast(models.Professional.specialties, String).ilike(f"%{specialty.strip()}%"),
+                models.Professional.normalized_specialties.ilike(f"%{escaped_norm_spec}%", escape="\\"),
+                cast(models.Professional.specialties, String).ilike(f"%{escaped_spec}%", escape="\\"),
             )
         )
 
@@ -165,12 +173,13 @@ def list_professionals(
         tokens = norm_q.split()
         for token in tokens:
             if token:
+                escaped_token = _escape_like(token)
                 query = query.filter(
                     or_(
-                        models.Professional.normalized_search.ilike(f"%{token}%"),
-                        models.Professional.name.ilike(f"%{token}%"),
-                        models.Professional.bio.ilike(f"%{token}%"),
-                        cast(models.Professional.specialties, String).ilike(f"%{token}%"),
+                        models.Professional.normalized_search.ilike(f"%{escaped_token}%", escape="\\"),
+                        models.Professional.name.ilike(f"%{escaped_token}%", escape="\\"),
+                        models.Professional.bio.ilike(f"%{escaped_token}%", escape="\\"),
+                        cast(models.Professional.specialties, String).ilike(f"%{escaped_token}%", escape="\\"),
                     )
                 )
 
