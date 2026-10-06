@@ -60,6 +60,21 @@ class TestSearchModule:
         assert search.find_best_category_suggestion("encanador")[0] == "Hidráulica"
         assert search.find_best_category_suggestion("reparo")[0] == "Reparos Gerais"
 
+    def test_sugere_categoria_com_typo_no_nome(self):
+        sugestao = search.find_best_category_suggestion("marcenara")
+        assert sugestao is not None
+        assert sugestao[0] == "Marcenaria"
+
+    def test_termo_curto_nao_casa_substring_em_nome_bio_ou_cidade(self):
+        profissionais = [
+            {"id": 1, "name": "Carlos Silva", "bio": "Reparos gerais e armarios", "specialties": ["Reparos Gerais"], "city": "Aracaju"},
+            {"id": 2, "name": "Tecnico Ar", "bio": "Limpeza de split", "specialties": ["Ar-condicionado"], "city": "Campinas"},
+        ]
+        results, _ = search.filter_professionals_intelligent(profissionais, q="ar")
+        ids = [p["id"] for p in results]
+        assert 1 not in ids
+        assert 2 in ids
+
     def test_sinonimos_por_especialidade_sem_acento_ou_caixa(self):
         assert "torneira" in search.synonyms_for("Hidraulica")
         assert "torneira" in search.synonyms_for("HIDRÁULICA")
@@ -178,3 +193,25 @@ class TestIntelligentSearchAPI:
     def test_q_acima_do_limite_retorna_422(self, client: TestClient):
         resp = client.get("/api/professionals", params={"q": "a" * 200})
         assert resp.status_code == 422
+
+    def test_busca_curta_nao_casa_substring_no_nome_bio_ou_cidade(self, client: TestClient, db_session):
+        p1 = dict(SAMPLE)
+        p1["email"] = "carlos.ar@search.com"
+        p1["name"] = "Carlos Silva"
+        p1["bio"] = "Serviços gerais e reparos."
+        p1["specialties"] = ["Elétrica"]
+        p1["city"] = "Aracaju"
+        client.post("/api/professionals", json=p1)
+
+        p2 = dict(SAMPLE)
+        p2["email"] = "ar.cond@search.com"
+        p2["name"] = "Tecnico de Climatizacao"
+        p2["bio"] = "Limpeza de split."
+        p2["specialties"] = ["Ar-condicionado"]
+        p2["city"] = "Campinas"
+        client.post("/api/professionals", json=p2)
+        _approve(db_session)
+
+        resp = client.get("/api/professionals", params={"q": "ar"})
+        assert resp.status_code == 200
+        assert [x["email"] for x in resp.json()] == ["ar.cond@search.com"]

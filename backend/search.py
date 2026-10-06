@@ -225,8 +225,9 @@ def find_best_category_suggestion(
 
         if len(clean_q) >= 4:
             sim_cat = calculate_similarity(clean_q, clean_cat)
-            if sim_cat > highest_score and sim_cat >= 0.75:
-                highest_score = sim_cat
+            sim_score = round(sim_cat * 85)
+            if sim_score > highest_score and sim_cat >= 0.75:
+                highest_score = sim_score
                 best_cat = category
                 is_synonym = False
 
@@ -247,6 +248,16 @@ def _field(obj: Any, name: str, default: Any = None) -> Any:
     if isinstance(obj, dict):
         return obj.get(name, default)
     return getattr(obj, name, default)
+
+
+def _contains_query(text: str, clean_q: str) -> bool:
+    """Casa a busca no texto: substring para termos longos, token isolado para curtos.
+
+    Evita falsos positivos como "ar" em "carlos" ou "pia" em "terapia".
+    """
+    if len(clean_q) < 4:
+        return clean_q in text.split()
+    return clean_q in text
 
 
 def filter_professionals_intelligent(
@@ -321,7 +332,7 @@ def filter_professionals_intelligent(
                 if is_match and score > best_score:
                     best_score = score
 
-        if clean_q in name_text:
+        if _contains_query(name_text, clean_q):
             best_score = max(best_score, 100)
         else:
             name_words = [w for w in name_text.split() if w]
@@ -331,10 +342,10 @@ def filter_professionals_intelligent(
                     if is_match:
                         best_score = max(best_score, round(similarity * 95))
 
-        if prof_city_text and (prof_city_text == clean_q or clean_q in prof_city_text):
+        if prof_city_text and (prof_city_text == clean_q or _contains_query(prof_city_text, clean_q)):
             best_score = max(best_score, 80)
 
-        if clean_q in bio_text:
+        if _contains_query(bio_text, clean_q):
             best_score = max(best_score, 70)
         else:
             bio_words = bio_text.split()[:100]

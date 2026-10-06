@@ -161,9 +161,9 @@ def list_professionals(
 
     has_query = bool(q and q.strip())
 
-    # A cidade é filtrada no banco apenas quando não há busca textual. Com "q", o
-    # ranking inteligente aplica tolerância a acentos/erros de digitação na cidade.
-    if city and city.strip() and not has_query:
+    # A cidade é sempre filtrada no banco (normalized_city já é sem acento). Isso
+    # evita esgotar o teto de candidatos globais antes do filtro de cidade rodar.
+    if city and city.strip():
         norm_city = normalize_text(city)
         escaped_norm_city = _escape_like(norm_city)
         escaped_city = _escape_like(city.strip())
