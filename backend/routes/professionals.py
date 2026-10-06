@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import models
+import search
 import storage
 from database import get_db
 from models import normalize_text
@@ -120,16 +121,27 @@ def _escape_like(val: str) -> str:
     return val.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+# Teto de candidatos carregados para o ranking inteligente. A busca textual (q)
+# precisa avaliar tolerância a erros e sinônimos, o que não é expressável de forma
+# portável em SQL; os filtros de banco (status/especialidade) reduzem o conjunto
+# antes desta etapa.
+MAX_SEARCH_CANDIDATES = 2000
+
+
 @router.get("", response_model=List[ProfessionalRead], summary="Listar profissionais")
 @profissionais_router.get("", response_model=List[ProfessionalRead], include_in_schema=False)
 def list_professionals(
     q: Optional[str] = Query(
-        None, description="Busca textual por nome, bio ou especialidade"
+        None,
+        max_length=120,
+        description="Busca textual por nome, bio ou especialidade (máx. 120 caracteres)",
     ),
     specialty: Optional[str] = Query(
-        None, description="Filtra por especialidade do profissional"
+        None, max_length=100, description="Filtra por especialidade do profissional"
     ),
-    city: Optional[str] = Query(None, description="Filtra por cidade base"),
+    city: Optional[str] = Query(
+        None, max_length=100, description="Filtra por cidade base"
+    ),
     approval_status: Optional[str] = Query(
         models.ProfessionalApprovalStatus.APPROVED.value,
         description="Filtra por status de aprovação cadastral (padrão: approved; use 'all' para desativar filtro)",
@@ -147,6 +159,10 @@ def list_professionals(
     if approval_status and approval_status.strip().lower() != "all":
         query = query.filter(models.Professional.approval_status == approval_status.strip().lower())
 
+    has_query = bool(q and q.strip())
+
+    # A cidade é sempre filtrada no banco (normalized_city já é sem acento). Isso
+    # evita esgotar o teto de candidatos globais antes do filtro de cidade rodar.
     if city and city.strip():
         norm_city = normalize_text(city)
         escaped_norm_city = _escape_like(norm_city)
@@ -158,7 +174,8 @@ def list_professionals(
             )
         )
 
-    if specialty and specialty.strip():
+    # "Todas" é o chip neutro do frontend e equivale a não filtrar por especialidade.
+    if specialty and specialty.strip() and specialty.strip().lower() != "todas":
         norm_spec = normalize_text(specialty)
         escaped_norm_spec = _escape_like(norm_spec)
         escaped_spec = _escape_like(specialty.strip())
@@ -169,20 +186,23 @@ def list_professionals(
             )
         )
 
-    if q and q.strip():
-        norm_q = normalize_text(q)
-        tokens = norm_q.split()
-        for token in tokens:
-            if token:
-                escaped_token = _escape_like(token)
-                query = query.filter(
-                    or_(
-                        models.Professional.normalized_search.ilike(f"%{escaped_token}%", escape="\\"),
-                        models.Professional.name.ilike(f"%{escaped_token}%", escape="\\"),
-                        models.Professional.bio.ilike(f"%{escaped_token}%", escape="\\"),
-                        cast(models.Professional.specialties, String).ilike(f"%{escaped_token}%", escape="\\"),
-                    )
-                )
+    if has_query:
+        # Termo composto apenas por símbolos (ex: "%", "_") não é uma busca válida.
+        if not search.clean_text(q):
+            return []
+
+        candidates = (
+            query.order_by(models.Professional.id.asc())
+            .limit(MAX_SEARCH_CANDIDATES)
+            .all()
+        )
+        ranked, _ = search.filter_professionals_intelligent(
+            candidates,
+            q=q or "",
+            specialty=specialty or "",
+            city=city or "",
+        )
+        return ranked[skip : skip + limit]
 
     return (
         query.order_by(models.Professional.id.asc())

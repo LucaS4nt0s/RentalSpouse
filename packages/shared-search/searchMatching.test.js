@@ -179,4 +179,38 @@ describe('Motor de Busca Inteligente RentalSpouse', () => {
       assert.ok(ids.includes(1), 'Carlos Silva deve ser encontrado via fuzzy');
     });
   });
+
+  describe('Prevenção de falsos positivos em nome, bio e cidade (termos curtos)', () => {
+    const profissionais = [
+      {
+        id: 1,
+        name: 'Carlos Silva',
+        email: 'carlos@test.com',
+        bio: 'Reparos gerais e armarios',
+        specialties: ['Reparos Gerais'],
+        city: 'Aracaju',
+      },
+      {
+        id: 2,
+        name: 'Tecnico de Climatizacao',
+        email: 'ar@test.com',
+        bio: 'Limpeza de split',
+        specialties: ['Ar-condicionado'],
+        city: 'Campinas',
+      },
+    ];
+
+    it('busca "ar" não deve casar com "carlos", "reparos" nem "aracaju"', () => {
+      const { results } = filterProfessionalsIntelligent(profissionais, { q: 'ar' });
+      const ids = results.map((p) => p.id);
+      assert.ok(!ids.includes(1), 'Carlos Silva não deve casar com "ar"');
+      assert.ok(ids.includes(2), 'Ar-condicionado deve casar com "ar"');
+    });
+
+    it('findBestCategorySuggestion deve sugerir categoria por typo no nome', () => {
+      const sugestao = findBestCategorySuggestion('marcenara');
+      assert.ok(sugestao);
+      assert.strictEqual(sugestao.suggested, 'Marcenaria');
+    });
+  });
 });

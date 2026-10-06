@@ -1,11 +1,10 @@
 import enum
-import unicodedata
 from datetime import datetime, timezone
-from typing import Optional
 from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, event
 from sqlalchemy.orm import relationship
 
 from database import Base
+from search import normalize_text
 
 
 class UserRole(str, enum.Enum):
@@ -164,15 +163,6 @@ class Professional(Base):
         specs = " ".join(normalize_text(s) for s in (self.specialties or []) if isinstance(s, str))
         self.normalized_specialties = specs
         self.normalized_search = f"{normalize_text(self.name)} {normalize_text(self.bio)} {self.normalized_city} {specs}".strip()
-
-
-def normalize_text(text: Optional[str]) -> str:
-    """Remove acentos, converte para minúsculas e normaliza espaços múltiplos."""
-    if not text:
-        return ""
-    normalized = unicodedata.normalize("NFKD", str(text))
-    cleaned = "".join(c for c in normalized if not unicodedata.combining(c)).lower()
-    return " ".join(cleaned.split())
 
 
 @event.listens_for(Professional, "before_insert")
