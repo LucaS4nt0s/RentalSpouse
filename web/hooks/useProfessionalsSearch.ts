@@ -57,7 +57,7 @@ export function useProfessionalsSearch({
         url.searchParams.set('specialty', specialty);
       }
       url.searchParams.set('approval_status', 'approved');
-      url.searchParams.set('limit', '100');
+      url.searchParams.set('limit', '50');
 
       const response = await fetch(url.toString(), {
         signal: controller.signal,

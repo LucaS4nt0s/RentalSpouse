@@ -154,17 +154,17 @@ class TestListAndFilterProfessionals:
         # Filtrando por elétrica
         eletrica_resp = client.get("/api/professionals?specialty=elétrica")
         assert len(eletrica_resp.json()) == 1
-        assert eletrica_resp.json()[0]["email"] == "prof1@test.com"
+        assert eletrica_resp.json()[0]["email"] == "pr***1@test.com"
 
         # Filtrando por encanamento
         encanamento_resp = client.get("/api/professionals?specialty=encanamento")
         assert len(encanamento_resp.json()) == 1
-        assert encanamento_resp.json()[0]["email"] == "prof2@test.com"
+        assert encanamento_resp.json()[0]["email"] == "pr***2@test.com"
 
         # Filtrando por eletrica (SEM ACENTO) deve encontrar Elétrica
         sem_acento_resp = client.get("/api/professionals?specialty=eletrica")
         assert len(sem_acento_resp.json()) == 1
-        assert sem_acento_resp.json()[0]["email"] == "prof1@test.com"
+        assert sem_acento_resp.json()[0]["email"] == "pr***1@test.com"
 
     def test_filter_by_city(self, client: TestClient, db_session):
         """Deve filtrar profissionais por cidade (com e sem acentos)."""
@@ -182,13 +182,13 @@ class TestListAndFilterProfessionals:
         resp = client.get("/api/professionals?city=Campinas")
         assert resp.status_code == 200
         assert len(resp.json()) == 1
-        assert resp.json()[0]["email"] == "sp@test.com"
+        assert resp.json()[0]["email"] == "s***@test.com"
 
         # Filtrando por niteroi (SEM ACENTO) deve encontrar Niterói
         resp_sem_acento = client.get("/api/professionals?city=niteroi")
         assert resp_sem_acento.status_code == 200
         assert len(resp_sem_acento.json()) == 1
-        assert resp_sem_acento.json()[0]["email"] == "rj@test.com"
+        assert resp_sem_acento.json()[0]["email"] == "r***@test.com"
 
     def test_pagination_skip_limit(self, client: TestClient, db_session):
         """Deve respeitar paginação via skip e limit no banco."""
@@ -202,7 +202,7 @@ class TestListAndFilterProfessionals:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
-        assert data[0]["email"] == "page1@test.com"
+        assert data[0]["email"] == "pa***1@test.com"
 
     def test_search_free_text_q(self, client: TestClient, db_session):
         """Deve buscar profissionais pelo parâmetro livre q (nome, bio, especialidade com/sem acento)."""
@@ -227,25 +227,25 @@ class TestListAndFilterProfessionals:
         resp = client.get("/api/professionals?q=jose")
         assert resp.status_code == 200
         assert len(resp.json()) == 1
-        assert resp.json()[0]["email"] == "marido1@test.com"
+        assert resp.json()[0]["email"] == "ma***1@test.com"
 
         # Busca por especialidade no q (SEM ACENTO)
         resp_q_spec = client.get("/api/professionals?q=eletrica")
         assert resp_q_spec.status_code == 200
         assert len(resp_q_spec.json()) == 1
-        assert resp_q_spec.json()[0]["email"] == "marido1@test.com"
+        assert resp_q_spec.json()[0]["email"] == "ma***1@test.com"
 
         # Busca por termo na bio (SEM ACENTO: "iluminacao" casa com "iluminação")
         resp_bio = client.get("/api/professionals?q=iluminacao")
         assert resp_bio.status_code == 200
         assert len(resp_bio.json()) == 1
-        assert resp_bio.json()[0]["email"] == "marido1@test.com"
+        assert resp_bio.json()[0]["email"] == "ma***1@test.com"
 
         # Busca combinada com q e city
         resp_comb = client.get("/api/professionals?q=encanador&city=niteroi")
         assert resp_comb.status_code == 200
         assert len(resp_comb.json()) == 1
-        assert resp_comb.json()[0]["email"] == "marido2@test.com"
+        assert resp_comb.json()[0]["email"] == "ma***2@test.com"
 
         # Busca com termo inexistente
         resp_vazio = client.get("/api/professionals?q=termoinexistentexyz")
@@ -279,11 +279,12 @@ class TestListAndFilterProfessionals:
         resp = client.get("/api/professionals")
         assert resp.status_code == 200
         emails = [p["email"] for p in resp.json()]
-        assert "aprovado@test.com" in emails
-        assert "pendente@test.com" not in emails
+        assert "ap***o@test.com" in emails
+        assert "pe***e@test.com" not in emails
 
         # Listagem com approval_status=all retorna ambos
         resp_all = client.get("/api/professionals?approval_status=all")
+        assert len(resp_all.json()) == 2
         assert len(resp_all.json()) == 2
 
 

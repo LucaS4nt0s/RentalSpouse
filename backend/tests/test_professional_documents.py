@@ -362,16 +362,16 @@ class TestApprovalStatusFilterInList:
         # Listagem com filtro pending_approval
         pending_resp = client.get("/api/professionals?approval_status=pending_approval")
         assert pending_resp.status_code == 200
-        pending_emails = [p["email"] for p in pending_resp.json()]
-        assert "p1@teste.com" in pending_emails
-        assert "p2@teste.com" not in pending_emails
+        pending_ids = [p["id"] for p in pending_resp.json()]
+        assert prof1["id"] in pending_ids
+        assert prof2["id"] not in pending_ids
 
         # Listagem com filtro approved
         approved_resp = client.get("/api/professionals?approval_status=approved")
         assert approved_resp.status_code == 200
-        approved_emails = [p["email"] for p in approved_resp.json()]
-        assert "p2@teste.com" in approved_emails
-        assert "p1@teste.com" not in approved_emails
+        approved_ids = [p["id"] for p in approved_resp.json()]
+        assert prof2["id"] in approved_ids
+        assert prof1["id"] not in approved_ids
 
 
 class TestStorageUnitRules:
