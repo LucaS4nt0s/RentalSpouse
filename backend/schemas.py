@@ -3,7 +3,7 @@ import enum
 import re
 from typing import Any, List, Optional
 
-from pydantic import BaseModel, EmailStr, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator, model_validator
 
 # Conjunto de Unidades Federativas válidas do Brasil
 UFS_VALIDAS = {
@@ -591,3 +591,101 @@ class ProfessionalDocumentsMeSummaryRead(ProfessionalDocumentsSummaryRead):
         description="Tipos de documento obrigatórios ainda ausentes (photo_id, proof_of_residence).",
     )
 
+
+
+# =============================================================================
+# Schemas para Orçamentos e Notificações (Issues #22 / #34)
+# =============================================================================
+
+
+class OrcamentoFotoRead(BaseModel):
+    """Schema de leitura para uma foto anexada ao orçamento."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    orcamento_id: int
+    nome_original: str
+    tamanho_bytes: int
+    mime_type: str
+    enviado_em: datetime
+    url_download: Optional[str] = None
+
+
+class OrcamentoCreate(BaseModel):
+    """Schema para validação de dados textuais da solicitação de orçamento."""
+
+    professional_id: int = Field(..., gt=0, description="ID do profissional destinatário")
+    descricao: str = Field(
+        ...,
+        min_length=10,
+        max_length=2000,
+        description="Descrição detalhada do problema ou serviço necessário",
+    )
+    cliente_nome: Optional[str] = Field(
+        None,
+        min_length=2,
+        max_length=100,
+        description="Nome do cliente solicitante (se não autenticado)",
+    )
+    cliente_email: Optional[EmailStr] = Field(
+        None,
+        description="E-mail de contato para retorno do orçamento",
+    )
+    cliente_telefone: Optional[str] = Field(
+        None,
+        max_length=20,
+        description="Telefone/WhatsApp para alinhamento da visita",
+    )
+
+
+class OrcamentoRead(BaseModel):
+    """Schema de retorno detalhado de um orçamento com fotos e status."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    cliente_id: Optional[int] = None
+    cliente_nome: str
+    cliente_email: str
+    cliente_telefone: Optional[str] = None
+    professional_id: int
+    descricao: str
+    status: str
+    valor_estimado: Optional[float] = None
+    resposta_profissional: Optional[str] = None
+    respondido_em: Optional[datetime] = None
+    criado_em: datetime
+    atualizado_em: datetime
+    fotos: List[OrcamentoFotoRead] = []
+
+
+class OrcamentoResponder(BaseModel):
+    """Payload para o profissional responder com valor estimado e parecer técnico."""
+
+    valor_estimado: float = Field(
+        ...,
+        gt=0,
+        description="Valor estimado em reais para o serviço antes da visita",
+    )
+    resposta_profissional: str = Field(
+        ...,
+        min_length=5,
+        max_length=2000,
+        description="Observações técnicas, escopo considerado e condições da estimativa",
+    )
+
+
+class NotificacaoRead(BaseModel):
+    """Schema de notificação em tempo real ou persistida no banco."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_email: str
+    titulo: str
+    mensagem: str
+    tipo: str
+    referencia_id: Optional[int] = None
+    lida: bool
+    criada_em: datetime
