@@ -515,7 +515,12 @@ class ProfessionalUpdate(BaseModel):
         return cleaned
 
 
-from models import DocumentType as DocumentTypeEnum, ProfessionalApprovalStatus as ProfessionalApprovalStatusEnum
+from models import (
+    DenunciaMotivo as DenunciaMotivoEnum,
+    DenunciaStatus as DenunciaStatusEnum,
+    DocumentType as DocumentTypeEnum,
+    ProfessionalApprovalStatus as ProfessionalApprovalStatusEnum,
+)
 
 
 class ProfessionalRead(ProfessionalBase):
@@ -590,4 +595,91 @@ class ProfessionalDocumentsMeSummaryRead(ProfessionalDocumentsSummaryRead):
         ...,
         description="Tipos de documento obrigatórios ainda ausentes (photo_id, proof_of_residence).",
     )
+
+
+# ---------------------------------------------------------------------------
+# Schemas de Denúncia de Profissionais (issue #68)
+# ---------------------------------------------------------------------------
+
+# Limites do relato do cliente, compartilhados entre API e interface web.
+DENUNCIA_DESCRICAO_MIN_CARACTERES = 20
+DENUNCIA_DESCRICAO_MAX_CARACTERES = 2000
+
+
+class DenunciaCreate(BaseModel):
+    """Payload de criação de uma denúncia enviada pelo cliente autenticado."""
+
+    professional_id: int = Field(
+        ...,
+        gt=0,
+        description="ID do profissional denunciado (deve existir e estar ativo).",
+    )
+    motivo: str = Field(
+        ...,
+        description=(
+            "Motivo padronizado da denúncia. Aceita: "
+            f"{', '.join(m.value for m in DenunciaMotivoEnum)}."
+        ),
+    )
+    descricao: str = Field(
+        ...,
+        description=(
+            "Relato do ocorrido em texto livre, entre "
+            f"{DENUNCIA_DESCRICAO_MIN_CARACTERES} e {DENUNCIA_DESCRICAO_MAX_CARACTERES} caracteres."
+        ),
+    )
+
+    @field_validator("motivo")
+    @classmethod
+    def validar_motivo(cls, v: str) -> str:
+        """Normaliza (minúsculas/sem espaços) e restringe aos motivos catalogados."""
+        motivos_aceitos = [m.value for m in DenunciaMotivoEnum]
+        normalizado = (v or "").strip().lower()
+        if normalizado not in motivos_aceitos:
+            raise ValueError(
+                f"Motivo '{v}' inválido. Valores aceitos: {', '.join(motivos_aceitos)}."
+            )
+        return normalizado
+
+    @field_validator("descricao")
+    @classmethod
+    def validar_descricao(cls, v: str) -> str:
+        """Exige relato minimamente detalhado e limita o tamanho do texto."""
+        texto = (v or "").strip()
+        if len(texto) < DENUNCIA_DESCRICAO_MIN_CARACTERES:
+            raise ValueError(
+                "Descreva o ocorrido com pelo menos "
+                f"{DENUNCIA_DESCRICAO_MIN_CARACTERES} caracteres para que a equipe consiga avaliar a denúncia."
+            )
+        if len(texto) > DENUNCIA_DESCRICAO_MAX_CARACTERES:
+            raise ValueError(
+                "A descrição da denúncia deve ter no máximo "
+                f"{DENUNCIA_DESCRICAO_MAX_CARACTERES} caracteres."
+            )
+        return texto
+
+
+class DenunciaRead(BaseModel):
+    """Denúncia serializada na visão do cliente autor."""
+
+    id: int
+    cliente_id: int = Field(..., description="Autor da denúncia (derivado do token, nunca do payload).")
+    professional_id: int
+    professional_name: Optional[str] = Field(
+        None,
+        description="Nome do profissional denunciado (nulo se o cadastro não existir mais).",
+    )
+    motivo: str
+    descricao: str
+    status: str = Field(
+        DenunciaStatusEnum.PENDENTE.value,
+        description=(
+            "Situação da denúncia. Toda denúncia nasce como 'pendente'; as demais "
+            "transições pertencem à moderação do administrador (issue #23)."
+        ),
+    )
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
 
