@@ -127,19 +127,20 @@ class TestIntelligentSearchAPI:
         self._criar_profissionais(client, db_session)
         resp = client.get("/api/professionals", params={"q": "eletria"})
         assert resp.status_code == 200
-        assert [p["email"] for p in resp.json()] == ["eletrica@search.com"]
+        assert [p["email"] for p in resp.json()] == ["el***a@search.com"]
+        assert resp.headers.get("X-Search-Suggestion") == "Eletrica"
 
     def test_busca_por_sinonimo_de_especialidade(self, client: TestClient, db_session):
         self._criar_profissionais(client, db_session)
         resp = client.get("/api/professionals", params={"q": "encanador"})
         assert resp.status_code == 200
-        assert [p["email"] for p in resp.json()] == ["hidraulica@search.com"]
+        assert [p["email"] for p in resp.json()] == ["hi***a@search.com"]
 
     def test_busca_insensivel_a_acentos_na_cidade(self, client: TestClient, db_session):
         self._criar_profissionais(client, db_session)
         resp = client.get("/api/professionals", params={"q": "vazamento", "city": "niteroi"})
         assert resp.status_code == 200
-        assert [p["email"] for p in resp.json()] == ["hidraulica@search.com"]
+        assert [p["email"] for p in resp.json()] == ["hi***a@search.com"]
 
     def test_busca_apenas_simbolos_retorna_vazio(self, client: TestClient, db_session):
         self._criar_profissionais(client, db_session)
@@ -160,7 +161,7 @@ class TestIntelligentSearchAPI:
 
         resp = client.get("/api/professionals", params={"q": "torneira"})
         assert resp.status_code == 200
-        assert [x["email"] for x in resp.json()] == ["semacento@search.com"]
+        assert [x["email"] for x in resp.json()] == ["se***o@search.com"]
 
     def test_cidade_com_q_exclui_profissional_sem_cidade(self, client: TestClient, db_session):
         p1 = dict(SAMPLE)
@@ -182,7 +183,7 @@ class TestIntelligentSearchAPI:
 
         resp = client.get("/api/professionals", params={"q": "vazamentos", "city": "niteroi"})
         assert resp.status_code == 200
-        assert [x["email"] for x in resp.json()] == ["comcidade@search.com"]
+        assert [x["email"] for x in resp.json()] == ["co***e@search.com"]
 
     def test_specialty_todas_nao_filtra(self, client: TestClient, db_session):
         self._criar_profissionais(client, db_session)
@@ -214,4 +215,4 @@ class TestIntelligentSearchAPI:
 
         resp = client.get("/api/professionals", params={"q": "ar"})
         assert resp.status_code == 200
-        assert [x["email"] for x in resp.json()] == ["ar.cond@search.com"]
+        assert [x["email"] for x in resp.json()] == ["ar***d@search.com"]

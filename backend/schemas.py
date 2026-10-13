@@ -1,7 +1,7 @@
 from datetime import date, datetime
 import enum
 import re
-from typing import Any, List, Optional
+from typing import Any, Generic, List, Optional, TypeVar, Union
 
 from pydantic import BaseModel, EmailStr, Field, computed_field, field_validator, model_validator
 
@@ -530,6 +530,135 @@ class ProfessionalRead(ProfessionalBase):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+T = TypeVar("T")
+
+
+class ProfessionalPublicRead(BaseModel):
+    """
+    Schema seguro para busca e diretório público de profissionais.
+    Garante conformidade com a LGPD através do mascaramento de e-mail e telefone
+    no lado do servidor, sem expor PII a scrapers e acessos não autorizados.
+    """
+
+    id: int
+    name: str
+    email: str = Field(..., description="E-mail parcialmente mascarado para proteção de dados")
+    phone: Optional[str] = Field(None, description="Telefone parcialmente mascarado para proteção de dados")
+    bio: str
+    service_radius_km: float
+    specialties: List[str]
+    city: Optional[str] = None
+    state: Optional[str] = None
+    is_active: bool
+    approval_status: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def mask_email_server_side(cls, v: Optional[str]) -> str:
+        """Aplica mascaramento de e-mail conforme LGPD: jo***o@dominio.com"""
+        if not v or "@" not in str(v):
+            return "E-mail protegido"
+        raw = str(v).strip().lower()
+        user_part, domain = raw.split("@", 1)
+        if len(user_part) <= 2:
+            masked_user = f"{user_part[0]}***"
+        else:
+            masked_user = f"{user_part[:2]}***{user_part[-1]}"
+        return f"{masked_user}@{domain}"
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def mask_phone_server_side(cls, v: Optional[str]) -> Optional[str]:
+        """Aplica mascaramento de telefone conforme LGPD: (11) 9****-**45"""
+        if not v:
+            return None
+        digits = "".join(filter(str.isdigit, str(v)))
+        if len(digits) < 8:
+            return "Telefone protegido"
+        if len(digits) == 11:  # Celular com DDD (XX) 9XXXX-XXXX
+            return f"({digits[:2]}) {digits[2]}****-**{digits[-2:]}"
+        if len(digits) == 10:  # Fixo com DDD (XX) XXXX-XXXX
+            return f"({digits[:2]}) {digits[2]}***-**{digits[-2:]}"
+        return f"***-**{digits[-4:]}"
+
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    """Envelope de paginação contendo metadados de navegação e busca."""
+
+    items: List[T]
+    total: int = Field(..., ge=0, description="Total absoluto de itens encontrados")
+    page: int = Field(..., ge=1, description="Número da página atual")
+    size: int = Field(..., ge=1, description="Quantidade de itens por página")
+    pages: int = Field(..., ge=0, description="Total de páginas disponíveis")
+    has_more: bool = Field(..., description="Indica se há páginas subsequentes")
+    detected_suggestion: Optional[str] = Field(
+        None, description="Sugestão de correção ortográfica calculada pelo servidor"
+    )
+
+
+class SpecialtyCategoryRead(BaseModel):
+    """Schema para catálogo canônico de especialidades da plataforma."""
+
+    id: str
+    name: str
+    slug: str
+    icon: str
+    description: str
+    professionals_count: int = Field(0, ge=0)
+
+
+class ProfessionalContactRequest(BaseModel):
+    """Payload de solicitação de contato / orçamento com o profissional."""
+
+    client_name: str = Field(..., min_length=2, max_length=100)
+    client_email: str = Field(..., max_length=255)
+    client_phone: Optional[str] = Field(None, max_length=20)
+    service_category: str = Field(..., min_length=2, max_length=100)
+    message: str = Field(..., min_length=10, max_length=2000)
+    client_city: Optional[str] = Field(None, max_length=100)
+
+    @field_validator("client_name")
+    @classmethod
+    def validate_client_name(cls, v: str) -> str:
+        cleaned = (v or "").strip()
+        if len(cleaned) < 2:
+            raise ValueError("O nome do cliente deve ter no mínimo 2 caracteres.")
+        return cleaned
+
+    @field_validator("client_email")
+    @classmethod
+    def validate_client_email(cls, v: str) -> str:
+        cleaned = (v or "").strip().lower()
+        if not EMAIL_REGEX.match(cleaned):
+            raise ValueError("E-mail com formato inválido.")
+        return cleaned
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, v: str) -> str:
+        cleaned = (v or "").strip()
+        if len(cleaned) < 10:
+            raise ValueError("A mensagem deve ter no mínimo 10 caracteres.")
+        if "<script" in cleaned.lower() or "</script>" in cleaned.lower():
+            raise ValueError("A mensagem contém caracteres ou scripts inválidos.")
+        return cleaned
+
+
+class ProfessionalContactResponse(BaseModel):
+    """Resposta de confirmação de envio da solicitação de orçamento."""
+
+    success: bool = True
+    message: str
+    professional_id: int
+    professional_name: str
+    contacted_at: datetime
+
 
 # ---------------------------------------------------------------------------
 # Schemas de Documentos do Profissional

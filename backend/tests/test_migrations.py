@@ -46,10 +46,6 @@ def test_migrations_alter_table_and_backfill():
                     state VARCHAR(2),
                     senha_hash VARCHAR(255),
                     is_active BOOLEAN DEFAULT 1,
-                    approval_status VARCHAR(50) DEFAULT 'approved',
-                    approval_notes TEXT,
-                    approved_at DATETIME,
-                    approved_by_id INTEGER,
                     created_at DATETIME,
                     updated_at DATETIME
                 )
@@ -76,10 +72,14 @@ def test_migrations_alter_table_and_backfill():
             {"specs": json.dumps(["Hidráulica"])},
         )
 
-    # Verifica que as colunas normalizadas e documents_submitted_at NÃO existem antes da migração
+    # Verifica que as colunas legadas ausentes NÃO existem antes da migração
     inspector = inspect(engine)
     cols_before = {c["name"] for c in inspector.get_columns("professionals")}
+    assert "approval_status" not in cols_before
+    assert "approval_notes" not in cols_before
     assert "documents_submitted_at" not in cols_before
+    assert "approved_at" not in cols_before
+    assert "approved_by_id" not in cols_before
     assert "normalized_city" not in cols_before
     assert "normalized_specialties" not in cols_before
     assert "normalized_search" not in cols_before
@@ -90,13 +90,18 @@ def test_migrations_alter_table_and_backfill():
     # Verifica que as colunas foram criadas com sucesso
     inspector_after = inspect(engine)
     cols_after = {c["name"] for c in inspector_after.get_columns("professionals")}
+    assert "approval_status" in cols_after
+    assert "approval_notes" in cols_after
     assert "documents_submitted_at" in cols_after
+    assert "approved_at" in cols_after
+    assert "approved_by_id" in cols_after
     assert "normalized_city" in cols_after
     assert "normalized_specialties" in cols_after
     assert "normalized_search" in cols_after
 
     # Verifica que os índices foram criados
     indexes_after = {idx["name"] for idx in inspector_after.get_indexes("professionals")}
+    assert "ix_professionals_approval_status" in indexes_after
     assert "ix_professionals_normalized_city" in indexes_after
     assert "ix_professionals_normalized_specialties" in indexes_after
     assert "ix_professionals_normalized_search" in indexes_after
