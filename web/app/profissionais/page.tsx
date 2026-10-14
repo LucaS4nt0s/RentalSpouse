@@ -22,6 +22,7 @@ import { ProfessionalCardSkeleton } from '../../components/profissionais/Profess
 import { SearchEmptyState } from '../../components/profissionais/SearchEmptyState';
 import { SearchErrorState } from '../../components/profissionais/SearchErrorState';
 import { QuoteModal } from '../../components/profissionais/QuoteModal';
+import { NotificationBell } from '../../components/notificacoes/NotificationBell';
 import { Professional } from '../../types/professional';
 
 function ProfissionaisSearchContent() {
@@ -124,6 +125,7 @@ function ProfissionaisSearchContent() {
                 <span className="hidden md:inline text-xs font-semibold text-rental-ink">
                   {user.nome.split(' ')[0]}
                 </span>
+                <NotificationBell />
                 <button
                   type="button"
                   onClick={logout}

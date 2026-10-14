@@ -202,3 +202,77 @@ class ProfessionalDocument(Base):
     )
 
     professional = relationship("Professional", back_populates="documents")
+
+
+class OrcamentoStatus(str, enum.Enum):
+    """Status do ciclo de vida de uma solicitação de orçamento."""
+
+    PENDENTE = "pendente"
+    RESPONDIDO = "respondido"
+    RECUSADO = "recusado"
+    CANCELADO = "cancelado"
+
+
+class Orcamento(Base):
+    """Solicitação de orçamento enviada por um cliente para um profissional."""
+
+    __tablename__ = "orcamentos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cliente_id = Column(Integer, ForeignKey("clientes.id", ondelete="SET NULL"), nullable=True, index=True)
+    cliente_nome = Column(String(100), nullable=False)
+    cliente_email = Column(String(255), nullable=False, index=True)
+    cliente_telefone = Column(String(20), nullable=True)
+    professional_id = Column(Integer, ForeignKey("professionals.id", ondelete="CASCADE"), nullable=False, index=True)
+    descricao = Column(Text, nullable=False)
+    status = Column(String(30), default=OrcamentoStatus.PENDENTE.value, nullable=False, index=True)
+    valor_estimado = Column(Float, nullable=True)
+    resposta_profissional = Column(Text, nullable=True)
+    respondido_em = Column(DateTime, nullable=True)
+    criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    atualizado_em = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    fotos = relationship(
+        "OrcamentoFoto",
+        back_populates="orcamento",
+        cascade="all, delete-orphan",
+        order_by="OrcamentoFoto.id.asc()",
+    )
+    professional = relationship("Professional")
+    cliente = relationship("Cliente")
+
+
+class OrcamentoFoto(Base):
+    """Foto ou imagem anexada à solicitação de orçamento pelo cliente."""
+
+    __tablename__ = "orcamento_fotos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    orcamento_id = Column(Integer, ForeignKey("orcamentos.id", ondelete="CASCADE"), nullable=False, index=True)
+    nome_original = Column(String(255), nullable=False)
+    caminho_arquivo = Column(String(500), nullable=False)
+    tamanho_bytes = Column(Integer, nullable=False)
+    mime_type = Column(String(100), nullable=False)
+    enviado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    orcamento = relationship("Orcamento", back_populates="fotos")
+
+
+class Notificacao(Base):
+    """Notificação persistida no banco de dados para usuários do sistema."""
+
+    __tablename__ = "notificacoes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_email = Column(String(255), nullable=False, index=True)
+    titulo = Column(String(150), nullable=False)
+    mensagem = Column(Text, nullable=False)
+    tipo = Column(String(50), nullable=False, index=True)
+    referencia_id = Column(Integer, nullable=True)
+    lida = Column(Boolean, default=False, nullable=False, index=True)
+    criada_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
