@@ -236,3 +236,26 @@ export async function rejectProfessional(
 
   return resp.json();
 }
+
+export async function fetchDocumentBlob(
+  token: string,
+  downloadUrl: string
+): Promise<string> {
+  const url = resolveApiUrl(downloadUrl);
+  if (!url || url.startsWith('blob:') || url.includes('placehold.co')) {
+    return url;
+  }
+  try {
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!resp.ok) {
+      return url;
+    }
+    const blob = await resp.blob();
+    return URL.createObjectURL(blob);
+  } catch {
+    return url;
+  }
+}
