@@ -147,3 +147,57 @@ class TestNotificarAdminsDocumentosEnviados:
         assert [mensagem["To"] for mensagem in caixa_de_entrada] == [
             "admin.ok@rentalspouse.com"
         ]
+
+
+class TestNotificarProfissionalDecisao:
+    """Testes de notificação ao profissional ao ser aprovado ou reprovado (Issue #64)."""
+
+    def test_notificar_profissional_aprovado_sucesso(self, db_session, caixa_de_entrada):
+        profissional = criar_profissional(db_session, "prof.aprovado@exemplo.com")
+        sucesso = notificacoes.notificar_profissional_aprovado(profissional)
+
+        assert sucesso is True
+        assert len(caixa_de_entrada) == 1
+        mensagem = caixa_de_entrada[0]
+        assert mensagem["To"] == "prof.aprovado@exemplo.com"
+        assert mensagem["Subject"] == notificacoes.ASSUNTO_DOCUMENTOS_APROVADOS
+        corpo = mensagem.get_body(preferencelist=("plain",)).get_content()
+        assert profissional.name in corpo
+        assert "APROVADO" in corpo
+
+    def test_notificar_profissional_aprovado_falha_transporte_nao_explode(
+        self, db_session, caixa_de_entrada, monkeypatch
+    ):
+        profissional = criar_profissional(db_session, "prof.aprovado.sem.smtp@exemplo.com")
+        monkeypatch.setenv("EMAIL_BACKEND", "smtp")
+        monkeypatch.delenv("SMTP_HOST", raising=False)
+
+        sucesso = notificacoes.notificar_profissional_aprovado(profissional)
+        assert sucesso is False
+        assert len(caixa_de_entrada) == 0
+
+    def test_notificar_profissional_rejeitado_sucesso(self, db_session, caixa_de_entrada):
+        profissional = criar_profissional(db_session, "prof.rejeitado@exemplo.com")
+        motivo = "Comprovante de residência ilegível. Favor reenviar em formato PDF nítido."
+        sucesso = notificacoes.notificar_profissional_rejeitado(profissional, motivo)
+
+        assert sucesso is True
+        assert len(caixa_de_entrada) == 1
+        mensagem = caixa_de_entrada[0]
+        assert mensagem["To"] == "prof.rejeitado@exemplo.com"
+        assert mensagem["Subject"] == notificacoes.ASSUNTO_DOCUMENTOS_REJEITADOS
+        corpo = mensagem.get_body(preferencelist=("plain",)).get_content()
+        assert profissional.name in corpo
+        assert motivo in corpo
+
+    def test_notificar_profissional_rejeitado_falha_transporte_nao_explode(
+        self, db_session, caixa_de_entrada, monkeypatch
+    ):
+        profissional = criar_profissional(db_session, "prof.rejeitado.sem.smtp@exemplo.com")
+        monkeypatch.setenv("EMAIL_BACKEND", "smtp")
+        monkeypatch.delenv("SMTP_HOST", raising=False)
+
+        sucesso = notificacoes.notificar_profissional_rejeitado(profissional, "Motivo teste")
+        assert sucesso is False
+        assert len(caixa_de_entrada) == 0
+

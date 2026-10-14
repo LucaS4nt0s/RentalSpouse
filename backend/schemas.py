@@ -591,3 +591,98 @@ class ProfessionalDocumentsMeSummaryRead(ProfessionalDocumentsSummaryRead):
         description="Tipos de documento obrigatórios ainda ausentes (photo_id, proof_of_residence).",
     )
 
+
+# ---------------------------------------------------------------------------
+# Schemas de Moderação Administrativa de Profissionais (Issue #64)
+# ---------------------------------------------------------------------------
+
+
+class ProfessionalModerationItemRead(BaseModel):
+    """Item da fila/listagem de moderação para administradores."""
+
+    id: int
+    name: str
+    email: str
+    phone: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    specialties: List[str]
+    approval_status: str
+    approval_notes: Optional[str] = None
+    documents_submitted_at: Optional[datetime] = None
+    approved_at: Optional[datetime] = None
+    approved_by_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+    documents_count: int = 0
+    has_photo_id: bool = False
+    has_proof_of_residence: bool = False
+    has_technical_certificate: bool = False
+    has_profile_photo: bool = False
+    is_complete: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class ProfessionalModerationReviewRead(BaseModel):
+    """Dados cadastrais completos e documentos anexados para auditoria administrativa."""
+
+    id: int
+    name: str
+    email: str
+    phone: Optional[str] = None
+    bio: str
+    service_radius_km: float
+    specialties: List[str]
+    city: Optional[str] = None
+    state: Optional[str] = None
+    is_active: bool
+    approval_status: str
+    approval_notes: Optional[str] = None
+    documents_submitted_at: Optional[datetime] = None
+    approved_at: Optional[datetime] = None
+    approved_by_id: Optional[int] = None
+    approved_by_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    is_complete: bool
+    documents: List[ProfessionalDocumentRead] = []
+
+    model_config = {"from_attributes": True}
+
+
+class ProfessionalRejectPayload(BaseModel):
+    """Payload obrigatório para rejeição de documentos do profissional."""
+
+    reason: str = Field(
+        ...,
+        min_length=5,
+        max_length=1000,
+        description="Justificativa da reprovação dos documentos enviada ao profissional.",
+    )
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, v: str) -> str:
+        cleaned = v.strip() if v else ""
+        if len(cleaned) < 5:
+            raise ValueError("O motivo da rejeição deve ter no mínimo 5 caracteres válidos.")
+        return cleaned
+
+
+class ProfessionalModerationDecisionRead(BaseModel):
+    """Resposta estruturada após uma ação de aprovação ou rejeição administrativa."""
+
+    id: int
+    name: str
+    email: str
+    approval_status: str
+    approval_notes: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    approved_by_id: Optional[int] = None
+    updated_at: datetime
+    message: str
+
+    model_config = {"from_attributes": True}
+
+
