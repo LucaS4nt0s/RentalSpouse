@@ -106,3 +106,69 @@ export async function listarMeusOrcamentos(
 
   return response.json();
 }
+
+export async function obterOrcamento(
+  id: number,
+  token?: string | null
+): Promise<Orcamento> {
+  const headers: HeadersInit = { Accept: 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE_URL}/api/orcamentos/${id}`, {
+    headers,
+  });
+
+  if (!res.ok) {
+    let err = 'Falha ao buscar detalhes do orçamento.';
+    try {
+      const errJson = await res.json();
+      err = errJson.detail || err;
+    } catch {
+      // Ignora erro de JSON
+    }
+    throw new Error(err);
+  }
+
+  return res.json();
+}
+
+export interface ResponderOrcamentoPayload {
+  valor_estimado: number;
+  resposta_profissional: string;
+}
+
+export async function responderOrcamento(
+  id: number,
+  payload: ResponderOrcamentoPayload,
+  token: string
+): Promise<Orcamento> {
+  const res = await fetch(`${API_BASE_URL}/api/orcamentos/${id}/responder`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    let err = 'Falha ao responder orçamento.';
+    try {
+      const errJson = await res.json();
+      err = errJson.detail || err;
+    } catch {
+      // Ignora erro de JSON
+    }
+    throw new Error(err);
+  }
+
+  return res.json();
+}
+
+export function obterFotoUrl(orcamentoId: number, fotoId: number): string {
+  return `${API_BASE_URL}/api/orcamentos/${orcamentoId}/fotos/${fotoId}`;
+}
+

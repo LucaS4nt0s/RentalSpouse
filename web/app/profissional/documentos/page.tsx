@@ -17,6 +17,7 @@ import { Button } from '../../../components/ui/Button';
 import { ThemeToggle } from '../../../components/ui/ThemeToggle';
 import { DocumentUploadCard } from '../../../components/documentos/DocumentUploadCard';
 import { SubmissionStatusBanner } from '../../../components/documentos/SubmissionStatusBanner';
+import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
 import { useProfessionalDocuments } from '../../../hooks/useProfessionalDocuments';
 import {
   DOCUMENT_TYPES_CONFIG,
@@ -195,6 +196,7 @@ export default function ProfessionalDocumentsPage() {
           </div>
 
           <div className="flex items-center gap-3 self-end sm:self-auto">
+            <NotificationBell />
             <Button
               variant="secondary"
               size="sm"
