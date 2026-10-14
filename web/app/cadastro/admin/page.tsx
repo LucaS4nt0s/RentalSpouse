@@ -318,7 +318,14 @@ export default function CadastroAdminPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <Link
+            href="/admin/moderacao"
+            className="inline-flex items-center gap-1 text-xs font-bold text-rental-muted hover:text-rental-primary transition-colors"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Moderação de Documentos
+          </Link>
           <Link
             href="/"
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-rental-muted hover:text-rental-primary transition-colors"
