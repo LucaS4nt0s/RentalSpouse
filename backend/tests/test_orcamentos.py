@@ -381,3 +381,558 @@ class TestListarMeusOrcamentos:
         res = client.get("/api/orcamentos/me", headers=headers_prof)
         assert res.status_code == 200
         assert len(res.json()) >= 2
+
+
+class TestAceitarOrcamento:
+    """Validação da rota PATCH /api/orcamentos/{id}/aceitar (Issue #29)."""
+
+    def test_profissional_aceita_orcamento_com_sucesso(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        user_prof = models.User(
+            name=profissional_teste.name,
+            email=profissional_teste.email,
+            hashed_password=profissional_teste.senha_hash,
+            role=models.UserRole.PROFESSIONAL.value,
+            is_active=True,
+        )
+        db_session.add(user_prof)
+        db_session.commit()
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        # Cria solicitação de orçamento
+        data = {
+            "professional_id": str(profissional_teste.id),
+            "descricao": "Instalação de disjuntor bipolar no quadro de força.",
+            "cliente_nome": "Juliana Mendes",
+            "cliente_email": "juliana@exemplo.com",
+            "cliente_telefone": "11988887777",
+        }
+        res_post = client.post("/api/orcamentos", data=data)
+        assert res_post.status_code == 201
+        orcamento_id = res_post.json()["id"]
+
+        # Aceita a solicitação informando estimativa preliminar e data sugerida
+        payload = {
+            "valor_estimado": 250.0,
+            "mensagem": "Orçamento aceito! Levarei os materiais necessários para a instalação.",
+            "data_prevista": "2026-10-20T14:00:00Z",
+        }
+        res_patch = client.patch(f"/api/orcamentos/{orcamento_id}/aceitar", json=payload, headers=headers_prof)
+        assert res_patch.status_code == 200
+        body = res_patch.json()
+        assert body["id"] == orcamento_id
+        assert body["status"] == "aceito"
+        assert body["valor_estimado"] == 250.0
+        assert "Orçamento aceito!" in body["resposta_profissional"]
+        assert body["decidido_em"] is not None
+        assert body["data_prevista"] is not None
+
+        # Valida persistência direta no banco
+        db_orcamento = db_session.query(models.Orcamento).filter(models.Orcamento.id == orcamento_id).first()
+        assert db_orcamento.status == "aceito"
+        assert db_orcamento.decidido_em is not None
+        assert db_orcamento.valor_estimado == 250.0
+
+        # Valida que notificação de aceite foi gerada para o cliente
+        notif = (
+            db_session.query(models.Notificacao)
+            .filter(models.Notificacao.referencia_id == orcamento_id, models.Notificacao.tipo == "orcamento_aceito")
+            .first()
+        )
+        assert notif is not None
+        assert notif.user_email == "juliana@exemplo.com"
+        assert "Aceito" in notif.titulo
+
+    def test_profissional_aceita_orcamento_direto_sem_estimativa(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        user_prof = models.User(
+            name=profissional_teste.name,
+            email=profissional_teste.email,
+            hashed_password=profissional_teste.senha_hash,
+            role=models.UserRole.PROFESSIONAL.value,
+            is_active=True,
+        )
+        db_session.add(user_prof)
+        db_session.commit()
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        data = {
+            "professional_id": str(profissional_teste.id),
+            "descricao": "Vistoria para troca de cabeamento geral.",
+            "cliente_nome": "Marcos Silva",
+            "cliente_email": "marcos@exemplo.com",
+        }
+        res_post = client.post("/api/orcamentos", data=data)
+        orcamento_id = res_post.json()["id"]
+
+        # Aceite simples com mensagem de confirmação
+        payload = {"mensagem": "Solicitação aceita. Entrarei em contato para agendar."}
+        res_patch = client.patch(f"/api/orcamentos/{orcamento_id}/aceitar", json=payload, headers=headers_prof)
+        assert res_patch.status_code == 200
+        assert res_patch.json()["status"] == "aceito"
+        assert res_patch.json()["resposta_profissional"] == "Solicitação aceita. Entrarei em contato para agendar."
+
+    def test_rejeita_aceite_por_outro_profissional_403(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        # Usuário profissional não dono
+        outro_user = models.User(
+            name="Outro Profissional",
+            email="outro_aceite@exemplo.com",
+            hashed_password="hash",
+            role=models.UserRole.PROFESSIONAL.value,
+            is_active=True,
+        )
+        db_session.add(outro_user)
+        db_session.commit()
+
+        token_outro = create_access_token({"sub": "outro_aceite@exemplo.com", "role": "professional"})
+        headers_outro = {"Authorization": f"Bearer {token_outro}"}
+
+        data = {
+            "professional_id": str(profissional_teste.id),
+            "descricao": "Troca de interruptores de parede.",
+            "cliente_nome": "Carla Lima",
+            "cliente_email": "carla@exemplo.com",
+        }
+        res_post = client.post("/api/orcamentos", data=data)
+        orcamento_id = res_post.json()["id"]
+
+        res_patch = client.patch(
+            f"/api/orcamentos/{orcamento_id}/aceitar",
+            json={"mensagem": "Aceito indevido"},
+            headers=headers_outro,
+        )
+        assert res_patch.status_code == 403
+        assert "Apenas o profissional destinatário" in res_patch.json()["detail"]
+
+    def test_rejeita_aceite_sem_autenticacao_401(self, client: TestClient, profissional_teste: models.Professional):
+        data = {
+            "professional_id": str(profissional_teste.id),
+            "descricao": "Troca de fiação no banheiro.",
+            "cliente_nome": "Renato Santos",
+            "cliente_email": "renato@exemplo.com",
+        }
+        res_post = client.post("/api/orcamentos", data=data)
+        orcamento_id = res_post.json()["id"]
+
+        res_patch = client.patch(f"/api/orcamentos/{orcamento_id}/aceitar", json={})
+        assert res_patch.status_code == 401
+
+    def test_rejeita_aceite_orcamento_inexistente_404(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        user_prof = models.User(
+            name=profissional_teste.name,
+            email=profissional_teste.email,
+            hashed_password=profissional_teste.senha_hash,
+            role=models.UserRole.PROFESSIONAL.value,
+            is_active=True,
+        )
+        db_session.add(user_prof)
+        db_session.commit()
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        res_patch = client.patch("/api/orcamentos/999999/aceitar", json={}, headers=headers_prof)
+        assert res_patch.status_code == 404
+
+    def test_rejeita_aceite_orcamento_ja_aceito_400(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        user_prof = models.User(
+            name=profissional_teste.name,
+            email=profissional_teste.email,
+            hashed_password=profissional_teste.senha_hash,
+            role=models.UserRole.PROFESSIONAL.value,
+            is_active=True,
+        )
+        db_session.add(user_prof)
+        db_session.commit()
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        data = {
+            "professional_id": str(profissional_teste.id),
+            "descricao": "Conserto de curto circuito em tomada.",
+            "cliente_nome": "Fernanda Rosa",
+            "cliente_email": "fernanda@exemplo.com",
+        }
+        res_post = client.post("/api/orcamentos", data=data)
+        orcamento_id = res_post.json()["id"]
+
+        # Primeiro aceite
+        client.patch(f"/api/orcamentos/{orcamento_id}/aceitar", json={}, headers=headers_prof)
+
+        # Segundo aceite repetido
+        res_patch_2 = client.patch(f"/api/orcamentos/{orcamento_id}/aceitar", json={}, headers=headers_prof)
+        assert res_patch_2.status_code == 400
+        assert "já foi aceita" in res_patch_2.json()["detail"]
+
+    def test_rejeita_aceite_orcamento_ja_recusado_400(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        user_prof = models.User(
+            name=profissional_teste.name,
+            email=profissional_teste.email,
+            hashed_password=profissional_teste.senha_hash,
+            role=models.UserRole.PROFESSIONAL.value,
+            is_active=True,
+        )
+        db_session.add(user_prof)
+        db_session.commit()
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        data = {
+            "professional_id": str(profissional_teste.id),
+            "descricao": "Instalação de ar condicionado split.",
+            "cliente_nome": "Lucas Prado",
+            "cliente_email": "lucas@exemplo.com",
+        }
+        res_post = client.post("/api/orcamentos", data=data)
+        orcamento_id = res_post.json()["id"]
+
+        # Recusa primeiro
+        client.patch(
+            f"/api/orcamentos/{orcamento_id}/recusar",
+            json={"motivo": "Agenda lotada no período"},
+            headers=headers_prof,
+        )
+
+        # Tenta aceitar em seguida
+        res_patch_aceite = client.patch(f"/api/orcamentos/{orcamento_id}/aceitar", json={}, headers=headers_prof)
+        assert res_patch_aceite.status_code == 400
+        assert "já foi recusada" in res_patch_aceite.json()["detail"]
+
+
+class TestRecusarOrcamento:
+    """Validação da rota PATCH /api/orcamentos/{id}/recusar (Issue #29)."""
+
+    def test_profissional_recusa_orcamento_com_sucesso(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        user_prof = models.User(
+            name=profissional_teste.name,
+            email=profissional_teste.email,
+            hashed_password=profissional_teste.senha_hash,
+            role=models.UserRole.PROFESSIONAL.value,
+            is_active=True,
+        )
+        db_session.add(user_prof)
+        db_session.commit()
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        data = {
+            "professional_id": str(profissional_teste.id),
+            "descricao": "Construção de muro e reforma geral da fachada.",
+            "cliente_nome": "Beatriz Souza",
+            "cliente_email": "beatriz@exemplo.com",
+        }
+        res_post = client.post("/api/orcamentos", data=data)
+        assert res_post.status_code == 201
+        orcamento_id = res_post.json()["id"]
+
+        payload = {
+            "motivo": "Fora da área de cobertura técnica",
+            "justificativa_detalhada": "Minha especialidade é instalações elétricas internas e pequenos reparos.",
+        }
+        res_patch = client.patch(f"/api/orcamentos/{orcamento_id}/recusar", json=payload, headers=headers_prof)
+        assert res_patch.status_code == 200
+        body = res_patch.json()
+        assert body["id"] == orcamento_id
+        assert body["status"] == "recusado"
+        assert body["motivo_recusa"] == "Fora da área de cobertura técnica"
+        assert "especialidade" in body["justificativa_recusa"]
+        assert body["decidido_em"] is not None
+
+        # Valida no banco
+        db_orcamento = db_session.query(models.Orcamento).filter(models.Orcamento.id == orcamento_id).first()
+        assert db_orcamento.status == "recusado"
+        assert db_orcamento.motivo_recusa == "Fora da área de cobertura técnica"
+
+        # Valida notificação para o cliente
+        notif = (
+            db_session.query(models.Notificacao)
+            .filter(models.Notificacao.referencia_id == orcamento_id, models.Notificacao.tipo == "orcamento_recusado")
+            .first()
+        )
+        assert notif is not None
+        assert notif.user_email == "beatriz@exemplo.com"
+        assert "Recusado" in notif.titulo
+
+    def test_rejeita_recusa_sem_motivo_422(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        user_prof = models.User(
+            name=profissional_teste.name,
+            email=profissional_teste.email,
+            hashed_password=profissional_teste.senha_hash,
+            role=models.UserRole.PROFESSIONAL.value,
+            is_active=True,
+        )
+        db_session.add(user_prof)
+        db_session.commit()
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        data = {
+            "professional_id": str(profissional_teste.id),
+            "descricao": "Instalação de lâmpadas dicroicas na sala.",
+            "cliente_nome": "Alice Lima",
+            "cliente_email": "alice@exemplo.com",
+        }
+        res_post = client.post("/api/orcamentos", data=data)
+        orcamento_id = res_post.json()["id"]
+
+        # Payload sem motivo obrigatório
+        res_patch = client.patch(f"/api/orcamentos/{orcamento_id}/recusar", json={}, headers=headers_prof)
+        assert res_patch.status_code == 422
+
+    def test_rejeita_recusa_por_outro_profissional_403(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        outro_user = models.User(
+            name="Outro Usuário Recusa",
+            email="outro_recusa@exemplo.com",
+            hashed_password="hash",
+            role=models.UserRole.PROFESSIONAL.value,
+            is_active=True,
+        )
+        db_session.add(outro_user)
+        db_session.commit()
+
+        token_outro = create_access_token({"sub": "outro_recusa@exemplo.com", "role": "professional"})
+        headers_outro = {"Authorization": f"Bearer {token_outro}"}
+
+        data = {
+            "professional_id": str(profissional_teste.id),
+            "descricao": "Troca de disjuntor principal da residência.",
+            "cliente_nome": "Tiago Barros",
+            "cliente_email": "tiago@exemplo.com",
+        }
+        res_post = client.post("/api/orcamentos", data=data)
+        orcamento_id = res_post.json()["id"]
+
+        res_patch = client.patch(
+            f"/api/orcamentos/{orcamento_id}/recusar",
+            json={"motivo": "Recusa indevida"},
+            headers=headers_outro,
+        )
+        assert res_patch.status_code == 403
+
+    def test_rejeita_recusa_orcamento_ja_recusado_400(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        user_prof = models.User(
+            name=profissional_teste.name,
+            email=profissional_teste.email,
+            hashed_password=profissional_teste.senha_hash,
+            role=models.UserRole.PROFESSIONAL.value,
+            is_active=True,
+        )
+        db_session.add(user_prof)
+        db_session.commit()
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        data = {
+            "professional_id": str(profissional_teste.id),
+            "descricao": "Instalação de tomadas adicionais no quarto.",
+            "cliente_nome": "Bruna Costa",
+            "cliente_email": "bruna@exemplo.com",
+        }
+        res_post = client.post("/api/orcamentos", data=data)
+        orcamento_id = res_post.json()["id"]
+
+        # Primeira recusa
+        client.patch(
+            f"/api/orcamentos/{orcamento_id}/recusar",
+            json={"motivo": "Agenda lotada"},
+            headers=headers_prof,
+        )
+
+        # Segunda recusa repetida
+        res_2 = client.patch(
+            f"/api/orcamentos/{orcamento_id}/recusar",
+            json={"motivo": "Agenda lotada novamente"},
+            headers=headers_prof,
+        )
+        assert res_2.status_code == 400
+        assert "já foi recusada" in res_2.json()["detail"]
+
+    def test_rejeita_recusa_orcamento_ja_aceito_400(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        user_prof = models.User(
+            name=profissional_teste.name,
+            email=profissional_teste.email,
+            hashed_password=profissional_teste.senha_hash,
+            role=models.UserRole.PROFESSIONAL.value,
+            is_active=True,
+        )
+        db_session.add(user_prof)
+        db_session.commit()
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        data = {
+            "professional_id": str(profissional_teste.id),
+            "descricao": "Manutenção em circuito de iluminação externo.",
+            "cliente_nome": "Fábio Neves",
+            "cliente_email": "fabio@exemplo.com",
+        }
+        res_post = client.post("/api/orcamentos", data=data)
+        orcamento_id = res_post.json()["id"]
+
+        # Aceita primeiro
+        client.patch(f"/api/orcamentos/{orcamento_id}/aceitar", json={}, headers=headers_prof)
+
+        # Tenta recusar
+        res_recusa = client.patch(
+            f"/api/orcamentos/{orcamento_id}/recusar",
+            json={"motivo": "Mudei de ideia"},
+            headers=headers_prof,
+        )
+        assert res_recusa.status_code == 400
+        assert "já foi aceita" in res_recusa.json()["detail"]
+
+
+class TestResumoCapacidade:
+    """Validação da rota GET /api/orcamentos/capacidade/resumo (Issue #29)."""
+
+    def test_obter_resumo_capacidade_profissional(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        user_prof = models.User(
+            name=profissional_teste.name,
+            email=profissional_teste.email,
+            hashed_password=profissional_teste.senha_hash,
+            role=models.UserRole.PROFESSIONAL.value,
+            is_active=True,
+        )
+        db_session.add(user_prof)
+        db_session.commit()
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        # Cria 3 orçamentos
+        ids = []
+        for i in range(3):
+            data = {
+                "professional_id": str(profissional_teste.id),
+                "descricao": f"Serviço elétrico de vistoria número {i+1}.",
+                "cliente_nome": f"Cliente Capacidade {i+1}",
+                "cliente_email": f"cap{i+1}@exemplo.com",
+            }
+            res = client.post("/api/orcamentos", data=data)
+            ids.append(res.json()["id"])
+
+        # Deixa id[0] como pendente
+        # Aceita id[1]
+        client.patch(f"/api/orcamentos/{ids[1]}/aceitar", json={"valor_estimado": 300.0}, headers=headers_prof)
+        # Recusa id[2]
+        client.patch(
+            f"/api/orcamentos/{ids[2]}/recusar",
+            json={"motivo": "Capacidade semanal atingida"},
+            headers=headers_prof,
+        )
+
+        res_resumo = client.get("/api/orcamentos/capacidade/resumo", headers=headers_prof)
+        assert res_resumo.status_code == 200
+        data_resumo = res_resumo.json()
+        assert data_resumo["total"] >= 3
+        assert data_resumo["pendentes"] >= 1
+        assert data_resumo["aceitos"] >= 1
+        assert data_resumo["recusados"] >= 1
+
+    def test_rejeita_resumo_capacidade_cliente_403(
+        self, client: TestClient, db_session: Session
+    ):
+        user_cli = models.User(
+            name="Cliente Teste",
+            email="cli_resumo@exemplo.com",
+            hashed_password="hash",
+            role=models.UserRole.CLIENT.value,
+            is_active=True,
+        )
+        db_session.add(user_cli)
+        db_session.commit()
+
+        token_cli = create_access_token({"sub": "cli_resumo@exemplo.com", "role": "client"})
+        headers_cli = {"Authorization": f"Bearer {token_cli}"}
+
+        res = client.get("/api/orcamentos/capacidade/resumo", headers=headers_cli)
+        assert res.status_code == 403
+
+    def test_filtro_status_aceito_e_recusado(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        user_prof = models.User(
+            name=profissional_teste.name,
+            email=profissional_teste.email,
+            hashed_password=profissional_teste.senha_hash,
+            role=models.UserRole.PROFESSIONAL.value,
+            is_active=True,
+        )
+        db_session.add(user_prof)
+        db_session.commit()
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        # Cria e aceita um
+        res_a = client.post(
+            "/api/orcamentos",
+            data={
+                "professional_id": str(profissional_teste.id),
+                "descricao": "Serviço para filtro aceito.",
+                "cliente_nome": "Filtro A",
+                "cliente_email": "filtroa@exemplo.com",
+            },
+        )
+        client.patch(f"/api/orcamentos/{res_a.json()['id']}/aceitar", json={}, headers=headers_prof)
+
+        # Cria e recusa outro
+        res_r = client.post(
+            "/api/orcamentos",
+            data={
+                "professional_id": str(profissional_teste.id),
+                "descricao": "Serviço para filtro recusado.",
+                "cliente_nome": "Filtro R",
+                "cliente_email": "filtror@exemplo.com",
+            },
+        )
+        client.patch(
+            f"/api/orcamentos/{res_r.json()['id']}/recusar",
+            json={"motivo": "Indisponível"},
+            headers=headers_prof,
+        )
+
+        # Consulta com filtro "aceito"
+        res_filtro_aceito = client.get("/api/orcamentos/me?status_filtro=aceito", headers=headers_prof)
+        assert res_filtro_aceito.status_code == 200
+        for item in res_filtro_aceito.json():
+            assert item["status"] == "aceito"
+
+        # Consulta com filtro "recusado"
+        res_filtro_recusado = client.get("/api/orcamentos/me?status_filtro=recusado", headers=headers_prof)
+        assert res_filtro_recusado.status_code == 200
+        for item in res_filtro_recusado.json():
+            assert item["status"] == "recusado"
+
