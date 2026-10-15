@@ -208,6 +208,7 @@ class OrcamentoStatus(str, enum.Enum):
     """Status do ciclo de vida de uma solicitação de orçamento."""
 
     PENDENTE = "pendente"
+    ACEITO = "aceito"
     RESPONDIDO = "respondido"
     RECUSADO = "recusado"
     CANCELADO = "cancelado"
@@ -229,6 +230,10 @@ class Orcamento(Base):
     valor_estimado = Column(Float, nullable=True)
     resposta_profissional = Column(Text, nullable=True)
     respondido_em = Column(DateTime, nullable=True)
+    motivo_recusa = Column(String(150), nullable=True)
+    justificativa_recusa = Column(Text, nullable=True)
+    data_prevista = Column(DateTime, nullable=True)
+    decidido_em = Column(DateTime, nullable=True)
     criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     atualizado_em = Column(
         DateTime,

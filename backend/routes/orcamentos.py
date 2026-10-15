@@ -32,9 +32,12 @@ from routes.notificacoes import (
     registrar_e_enviar_notificacao,
 )
 from schemas import (
+    OrcamentoAceitar,
     OrcamentoFotoRead,
     OrcamentoRead,
+    OrcamentoRecusar,
     OrcamentoResponder,
+    OrcamentoResumoCapacidade,
 )
 from security import (
     get_current_user,
@@ -75,6 +78,10 @@ def _montar_orcamento_read(orcamento: models.Orcamento) -> OrcamentoRead:
         valor_estimado=orcamento.valor_estimado,
         resposta_profissional=orcamento.resposta_profissional,
         respondido_em=orcamento.respondido_em,
+        motivo_recusa=orcamento.motivo_recusa,
+        justificativa_recusa=orcamento.justificativa_recusa,
+        data_prevista=orcamento.data_prevista,
+        decidido_em=orcamento.decidido_em,
         criado_em=orcamento.criado_em,
         atualizado_em=orcamento.atualizado_em,
         fotos=fotos_read,
@@ -280,6 +287,53 @@ def listar_meus_orcamentos(
 
 
 # ---------------------------------------------------------------------------
+# Resumo de Capacidade do Profissional (Issue #29)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/capacidade/resumo",
+    response_model=OrcamentoResumoCapacidade,
+    summary="Resumo de capacidade de trabalho",
+    description="Retorna o consolidado de orçamentos por status para o prestador gerenciar sua capacidade.",
+)
+def obter_resumo_capacidade(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if (
+        current_user.role != models.UserRole.PROFESSIONAL.value
+        and current_user.role != models.UserRole.ADMIN.value
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Apenas prestadores de serviço ou administradores podem acessar o resumo de capacidade.",
+        )
+
+    query = db.query(models.Orcamento)
+    if current_user.role == models.UserRole.PROFESSIONAL.value:
+        prof = db.query(models.Professional).filter(models.Professional.email == current_user.email).first()
+        if not prof:
+            return OrcamentoResumoCapacidade()
+        query = query.filter(models.Orcamento.professional_id == prof.id)
+
+    orcamentos = query.all()
+    total = len(orcamentos)
+    pendentes = sum(1 for o in orcamentos if o.status == models.OrcamentoStatus.PENDENTE.value)
+    aceitos = sum(1 for o in orcamentos if o.status == models.OrcamentoStatus.ACEITO.value)
+    recusados = sum(1 for o in orcamentos if o.status == models.OrcamentoStatus.RECUSADO.value)
+    respondidos = sum(1 for o in orcamentos if o.status == models.OrcamentoStatus.RESPONDIDO.value)
+
+    return OrcamentoResumoCapacidade(
+        total=total,
+        pendentes=pendentes,
+        aceitos=aceitos,
+        recusados=recusados,
+        respondidos=respondidos,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Consultar Orçamento por ID
 # ---------------------------------------------------------------------------
 
@@ -440,3 +494,212 @@ def responder_orcamento(
 
     logger.info("Orçamento #%d respondido pelo profissional com valor R$ %.2f", orcamento.id, payload.valor_estimado)
     return _montar_orcamento_read(orcamento)
+
+
+# ---------------------------------------------------------------------------
+# Aceitar Solicitação de Orçamento (Profissional) - Issue #29
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/{orcamento_id}/aceitar",
+    response_model=OrcamentoRead,
+    summary="Aceitar solicitação de orçamento (Issue #29)",
+    description="Permite ao prestador de serviços aceitar a solicitação de orçamento para gerenciar sua capacidade.",
+)
+def aceitar_orcamento(
+    orcamento_id: int,
+    payload: OrcamentoAceitar,
+    background_tasks: BackgroundTasks,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    orcamento = db.query(models.Orcamento).filter(models.Orcamento.id == orcamento_id).first()
+    if not orcamento:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Orçamento não encontrado.",
+        )
+
+    prof = db.query(models.Professional).filter(models.Professional.email == current_user.email).first()
+    eh_dono = prof and prof.id == orcamento.professional_id
+    eh_admin = current_user.role == models.UserRole.ADMIN.value
+
+    if not (eh_dono or eh_admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Apenas o profissional destinatário deste orçamento pode aceitá-lo.",
+        )
+
+    # Validação de transição de estado defensiva
+    if orcamento.status == models.OrcamentoStatus.ACEITO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Esta solicitação de orçamento já foi aceita anteriormente.",
+        )
+    if orcamento.status == models.OrcamentoStatus.RECUSADO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Não é possível aceitar uma solicitação de orçamento que já foi recusada.",
+        )
+    if orcamento.status == models.OrcamentoStatus.CANCELADO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Não é possível aceitar uma solicitação de orçamento cancelada pelo cliente.",
+        )
+
+    agora = datetime.now(timezone.utc)
+    orcamento.status = models.OrcamentoStatus.ACEITO.value
+    orcamento.decidido_em = agora
+    orcamento.respondido_em = agora
+
+    if payload.valor_estimado is not None:
+        orcamento.valor_estimado = payload.valor_estimado
+    if payload.mensagem:
+        orcamento.resposta_profissional = payload.mensagem.strip()
+    if payload.data_prevista is not None:
+        orcamento.data_prevista = payload.data_prevista
+
+    db.commit()
+    db.refresh(orcamento)
+
+    nome_prof = prof.name if prof else "O profissional"
+    titulo_notificacao = f"Orçamento #{orcamento.id} Aceito por {nome_prof}!"
+    detalhes_msg = f"{nome_prof} aceitou sua solicitação de orçamento."
+    if payload.valor_estimado:
+        detalhes_msg += f" Estimativa preliminar: R$ {payload.valor_estimado:.2f}."
+    if payload.mensagem:
+        detalhes_msg += f" Mensagem: {payload.mensagem.strip()}."
+
+    registrar_e_enviar_notificacao(
+        db=db,
+        user_email=orcamento.cliente_email,
+        titulo=titulo_notificacao,
+        mensagem=detalhes_msg,
+        tipo="orcamento_aceito",
+        referencia_id=orcamento.id,
+        payload_extra={
+            "orcamento_id": orcamento.id,
+            "status": "aceito",
+            "profissional_nome": nome_prof,
+            "valor_estimado": payload.valor_estimado,
+            "data_prevista": payload.data_prevista.isoformat() if payload.data_prevista else None,
+        },
+    )
+
+    background_tasks.add_task(
+        enviar_email_alerta_orcamento,
+        destinatario_email=orcamento.cliente_email,
+        destinatario_nome=orcamento.cliente_nome,
+        titulo=titulo_notificacao,
+        descricao=detalhes_msg,
+        orcamento_id=orcamento.id,
+    )
+
+    logger.info("Orçamento #%d aceito pelo profissional '%s'.", orcamento.id, current_user.email)
+    return _montar_orcamento_read(orcamento)
+
+
+# ---------------------------------------------------------------------------
+# Recusar Solicitação de Orçamento (Profissional) - Issue #29
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/{orcamento_id}/recusar",
+    response_model=OrcamentoRead,
+    summary="Recusar solicitação de orçamento (Issue #29)",
+    description="Permite ao prestador de serviços recusar a solicitação de orçamento justificando o motivo para gerenciar sua capacidade.",
+)
+def recusar_orcamento(
+    orcamento_id: int,
+    payload: OrcamentoRecusar,
+    background_tasks: BackgroundTasks,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    orcamento = db.query(models.Orcamento).filter(models.Orcamento.id == orcamento_id).first()
+    if not orcamento:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Orçamento não encontrado.",
+        )
+
+    prof = db.query(models.Professional).filter(models.Professional.email == current_user.email).first()
+    eh_dono = prof and prof.id == orcamento.professional_id
+    eh_admin = current_user.role == models.UserRole.ADMIN.value
+
+    if not (eh_dono or eh_admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Apenas o profissional destinatário deste orçamento pode recusá-lo.",
+        )
+
+    # Validação de transição de estado defensiva
+    if orcamento.status == models.OrcamentoStatus.RECUSADO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Esta solicitação de orçamento já foi recusada anteriormente.",
+        )
+    if orcamento.status == models.OrcamentoStatus.ACEITO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Não é possível recusar uma solicitação de orçamento que já foi aceita.",
+        )
+    if orcamento.status == models.OrcamentoStatus.CANCELADO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Não é possível recusar uma solicitação de orçamento cancelada pelo cliente.",
+        )
+
+    agora = datetime.now(timezone.utc)
+    orcamento.status = models.OrcamentoStatus.RECUSADO.value
+    orcamento.motivo_recusa = payload.motivo.strip()
+    orcamento.justificativa_recusa = (
+        payload.justificativa_detalhada.strip() if payload.justificativa_detalhada else None
+    )
+    orcamento.decidido_em = agora
+
+    db.commit()
+    db.refresh(orcamento)
+
+    nome_prof = prof.name if prof else "O profissional"
+    titulo_notificacao = f"Orçamento #{orcamento.id} Recusado"
+    detalhes_msg = (
+        f"{nome_prof} não pôde aceitar sua solicitação no momento. Motivo: {payload.motivo.strip()}."
+    )
+    if payload.justificativa_detalhada:
+        detalhes_msg += f" Detalhes: {payload.justificativa_detalhada.strip()}."
+
+    registrar_e_enviar_notificacao(
+        db=db,
+        user_email=orcamento.cliente_email,
+        titulo=titulo_notificacao,
+        mensagem=detalhes_msg,
+        tipo="orcamento_recusado",
+        referencia_id=orcamento.id,
+        payload_extra={
+            "orcamento_id": orcamento.id,
+            "status": "recusado",
+            "profissional_nome": nome_prof,
+            "motivo": payload.motivo.strip(),
+        },
+    )
+
+    background_tasks.add_task(
+        enviar_email_alerta_orcamento,
+        destinatario_email=orcamento.cliente_email,
+        destinatario_nome=orcamento.cliente_nome,
+        titulo=titulo_notificacao,
+        descricao=detalhes_msg,
+        orcamento_id=orcamento.id,
+    )
+
+    logger.info(
+        "Orçamento #%d recusado pelo profissional '%s'. Motivo: %s",
+        orcamento.id,
+        current_user.email,
+        payload.motivo,
+    )
+    return _montar_orcamento_read(orcamento)
+

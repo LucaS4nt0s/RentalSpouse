@@ -655,6 +655,10 @@ class OrcamentoRead(BaseModel):
     valor_estimado: Optional[float] = None
     resposta_profissional: Optional[str] = None
     respondido_em: Optional[datetime] = None
+    motivo_recusa: Optional[str] = None
+    justificativa_recusa: Optional[str] = None
+    data_prevista: Optional[datetime] = None
+    decidido_em: Optional[datetime] = None
     criado_em: datetime
     atualizado_em: datetime
     fotos: List[OrcamentoFotoRead] = []
@@ -674,6 +678,51 @@ class OrcamentoResponder(BaseModel):
         max_length=2000,
         description="Observações técnicas, escopo considerado e condições da estimativa",
     )
+
+
+class OrcamentoAceitar(BaseModel):
+    """Payload para o profissional aceitar a solicitação de orçamento (Issue #29)."""
+
+    valor_estimado: Optional[float] = Field(
+        None,
+        gt=0,
+        description="Valor estimado inicial em reais (opcional no aceite direto)",
+    )
+    mensagem: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="Mensagem, parecer ou condições do aceite informados ao cliente",
+    )
+    data_prevista: Optional[datetime] = Field(
+        None,
+        description="Data e horário sugeridos para visita técnica ou realização do serviço",
+    )
+
+
+class OrcamentoRecusar(BaseModel):
+    """Payload para o profissional recusar a solicitação de orçamento (Issue #29)."""
+
+    motivo: str = Field(
+        ...,
+        min_length=3,
+        max_length=150,
+        description="Motivo resumido da recusa (ex: 'Agenda cheia', 'Fora do raio')",
+    )
+    justificativa_detalhada: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="Explicação complementar detalhada para o cliente",
+    )
+
+
+class OrcamentoResumoCapacidade(BaseModel):
+    """Resumo de capacidade de trabalho e métricas de solicitações para o profissional."""
+
+    total: int = 0
+    pendentes: int = 0
+    aceitos: int = 0
+    recusados: int = 0
+    respondidos: int = 0
 
 
 class NotificacaoRead(BaseModel):

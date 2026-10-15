@@ -86,6 +86,24 @@ def migrate_columns_and_indexes(engine: Engine) -> None:
                     exc,
                 )
 
+    # Migrações defensivas na tabela orcamentos (Issue #29)
+    if inspector.has_table("orcamentos"):
+        existing_orcamento_columns = {col["name"] for col in inspector.get_columns("orcamentos")}
+        orcamento_columns_to_add = [
+            ("motivo_recusa", "VARCHAR(150)"),
+            ("justificativa_recusa", "TEXT"),
+            ("data_prevista", "TIMESTAMP"),
+            ("decidido_em", "TIMESTAMP"),
+        ]
+        with engine.begin() as conn:
+            for col_name, col_type in orcamento_columns_to_add:
+                if col_name not in existing_orcamento_columns:
+                    logger.info(
+                        "Migração RentalSpouse: adicionando coluna '%s' na tabela 'orcamentos'...",
+                        col_name,
+                    )
+                    conn.execute(text(f"ALTER TABLE orcamentos ADD COLUMN {col_name} {col_type}"))
+
 
 def backfill_normalized_fields(session_factory: Callable[[], Session], batch_size: int = 200) -> int:
     """
