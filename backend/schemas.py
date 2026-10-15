@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import enum
 import re
 from typing import Any, List, Optional
@@ -592,9 +592,102 @@ class ProfessionalDocumentsMeSummaryRead(ProfessionalDocumentsSummaryRead):
     )
 
 
+# ---------------------------------------------------------------------------
+# Schemas de Moderação Administrativa de Profissionais (Issue #64)
+# ---------------------------------------------------------------------------
+
+
+class ProfessionalModerationItemRead(BaseModel):
+    """Item da fila/listagem de moderação para administradores."""
+
+    id: int
+    name: str
+    email: str
+    phone: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    specialties: List[str]
+    approval_status: str
+    approval_notes: Optional[str] = None
+    documents_submitted_at: Optional[datetime] = None
+    approved_at: Optional[datetime] = None
+    approved_by_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+    documents_count: int = 0
+    has_photo_id: bool = False
+    has_proof_of_residence: bool = False
+    has_technical_certificate: bool = False
+    has_profile_photo: bool = False
+    is_complete: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class ProfessionalModerationReviewRead(BaseModel):
+    """Dados cadastrais completos e documentos anexados para auditoria administrativa."""
+
+    id: int
+    name: str
+    email: str
+    phone: Optional[str] = None
+    bio: str
+    service_radius_km: float
+    specialties: List[str]
+    city: Optional[str] = None
+    state: Optional[str] = None
+    is_active: bool
+    approval_status: str
+    approval_notes: Optional[str] = None
+    documents_submitted_at: Optional[datetime] = None
+    approved_at: Optional[datetime] = None
+    approved_by_id: Optional[int] = None
+    approved_by_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    is_complete: bool
+    documents: List[ProfessionalDocumentRead] = []
+
+    model_config = {"from_attributes": True}
+
+
+class ProfessionalRejectPayload(BaseModel):
+    """Payload obrigatório para rejeição de documentos do profissional."""
+
+    reason: str = Field(
+        ...,
+        min_length=5,
+        max_length=1000,
+        description="Justificativa da reprovação dos documentos enviada ao profissional.",
+    )
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, v: str) -> str:
+        cleaned = v.strip() if v else ""
+        if len(cleaned) < 5:
+            raise ValueError("O motivo da rejeição deve ter no mínimo 5 caracteres válidos.")
+        return cleaned
+
+
+class ProfessionalModerationDecisionRead(BaseModel):
+    """Resposta estruturada após uma ação de aprovação ou rejeição administrativa."""
+
+    id: int
+    name: str
+    email: str
+    approval_status: str
+    approval_notes: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    approved_by_id: Optional[int] = None
+    updated_at: datetime
+    message: str
+
+    model_config = {"from_attributes": True}
+
 
 # =============================================================================
-# Schemas para Orçamentos e Notificações (Issues #22 / #34)
+# Schemas para Orçamentos e Notificações (Issues #22 / #34 / #29)
 # =============================================================================
 
 
@@ -679,6 +772,14 @@ class OrcamentoResponder(BaseModel):
         description="Observações técnicas, escopo considerado e condições da estimativa",
     )
 
+    @field_validator("resposta_profissional")
+    @classmethod
+    def _normalizar_resposta(cls, v: str) -> str:
+        v = (v or "").strip()
+        if len(v) < 5:
+            raise ValueError("O parecer técnico deve conter pelo menos 5 caracteres válidos.")
+        return v
+
 
 class OrcamentoAceitar(BaseModel):
     """Payload para o profissional aceitar a solicitação de orçamento (Issue #29)."""
@@ -698,6 +799,24 @@ class OrcamentoAceitar(BaseModel):
         description="Data e horário sugeridos para visita técnica ou realização do serviço",
     )
 
+    @field_validator("mensagem")
+    @classmethod
+    def _normalizar_mensagem(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            cleaned = v.strip()
+            return cleaned if cleaned else None
+        return None
+
+    @field_validator("data_prevista")
+    @classmethod
+    def _validar_data_prevista(cls, v: Optional[datetime]) -> Optional[datetime]:
+        if v is not None:
+            now = datetime.now(timezone.utc)
+            v_cmp = v if v.tzinfo is not None else v.replace(tzinfo=timezone.utc)
+            if v_cmp < now:
+                raise ValueError("A data prevista não pode ser uma data no passado.")
+        return v
+
 
 class OrcamentoRecusar(BaseModel):
     """Payload para o profissional recusar a solicitação de orçamento (Issue #29)."""
@@ -713,6 +832,22 @@ class OrcamentoRecusar(BaseModel):
         max_length=2000,
         description="Explicação complementar detalhada para o cliente",
     )
+
+    @field_validator("motivo")
+    @classmethod
+    def _normalizar_motivo(cls, v: str) -> str:
+        v = (v or "").strip()
+        if len(v) < 3:
+            raise ValueError("Informe um motivo com pelo menos 3 caracteres visíveis.")
+        return v
+
+    @field_validator("justificativa_detalhada")
+    @classmethod
+    def _normalizar_justificativa(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            cleaned = v.strip()
+            return cleaned if cleaned else None
+        return None
 
 
 class OrcamentoResumoCapacidade(BaseModel):
@@ -738,3 +873,4 @@ class NotificacaoRead(BaseModel):
     referencia_id: Optional[int] = None
     lida: bool
     criada_em: datetime
+

@@ -23,6 +23,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from pydantic import EmailStr, ValidationError
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -317,12 +318,17 @@ def obter_resumo_capacidade(
             return OrcamentoResumoCapacidade()
         query = query.filter(models.Orcamento.professional_id == prof.id)
 
-    orcamentos = query.all()
-    total = len(orcamentos)
-    pendentes = sum(1 for o in orcamentos if o.status == models.OrcamentoStatus.PENDENTE.value)
-    aceitos = sum(1 for o in orcamentos if o.status == models.OrcamentoStatus.ACEITO.value)
-    recusados = sum(1 for o in orcamentos if o.status == models.OrcamentoStatus.RECUSADO.value)
-    respondidos = sum(1 for o in orcamentos if o.status == models.OrcamentoStatus.RESPONDIDO.value)
+    linhas = (
+        query.with_entities(models.Orcamento.status, func.count(models.Orcamento.id))
+        .group_by(models.Orcamento.status)
+        .all()
+    )
+    contagem = dict(linhas)
+    pendentes = contagem.get(models.OrcamentoStatus.PENDENTE.value, 0)
+    aceitos = contagem.get(models.OrcamentoStatus.ACEITO.value, 0)
+    recusados = contagem.get(models.OrcamentoStatus.RECUSADO.value, 0)
+    respondidos = contagem.get(models.OrcamentoStatus.RESPONDIDO.value, 0)
+    total = sum(contagem.values())
 
     return OrcamentoResumoCapacidade(
         total=total,
@@ -457,6 +463,17 @@ def responder_orcamento(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Apenas o profissional destinatário deste orçamento pode respondê-lo.",
+        )
+
+    # Validação de integridade do ciclo de vida: solicitações já decididas ou canceladas são terminais
+    if orcamento.status in (
+        models.OrcamentoStatus.ACEITO.value,
+        models.OrcamentoStatus.RECUSADO.value,
+        models.OrcamentoStatus.CANCELADO.value,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Esta solicitação já foi decidida e não pode receber nova estimativa.",
         )
 
     orcamento.valor_estimado = payload.valor_estimado
