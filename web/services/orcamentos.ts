@@ -18,10 +18,14 @@ export interface Orcamento {
   cliente_telefone?: string | null;
   professional_id: number;
   descricao: string;
-  status: 'pendente' | 'respondido' | 'recusado' | 'cancelado' | string;
+  status: 'pendente' | 'aceito' | 'respondido' | 'recusado' | 'cancelado' | string;
   valor_estimado?: number | null;
   resposta_profissional?: string | null;
   respondido_em?: string | null;
+  motivo_recusa?: string | null;
+  justificativa_recusa?: string | null;
+  data_prevista?: string | null;
+  decidido_em?: string | null;
   criado_em: string;
   atualizado_em: string;
   fotos: OrcamentoFoto[];
@@ -171,4 +175,106 @@ export async function responderOrcamento(
 export function obterFotoUrl(orcamentoId: number, fotoId: number): string {
   return `${API_BASE_URL}/api/orcamentos/${orcamentoId}/fotos/${fotoId}`;
 }
+
+export interface AceitarOrcamentoPayload {
+  valor_estimado?: number | null;
+  mensagem?: string | null;
+  data_prevista?: string | null;
+}
+
+export async function aceitarOrcamento(
+  id: number,
+  payload: AceitarOrcamentoPayload,
+  token: string
+): Promise<Orcamento> {
+  const res = await fetch(`${API_BASE_URL}/api/orcamentos/${id}/aceitar`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    let err = 'Falha ao aceitar orçamento.';
+    try {
+      const errJson = await res.json();
+      err = errJson.detail || err;
+    } catch {
+      // Ignora erro de JSON
+    }
+    throw new Error(err);
+  }
+
+  return res.json();
+}
+
+export interface RecusarOrcamentoPayload {
+  motivo: string;
+  justificativa_detalhada?: string | null;
+}
+
+export async function recusarOrcamento(
+  id: number,
+  payload: RecusarOrcamentoPayload,
+  token: string
+): Promise<Orcamento> {
+  const res = await fetch(`${API_BASE_URL}/api/orcamentos/${id}/recusar`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    let err = 'Falha ao recusar orçamento.';
+    try {
+      const errJson = await res.json();
+      err = errJson.detail || err;
+    } catch {
+      // Ignora erro de JSON
+    }
+    throw new Error(err);
+  }
+
+  return res.json();
+}
+
+export interface OrcamentoResumoCapacidade {
+  total: number;
+  pendentes: number;
+  aceitos: number;
+  recusados: number;
+  respondidos: number;
+}
+
+export async function obterResumoCapacidade(
+  token: string
+): Promise<OrcamentoResumoCapacidade> {
+  const res = await fetch(`${API_BASE_URL}/api/orcamentos/capacidade/resumo`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    let err = 'Falha ao obter resumo de capacidade.';
+    try {
+      const errJson = await res.json();
+      err = errJson.detail || err;
+    } catch {
+      // Ignora erro de JSON
+    }
+    throw new Error(err);
+  }
+
+  return res.json();
+}
+
 

@@ -8,6 +8,7 @@ import {
   LogOut,
   MessageSquare,
   Sparkles,
+  Briefcase,
 } from 'lucide-react';
 import { ThemeToggle } from '../../components/ui/ThemeToggle';
 import { useAuth } from '../../context/AuthContext';
@@ -116,6 +117,16 @@ function ProfissionaisSearchContent() {
             >
               Início
             </Link>
+
+            {isAuthenticated && user && (user.tipo === 'profissional' || user.role === 'professional') && (
+              <Link
+                href="/profissional/orcamentos"
+                className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
+              >
+                <Briefcase className="h-3.5 w-3.5" />
+                <span>Meus Orçamentos</span>
+              </Link>
+            )}
 
             {isAuthenticated && user ? (
               <div className="flex items-center gap-2">

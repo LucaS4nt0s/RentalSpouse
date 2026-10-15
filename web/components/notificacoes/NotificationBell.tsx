@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
   Bell,
   CheckCheck,
@@ -216,6 +217,18 @@ export const NotificationBell: React.FC = () => {
                 </div>
               ))
             )}
+          </div>
+
+          {/* Rodapé com atalho para o painel de orçamentos e capacidade */}
+          <div className="p-2.5 border-t border-rental-border bg-rental-surface2/50 text-center">
+            <Link
+              href="/profissional/orcamentos"
+              onClick={() => setIsOpen(false)}
+              className="text-xs font-bold text-rental-primary hover:underline flex items-center justify-center gap-1.5"
+            >
+              <span>Gerenciar orçamentos e capacidade</span>
+              <ExternalLink className="h-3 w-3" />
+            </Link>
           </div>
         </div>
       )}
