@@ -43,6 +43,7 @@ stateDiagram-v2
 - **Estados Terminais / Bloqueios**:
   - Um orçamento já `recusado` não pode ser aceito nem recusado novamente (retorna `400 Bad Request`).
   - Um orçamento já `aceito` não pode ser recusado nem aceito novamente (retorna `400 Bad Request`).
+  - Um orçamento já `aceito`, `recusado` ou `cancelado` não pode receber nova proposta/estimativa via `PATCH /responder` (retorna `400 Bad Request`), garantindo que o ciclo de vida não seja contornável.
   - Um orçamento cancelado pelo cliente (`cancelado`) não pode sofrer alteração de status pelo profissional (retorna `400 Bad Request`).
 - **Controle de Acesso Estrito (Anti-IDOR)**:
   - Apenas o profissional destinatário (`professional_id == current_user.professional.id`) ou administradores (`role == 'admin'`) podem aceitar ou recusar orçamentos (retorna `403 Forbidden` para outros usuários).
@@ -127,12 +128,14 @@ Ao aceitar ou recusar uma solicitação:
 
 ## 6. Cobertura de Testes Automatizados
 
-- Suíte `backend/tests/test_orcamentos.py` expandida para **30 testes unitários e de integração**.
+- Suíte `backend/tests/test_orcamentos.py` expandida para **39 testes unitários e de integração**.
 - Validação rigorosa com SQLite em memória (`DATABASE_URL = "sqlite:///:memory:"`):
   - Fluxos felizes de aceite com ou sem valor estimado preliminar e data agendada.
   - Fluxos felizes de recusa com motivo categorizado e texto detalhado.
   - Testes de segurança IDOR (403), não-autenticado (401) e 404.
-  - Testes de regras de transição de estado defensivas (400).
-  - Testes de consolidação de capacidade e filtros por query string.
-- Cobertura global do backend mantida em **95.62%** com **359 testes passando (100% de sucesso)**.
+  - Testes de regras de transição de estado defensivas (400) impedindo contorno via `PATCH /responder`.
+  - Testes de consolidação de capacidade agregada e filtros por query string.
+  - Testes de recebimento em tempo real via WebSocket para clientes e profissionais em `test_notificacoes_ws.py`.
+- Cobertura global do backend mantida em **95.91%** com **393 testes passando (100% de sucesso)**.
 - Compilação do frontend Next.js validada com **100% de sucesso**.
+

@@ -96,9 +96,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [isAuthenticated, token, refreshNotifications]);
 
-  // 2. Conexão WebSocket em Tempo Real (Issue #34)
+  // 2. Conexão WebSocket em Tempo Real (Issue #34 / Issue #29)
   const connectWebSocket = useCallback(() => {
-    if (!token || !isAuthenticated || !isProfessional) return;
+    if (!token || !isAuthenticated) return;
 
     // Limpa timeout prévio se houver
     if (reconnectTimeoutRef.current) {
@@ -147,15 +147,26 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
 
           const data = JSON.parse(event.data);
 
-          if (data.evento === 'novo_orcamento') {
+          if (data.evento && data.evento !== 'conectado') {
+            const tituloPadrao =
+              data.evento === 'novo_orcamento'
+                ? 'Novo Orçamento Solicitado'
+                : data.evento === 'orcamento_aceito'
+                ? 'Orçamento Aceito'
+                : data.evento === 'orcamento_recusado'
+                ? 'Orçamento Recusado'
+                : data.evento === 'orcamento_respondido'
+                ? 'Orçamento Respondido'
+                : 'Notificação';
+
             const nova: Notificacao = {
               id: data.notificacao_id || Date.now(),
               user_email: user?.email || '',
-              titulo: data.titulo || 'Novo Orçamento Solicitado',
+              titulo: data.titulo || tituloPadrao,
               mensagem:
                 data.mensagem ||
-                'Um cliente acabou de enviar uma nova solicitação de orçamento.',
-              tipo: data.tipo || 'novo_orcamento',
+                'Atualização recebida em sua solicitação de orçamento.',
+              tipo: data.tipo || data.evento,
               referencia_id: data.referencia_id ?? data.orcamento_id ?? null,
               lida: false,
               criada_em: data.criada_em || new Date().toISOString(),
@@ -195,7 +206,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
         reconnectAttemptsRef.current += 1;
 
         reconnectTimeoutRef.current = setTimeout(() => {
-          if (isMountedRef.current && isProfessional && token) {
+          if (isMountedRef.current && token) {
             connectWebSocket();
           }
         }, delay);
@@ -203,11 +214,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
     } catch (err) {
       console.warn('Falha ao iniciar cliente WebSocket:', err);
     }
-  }, [token, isAuthenticated, isProfessional, user?.email]);
+  }, [token, isAuthenticated, user?.email]);
 
   useEffect(() => {
     isMountedRef.current = true;
-    if (isAuthenticated && isProfessional && token) {
+    if (isAuthenticated && token) {
       connectWebSocket();
     } else {
       if (socketRef.current) {
@@ -223,7 +234,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
       if (socketRef.current) socketRef.current.close();
     };
-  }, [isAuthenticated, isProfessional, token, connectWebSocket]);
+  }, [isAuthenticated, token, connectWebSocket]);
 
   // 3. Ações de Leitura
   const markAsRead = useCallback(

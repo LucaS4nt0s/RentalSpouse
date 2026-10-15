@@ -155,6 +155,32 @@ class TestWebSocketNotificacoes:
             mensagem = websocket.receive_json()
             assert mensagem["evento"] == "conectado"
 
+    def test_websocket_cliente_conecta_e_recebe_evento(
+        self, client: TestClient, db_session: Session
+    ):
+        cliente_email = "cliente.ws@exemplo.com"
+        token = create_access_token({"sub": cliente_email, "role": "client"})
+        with client.websocket_connect(f"/api/ws/notificacoes?token={token}") as ws:
+            msg_init = ws.receive_json()
+            assert msg_init["evento"] == "conectado"
+
+            # Dispara notificação de orçamento aceito para o cliente
+            registrar_e_enviar_notificacao(
+                db=db_session,
+                user_email=cliente_email,
+                titulo="Orçamento Aceito!",
+                mensagem="Seu orçamento foi aceito.",
+                tipo="orcamento_aceito",
+                referencia_id=10,
+                payload_extra={"status": "aceito", "orcamento_id": 10},
+            )
+
+            evento = ws.receive_json()
+            assert evento["evento"] == "orcamento_aceito"
+            assert evento["status"] == "aceito"
+            assert evento["orcamento_id"] == 10
+
+
 
 @pytest.mark.asyncio
 class TestConnectionManagerUnit:

@@ -50,7 +50,10 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
   onClose,
   onResponded,
 }) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const isProfessional = Boolean(
+    user && (user.tipo === 'profissional' || user.role === 'professional' || user.role === 'admin')
+  );
   const [orcamento, setOrcamento] = useState<Orcamento | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -485,8 +488,8 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                   </div>
                 )}
 
-                {/* Formulários e Ações para Orçamentos Pendentes (ou para Decidir após resposta) */}
-                {(orcamento.status === 'pendente' || orcamento.status === 'respondido') && (
+                {/* Formulários e Ações para Orçamentos Pendentes (exclusivo para profissionais) */}
+                {isProfessional && (orcamento.status === 'pendente' || orcamento.status === 'respondido') && (
                   <>
                     {/* Modo 0: Seleção de Ação */}
                     {actionMode === 'visualizar' && (
