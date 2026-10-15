@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { ThemeProvider } from '../context/ThemeContext';
 import { AuthProvider } from '../context/AuthContext';
+import { NotificationProvider } from '../context/NotificationContext';
 
 export const metadata: Metadata = {
   title: 'RentalSpouse — Serviços Residenciais',
@@ -17,7 +18,9 @@ export default function RootLayout({
     <html lang="pt-BR" className="dark">
       <body className="transition-colors duration-300">
         <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <NotificationProvider>{children}</NotificationProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

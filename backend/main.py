@@ -19,6 +19,11 @@ from routes.professionals import (
     router as professionals_router,
 )
 from routes.verificacao import router as verificacao_router
+from routes.orcamentos import router as orcamentos_router
+from routes.notificacoes import (
+    router as notificacoes_router,
+    ws_router as notificacoes_ws_router,
+)
 from security import seed_initial_admin
 
 logger = logging.getLogger(__name__)
@@ -80,4 +85,7 @@ app.include_router(profissionais_router)
 app.include_router(auth_router)
 app.include_router(admins_router)
 app.include_router(admin_moderation_router)
+app.include_router(orcamentos_router)
+app.include_router(notificacoes_router)
+app.include_router(notificacoes_ws_router)
 

@@ -8,6 +8,7 @@ import {
   ProfessionalDocumentsLink,
   useIsProfessional,
 } from '../components/documentos/ProfessionalDocumentsLink';
+import { NotificationBell } from '../components/notificacoes/NotificationBell';
 import { useAuth } from '../context/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
@@ -69,6 +70,7 @@ export default function Home() {
                 </span>
               </Link>
               <ProfessionalDocumentsLink variant="header" />
+              <NotificationBell />
               <button
                 type="button"
                 onClick={logout}
