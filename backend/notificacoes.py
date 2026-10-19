@@ -112,6 +112,13 @@ def notificar_admins_documentos_enviados(
     return enviados
 
 
+def _sanitize_header_value(val: Optional[str]) -> str:
+    """Remove quebras de linha (CR/LF) e caracteres de controle para prevenir header injection."""
+    if not val:
+        return ""
+    return " ".join(str(val).replace("\r", " ").replace("\n", " ").split())
+
+
 def montar_mensagem_solicitacao_orcamento(
     destinatario: str,
     profissional_nome: str,
@@ -125,24 +132,30 @@ def montar_mensagem_solicitacao_orcamento(
     """Compõe a notificação transacional avisando o profissional sobre uma solicitação de orçamento."""
     nome_remetente, endereco_remetente = email_service.remetente()
 
-    telefone_str = cliente_telefone or "Não informado"
-    cidade_str = cliente_cidade or "Não informada"
+    safe_cliente_nome = _sanitize_header_value(cliente_nome)
+    safe_cliente_email = _sanitize_header_value(cliente_email)
+    safe_destinatario = _sanitize_header_value(destinatario)
+    safe_profissional_nome = _sanitize_header_value(profissional_nome)
+    safe_categoria = _sanitize_header_value(categoria)
+    telefone_str = _sanitize_header_value(cliente_telefone) or "Não informado"
+    cidade_str = _sanitize_header_value(cliente_cidade) or "Não informada"
 
     mensagem = EmailMessage()
-    mensagem["Subject"] = f"RentalSpouse: Nova solicitação de orçamento de {cliente_nome}"
+    mensagem["Subject"] = f"RentalSpouse: Nova solicitação de orçamento de {safe_cliente_nome}"
     mensagem["From"] = formataddr((nome_remetente, endereco_remetente))
-    mensagem["To"] = destinatario
-    mensagem["Reply-To"] = cliente_email
+    mensagem["To"] = safe_destinatario
+    if safe_cliente_email:
+        mensagem["Reply-To"] = formataddr((safe_cliente_nome, safe_cliente_email))
 
     texto = (
-        f"Olá, {profissional_nome}!\n\n"
+        f"Olá, {safe_profissional_nome}!\n\n"
         f"Você recebeu uma nova solicitação de orçamento na plataforma RentalSpouse.\n\n"
         f"--- Detalhes do Cliente ---\n"
-        f"Nome: {cliente_nome}\n"
-        f"E-mail: {cliente_email}\n"
+        f"Nome: {safe_cliente_nome}\n"
+        f"E-mail informado: {safe_cliente_email}\n"
         f"Telefone: {telefone_str}\n"
         f"Cidade: {cidade_str}\n"
-        f"Categoria do Serviço: {categoria}\n\n"
+        f"Categoria do Serviço: {safe_categoria}\n\n"
         f"--- Mensagem do Cliente ---\n"
         f"{mensagem_cliente}\n\n"
         "Para responder ao cliente, você pode responder diretamente a este e-mail "

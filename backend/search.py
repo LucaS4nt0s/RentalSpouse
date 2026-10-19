@@ -59,19 +59,31 @@ SPECIALTY_SYNONYMS: Dict[str, List[str]] = {
 }
 
 
-def normalize_text(text: Optional[str]) -> str:
-    """Remove acentos, converte para minúsculas e colapsa espaços múltiplos."""
-    if not text:
-        return ""
-    normalized = unicodedata.normalize("NFKD", str(text))
+@lru_cache(maxsize=16384)
+def _normalize_str(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
     cleaned = "".join(c for c in normalized if not unicodedata.combining(c)).lower()
     return " ".join(cleaned.split())
 
 
+def normalize_text(text: Optional[str]) -> str:
+    """Remove acentos, converte para minúsculas e colapsa espaços múltiplos."""
+    if not text:
+        return ""
+    return _normalize_str(str(text))
+
+
+@lru_cache(maxsize=16384)
+def _clean_str(text: str) -> str:
+    without_symbols = re.sub(r"[^a-z0-9\s]", " ", _normalize_str(text))
+    return re.sub(r"\s+", " ", without_symbols).strip()
+
+
 def clean_text(text: Optional[str]) -> str:
     """Normaliza e mantém apenas caracteres alfanuméricos e espaços simples."""
-    without_symbols = re.sub(r"[^a-z0-9\s]", " ", normalize_text(text))
-    return re.sub(r"\s+", " ", without_symbols).strip()
+    if not text:
+        return ""
+    return _clean_str(str(text))
 
 
 # Lookup do catálogo indexado pela versão normalizada, para casar a especialidade

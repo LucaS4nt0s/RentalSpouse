@@ -293,14 +293,15 @@ class TestGetProfessionalById:
     """Testes de busca por ID (GET /api/professionals/{id})."""
 
     def test_get_by_id_success(self, client: TestClient):
-        """Deve obter dados do profissional pelo ID correto."""
+        """Deve obter dados do profissional pelo ID correto com mascaramento LGPD."""
         created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
         prof_id = created["id"]
 
         response = client.get(f"/api/professionals/{prof_id}")
         assert response.status_code == 200
         assert response.json()["id"] == prof_id
-        assert response.json()["email"] == SAMPLE_PROFESSIONAL["email"]
+        assert response.json()["email"] == "ca***a@exemplo.com"
+        assert response.json()["phone"] == "(11) 9****-**21"
 
     def test_get_by_id_not_found(self, client: TestClient):
         """Deve retornar 404 quando o profissional não existir."""
@@ -507,7 +508,7 @@ class TestUpdateAndRemoveProfessional:
 
         get_resp = client.get(f"/api/profissionais/{prof_id}")
         assert get_resp.status_code == 200
-        assert get_resp.json()["email"] == "alias.route@teste.com"
+        assert get_resp.json()["email"] == "al***e@teste.com"
 
         db_session.query(models.Professional).filter_by(id=prof_id).update(
             {models.Professional.approval_status: models.ProfessionalApprovalStatus.APPROVED.value}

@@ -623,21 +623,45 @@ class ProfessionalContactRequest(BaseModel):
     message: str = Field(..., min_length=10, max_length=2000)
     client_city: Optional[str] = Field(None, max_length=100)
 
-    @field_validator("client_name")
+    @field_validator("client_name", mode="before")
     @classmethod
     def validate_client_name(cls, v: str) -> str:
-        cleaned = (v or "").strip()
+        if not isinstance(v, str):
+            return v
+        cleaned = re.sub(r"[\r\n\x00-\x1f]+", " ", v).strip()
         if len(cleaned) < 2:
             raise ValueError("O nome do cliente deve ter no mínimo 2 caracteres.")
         return cleaned
 
-    @field_validator("client_email")
+    @field_validator("client_email", mode="before")
     @classmethod
     def validate_client_email(cls, v: str) -> str:
-        cleaned = (v or "").strip().lower()
+        if not isinstance(v, str):
+            return v
+        if "\r" in v or "\n" in v:
+            raise ValueError("E-mail contém caracteres de controle inválidos.")
+        cleaned = v.strip().lower()
         if not EMAIL_REGEX.match(cleaned):
             raise ValueError("E-mail com formato inválido.")
         return cleaned
+
+    @field_validator("service_category", mode="before")
+    @classmethod
+    def validate_service_category(cls, v: str) -> str:
+        if not isinstance(v, str):
+            return v
+        cleaned = re.sub(r"[\r\n\x00-\x1f]+", " ", v).strip()
+        if len(cleaned) < 2:
+            raise ValueError("A categoria do serviço deve ter no mínimo 2 caracteres.")
+        return cleaned
+
+    @field_validator("client_phone", "client_city", mode="before")
+    @classmethod
+    def validate_optional_single_line(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not isinstance(v, str):
+            return v
+        cleaned = re.sub(r"[\r\n\x00-\x1f]+", " ", v).strip()
+        return cleaned or None
 
     @field_validator("message")
     @classmethod

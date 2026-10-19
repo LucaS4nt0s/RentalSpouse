@@ -367,6 +367,53 @@ class TestQuoteContactScenario5:
         assert blocked.status_code == 429
         assert "Retry-After" in blocked.headers
 
+    def test_send_quote_request_returns_503_when_email_fails(
+        self, client: TestClient, db_session, monkeypatch
+    ):
+        created = client.post("/api/professionals", json=SAMPLE_ELECTRICIAN).json()
+        prof_id = created["id"]
+        _approve_all_professionals(db_session)
+
+        monkeypatch.setattr(
+            "notificacoes.notificar_profissional_solicitacao_orcamento",
+            lambda **kwargs: False,
+        )
+
+        payload = {
+            "client_name": "Cliente Teste",
+            "client_email": "cliente@teste.com",
+            "service_category": "Elétrica",
+            "message": "Solicitação de orçamento quando o transporte de e-mail falha.",
+        }
+        resp = client.post(f"/api/professionals/{prof_id}/contact", json=payload)
+        assert resp.status_code == 503
+        assert "Não foi possível enviar" in resp.json()["detail"]
+
+    def test_contact_strips_crlf_against_header_injection(
+        self, client: TestClient, db_session
+    ):
+        created = client.post("/api/professionals", json=SAMPLE_ELECTRICIAN).json()
+        prof_id = created["id"]
+        _approve_all_professionals(db_session)
+
+        payload = {
+            "client_name": "Mariana\r\nBcc: hacker@evil.com",
+            "client_email": "mariana@gmail.com",
+            "client_phone": "1198765\r\n4321",
+            "service_category": "Elétrica\r\nSubject: Pwned",
+            "message": "Preciso trocar a fiação da sala e instalar tomadas novas.",
+            "client_city": "São Paulo\r\n",
+        }
+        resp = client.post(f"/api/professionals/{prof_id}/contact", json=payload)
+        assert resp.status_code == 201
+
+        caixa = email_service.caixa_de_saida()
+        assert len(caixa) == 1
+        msg = caixa[0]
+        assert "\r" not in msg["Subject"]
+        assert "\n" not in msg["Subject"]
+        assert "Mariana Bcc: hacker@evil.com" in msg["Subject"]
+
 
 class TestRetrocompatibilityAndEdgeCasesScenario6:
     """Cenário 6: Retrocompatibilidade com frontend legado e validações defensivas."""
@@ -391,6 +438,98 @@ class TestRetrocompatibilityAndEdgeCasesScenario6:
         assert "specialties" in item
         assert "is_active" in item
         assert "approval_status" in item
+
+    def test_get_professional_by_id_masks_pii_lgpd(self, client: TestClient, db_session):
+        """Garante que GET /api/professionals/{id} mascara email e phone para visitantes anônimos."""
+        created = client.post("/api/professionals", json=SAMPLE_ELECTRICIAN).json()
+        prof_id = created["id"]
+        _approve_all_professionals(db_session)
+
+        resp = client.get(f"/api/professionals/{prof_id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["email"] == "ca***o@gmail.com"
+        assert data["phone"] == "(11) 9****-**89"
+        assert "carlos.eduardo@gmail.com" not in resp.text
+        assert "98765-4389" not in resp.text
+        assert resp.headers.get("X-Content-Type-Options") == "nosniff"
+
+    def test_pagination_and_total_count_beyond_250_candidates(
+        self, client: TestClient, db_session
+    ):
+        """Reproduz cenário com 300 profissionais correspondentes a q=quadros: total=300 e páginas > 250 acessíveis."""
+        profs = [
+            models.Professional(
+                name=f"Profissional Quadros {i}",
+                email=f"prof.quadros.{i}@exemplo.com",
+                phone="(11) 98765-4321",
+                bio="Especialista em instalação de quadros de luz e disjuntores residenciais.",
+                service_radius_km=20.0,
+                specialties=["Elétrica"],
+                city="São Paulo",
+                state="SP",
+                is_active=True,
+                approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+            )
+            for i in range(300)
+        ]
+        db_session.add_all(profs)
+        db_session.commit()
+
+        resp_page1 = client.get("/api/professionals/search?q=quadros&skip=0&limit=20")
+        assert resp_page1.status_code == 200
+        body1 = resp_page1.json()
+        assert body1["total"] == 300
+        assert body1["pages"] == 15
+        assert body1["has_more"] is True
+        assert resp_page1.headers.get("X-Total-Count") == "300"
+
+        # Acessa registros além de 250 (skip=260, limit=50 -> últimos 40 itens)
+        resp_last = client.get("/api/professionals/search?q=quadros&skip=260&limit=50")
+        assert resp_last.status_code == 200
+        body_last = resp_last.json()
+        assert body_last["total"] == 300
+        assert len(body_last["items"]) == 40
+        assert body_last["has_more"] is False
+
+    def test_rate_limiter_ignores_forged_xff_and_evicts_keys(
+        self, client: TestClient, monkeypatch
+    ):
+        """Garante que X-Forwarded-For forjado sem proxy confiável não burla o 429 e chaves antigas sofrem eviction."""
+        from rate_limiter import SlidingWindowRateLimiter, is_trusted_proxy
+
+        # 1. X-Forwarded-For forjado com IPs distintos por requisição ainda deve atingir 429
+        for i in range(60):
+            r = client.get(
+                "/api/professionals?q=teste",
+                headers={"X-Forwarded-For": f"203.0.113.{i + 1}"},
+            )
+            assert r.status_code == 200
+
+        blocked = client.get(
+            "/api/professionals?q=teste",
+            headers={"X-Forwarded-For": "198.51.100.99"},
+        )
+        assert blocked.status_code == 429
+
+        # 2. Quando TRUSTED_PROXIES inclui o peer, X-Forwarded-For passa a ser considerado
+        monkeypatch.setenv("TRUSTED_PROXIES", "testclient,10.0.0.0/8,127.0.0.1")
+        assert is_trusted_proxy("testclient") is True
+        assert is_trusted_proxy("10.1.2.3") is True
+        assert is_trusted_proxy("127.0.0.1") is True
+        assert is_trusted_proxy("8.8.8.8") is False
+
+        allowed_diff_ip = client.get(
+            "/api/professionals?q=teste",
+            headers={"X-Forwarded-For": "198.51.100.200"},
+        )
+        assert allowed_diff_ip.status_code == 200
+
+        # 3. Eviction por limite máximo de chaves (LRU)
+        small_limiter = SlidingWindowRateLimiter(max_keys=3)
+        for idx in range(10):
+            small_limiter.check(f"k:{idx}", limit=5, window_seconds=60)
+        assert small_limiter.active_keys_count <= 3
 
     def test_invalid_state_uf_returns_422(self, client: TestClient):
         response = client.get("/api/professionals?state=ZZ")
