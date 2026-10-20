@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   X,
   ShieldCheck,
@@ -19,7 +19,6 @@ import {
   Briefcase,
   AlertTriangle,
   FileCheck,
-  Sparkles,
   Info,
 } from 'lucide-react';
 import {
@@ -68,12 +67,24 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
   const [rejectError, setRejectError] = useState<string | null>(null);
   const [isRejecting, setIsRejecting] = useState<boolean>(false);
 
-  // Cache de Blob URLs de documentos
+  // Cache de Blob URLs de documentos e rastreamento para revogação de memória
   const [blobUrls, setBlobUrls] = useState<Record<number, string>>({});
   const [isLoadingDocBlob, setIsLoadingDocBlob] = useState<boolean>(false);
+  const createdBlobUrlsRef = useRef<Set<string>>(new Set());
 
-  // Reseta estados ao abrir outro profissional
+  const revokeAllBlobUrls = useCallback(() => {
+    createdBlobUrlsRef.current.forEach((url) => {
+      if (url.startsWith('blob:')) {
+        URL.revokeObjectURL(url);
+      }
+    });
+    createdBlobUrlsRef.current.clear();
+  }, []);
+
+  // Reseta estados e revoga ObjectURLs anteriores ao abrir outro profissional
   useEffect(() => {
+    revokeAllBlobUrls();
+    setBlobUrls({});
     if (review?.documents && review.documents.length > 0) {
       setSelectedDocId(review.documents[0].id);
     } else {
@@ -84,7 +95,18 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
     setIsRejectingOpen(false);
     setRejectReason('');
     setRejectError(null);
-  }, [review]);
+  }, [review, revokeAllBlobUrls]);
+
+  // Revoga ObjectURLs ao fechar o modal ou desmontar o componente
+  useEffect(() => {
+    if (!isOpen) {
+      revokeAllBlobUrls();
+      setBlobUrls({});
+    }
+    return () => {
+      revokeAllBlobUrls();
+    };
+  }, [isOpen, revokeAllBlobUrls]);
 
   // Fecha no Escape
   useEffect(() => {
@@ -120,6 +142,9 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
       setIsLoadingDocBlob(true);
       try {
         const url = await fetchDocumentBlob(token, doc.download_url);
+        if (url.startsWith('blob:')) {
+          createdBlobUrlsRef.current.add(url);
+        }
         setBlobUrls((prev) => ({ ...prev, [doc.id]: url }));
       } catch (err) {
         console.warn('Erro ao carregar blob do documento:', err);

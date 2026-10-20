@@ -13,7 +13,6 @@ import {
   Mail,
   KeyRound,
   Sparkles,
-  UserCheck,
   AlertTriangle,
   Users,
 } from 'lucide-react';
@@ -76,7 +75,6 @@ export default function AdminModerationPage() {
   const [sortOrder, setSortOrder] = useState<'fifo' | 'newest'>('fifo');
 
   // Modal de Review
-  const [selectedProfForReview, setSelectedProfForReview] = useState<ProfessionalModerationItem | null>(null);
   const [reviewDetails, setReviewDetails] = useState<ProfessionalModerationReview | null>(null);
   const [isLoadingReview, setIsLoadingReview] = useState(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
@@ -159,7 +157,7 @@ export default function AdminModerationPage() {
     setListError(null);
     try {
       // Carregamos todos para permitir filtros instantâneos na tabela
-      const data = await listProfessionals(token, 'all');
+      const data = await listProfessionals(token, 'all', 0, 100);
       setProfessionals(data);
     } catch (err) {
       if (err && typeof err === 'object' && 'status' in err && (err.status === 401 || err.status === 403)) {
@@ -217,7 +215,6 @@ export default function AdminModerationPage() {
   // 4. Abertura do Modal de Avaliação
   const handleOpenReview = async (prof: ProfessionalModerationItem) => {
     if (!adminToken) return;
-    setSelectedProfForReview(prof);
     setIsReviewModalOpen(true);
     setIsLoadingReview(true);
     setReviewDetails(null);

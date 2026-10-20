@@ -550,7 +550,7 @@ class TestAceitarOrcamento:
         payload = {
             "valor_estimado": 250.0,
             "mensagem": "Orçamento aceito! Levarei os materiais necessários para a instalação.",
-            "data_prevista": "2026-10-20T14:00:00Z",
+            "data_prevista": "2099-10-20T14:00:00Z",
         }
         res_patch = client.patch(f"/api/orcamentos/{orcamento_id}/aceitar", json=payload, headers=headers_prof)
         assert res_patch.status_code == 200
