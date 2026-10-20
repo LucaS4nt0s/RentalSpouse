@@ -28,7 +28,11 @@ def migrate_columns_and_indexes(engine: Engine) -> None:
     existing_columns = {col["name"] for col in inspector.get_columns("professionals")}
 
     columns_to_add = [
+        ("approval_status", "VARCHAR(50) DEFAULT 'pending_approval' NOT NULL"),
+        ("approval_notes", "TEXT"),
         ("documents_submitted_at", "TIMESTAMP"),
+        ("approved_at", "TIMESTAMP"),
+        ("approved_by_id", "INTEGER"),
         ("normalized_city", "VARCHAR(100)"),
         ("normalized_specialties", "TEXT"),
         ("normalized_search", "TEXT"),
@@ -46,6 +50,7 @@ def migrate_columns_and_indexes(engine: Engine) -> None:
         # Índices B-Tree
         existing_indexes = {idx["name"] for idx in inspector.get_indexes("professionals")}
         indexes_to_create = [
+            ("ix_professionals_approval_status", "approval_status"),
             ("ix_professionals_normalized_city", "normalized_city"),
             ("ix_professionals_normalized_specialties", "normalized_specialties"),
             ("ix_professionals_normalized_search", "normalized_search"),
@@ -85,6 +90,24 @@ def migrate_columns_and_indexes(engine: Engine) -> None:
                     "Não foi possível criar índices pg_trgm (permissão ou extensão ausente): %s",
                     exc,
                 )
+
+    # Migrações defensivas na tabela orcamentos (Issue #29)
+    if inspector.has_table("orcamentos"):
+        existing_orcamento_columns = {col["name"] for col in inspector.get_columns("orcamentos")}
+        orcamento_columns_to_add = [
+            ("motivo_recusa", "VARCHAR(150)"),
+            ("justificativa_recusa", "TEXT"),
+            ("data_prevista", "TIMESTAMP"),
+            ("decidido_em", "TIMESTAMP"),
+        ]
+        with engine.begin() as conn:
+            for col_name, col_type in orcamento_columns_to_add:
+                if col_name not in existing_orcamento_columns:
+                    logger.info(
+                        "Migração RentalSpouse: adicionando coluna '%s' na tabela 'orcamentos'...",
+                        col_name,
+                    )
+                    conn.execute(text(f"ALTER TABLE orcamentos ADD COLUMN {col_name} {col_type}"))
 
 
 def backfill_normalized_fields(session_factory: Callable[[], Session], batch_size: int = 200) -> int:

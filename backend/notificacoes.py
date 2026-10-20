@@ -13,7 +13,7 @@ normalmente — o envio de documentos nunca deve quebrar por causa de e-mail.
 import logging
 from email.message import EmailMessage
 from email.utils import formataddr
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -217,6 +217,111 @@ def notificar_profissional_rejeitado(
     except email_service.ErroEnvioEmail as erro:
         logger.warning(
             "Falha ao enviar e-mail de reprovação para o profissional %s: %s",
+            profissional.email,
+            erro,
+        )
+        return False
+
+
+def _sanitize_header_value(val: Optional[str]) -> str:
+    """Remove quebras de linha (CR/LF) e caracteres de controle para prevenir header injection."""
+    if not val:
+        return ""
+    return " ".join(str(val).replace("\r", " ").replace("\n", " ").split())
+
+
+def montar_mensagem_solicitacao_orcamento(
+    destinatario: str,
+    profissional_nome: str,
+    cliente_nome: str,
+    cliente_email: str,
+    cliente_telefone: Optional[str],
+    categoria: str,
+    mensagem_cliente: str,
+    cliente_cidade: Optional[str] = None,
+) -> EmailMessage:
+    """Compõe a notificação transacional avisando o profissional sobre uma solicitação de orçamento."""
+    nome_remetente, endereco_remetente = email_service.remetente()
+
+    safe_cliente_nome = _sanitize_header_value(cliente_nome)
+    safe_cliente_email = _sanitize_header_value(cliente_email)
+    safe_destinatario = _sanitize_header_value(destinatario)
+    safe_profissional_nome = _sanitize_header_value(profissional_nome)
+    safe_categoria = _sanitize_header_value(categoria)
+    telefone_str = _sanitize_header_value(cliente_telefone) or "Não informado"
+    cidade_str = _sanitize_header_value(cliente_cidade) or "Não informada"
+
+    mensagem = EmailMessage()
+    mensagem["Subject"] = f"RentalSpouse: Nova solicitação de orçamento de {safe_cliente_nome}"
+    mensagem["From"] = formataddr((nome_remetente, endereco_remetente))
+    mensagem["To"] = safe_destinatario
+    if safe_cliente_email:
+        mensagem["Reply-To"] = formataddr((safe_cliente_nome, safe_cliente_email))
+
+    texto = (
+        f"Olá, {safe_profissional_nome}!\n\n"
+        f"Você recebeu uma nova solicitação de orçamento na plataforma RentalSpouse.\n\n"
+        f"--- Detalhes do Cliente ---\n"
+        f"Nome: {safe_cliente_nome}\n"
+        f"E-mail informado: {safe_cliente_email}\n"
+        f"Telefone: {telefone_str}\n"
+        f"Cidade: {cidade_str}\n"
+        f"Categoria do Serviço: {safe_categoria}\n\n"
+        f"--- Mensagem do Cliente ---\n"
+        f"{mensagem_cliente}\n\n"
+        "Para responder ao cliente, você pode responder diretamente a este e-mail "
+        f"ou entrar em contato via telefone ({telefone_str}).\n\n"
+        "Equipe RentalSpouse"
+    )
+
+    mensagem.set_content(texto)
+    return mensagem
+
+
+def notificar_profissional_solicitacao_orcamento(
+    profissional: models.Professional,
+    cliente_nome: str,
+    cliente_email: str,
+    cliente_telefone: Optional[str],
+    categoria: str,
+    mensagem: str,
+    cliente_cidade: Optional[str] = None,
+) -> bool:
+    """
+    Envia a notificação transacional para o profissional sobre um novo contato.
+    Nunca levanta exceção para não quebrar a API em caso de instabilidade no envio.
+    """
+    try:
+        transporte = email_service.obter_transporte()
+    except email_service.ErroEnvioEmail as erro:
+        logger.warning(
+            "Não foi possível obter transporte de e-mail para avisar o profissional %s: %s",
+            profissional.email,
+            erro,
+        )
+        return False
+
+    msg = montar_mensagem_solicitacao_orcamento(
+        destinatario=profissional.email,
+        profissional_nome=profissional.name,
+        cliente_nome=cliente_nome,
+        cliente_email=cliente_email,
+        cliente_telefone=cliente_telefone,
+        categoria=categoria,
+        mensagem_cliente=mensagem,
+        cliente_cidade=cliente_cidade,
+    )
+
+    try:
+        transporte.enviar(msg)
+        logger.info(
+            "Notificação de solicitação de orçamento enviada com sucesso para o profissional %s.",
+            profissional.email,
+        )
+        return True
+    except email_service.ErroEnvioEmail as erro:
+        logger.warning(
+            "Falha ao enviar notificação de orçamento para o profissional %s: %s",
             profissional.email,
             erro,
         )

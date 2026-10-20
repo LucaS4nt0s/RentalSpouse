@@ -542,14 +542,16 @@ class TestPublicDirectoryAndResubmissionWorkflow:
             db_session, name="Prof Aprovado", email="aprovado.vitrine@exemplo.com", status="approved"
         )
 
-        # GET público na vitrine
+        # GET público na vitrine (com mascaramento LGPD)
         resp = client.get("/api/professionals")
         assert resp.status_code == 200
+        ids_na_vitrine = [p["id"] for p in resp.json()]
         emails_na_vitrine = [p["email"] for p in resp.json()]
 
-        assert "aprovado.vitrine@exemplo.com" in emails_na_vitrine
-        assert "pendente.vitrine@exemplo.com" not in emails_na_vitrine
-        assert "rejeitado.vitrine@exemplo.com" not in emails_na_vitrine
+        assert p_aprovado.id in ids_na_vitrine
+        assert "ap***e@exemplo.com" in emails_na_vitrine
+        assert p_pendente.id not in ids_na_vitrine
+        assert p_rejeitado.id not in ids_na_vitrine
 
         # Agora aprova o pendente pelo endpoint administrativo
         helper_attach_document(db_session, p_pendente.id, models.DocumentType.PHOTO_ID.value)
@@ -559,8 +561,10 @@ class TestPublicDirectoryAndResubmissionWorkflow:
 
         # Agora ele passa a aparecer na vitrine pública imediatamente
         resp_after = client.get("/api/professionals")
+        ids_after = [p["id"] for p in resp_after.json()]
         emails_after = [p["email"] for p in resp_after.json()]
-        assert "pendente.vitrine@exemplo.com" in emails_after
+        assert p_pendente.id in ids_after
+        assert "pe***e@exemplo.com" in emails_after
 
     def test_rejected_professional_can_resubmit_documents(
         self, client: TestClient, admin_user: dict, db_session: Session
