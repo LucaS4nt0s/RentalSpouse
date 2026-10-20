@@ -671,11 +671,27 @@ flowchart LR
 
 ## 10. Checklist de Qualidade e Conformidade (`AI_RULES.md`)
 
-- [ ] Todos os novos schemas utilizam Pydantic v2 com `from_attributes = True`.
-- [ ] O endpoint público não expõe e-mails ou telefones em claro de profissionais (Conformidade com LGPD).
-- [ ] A rota `GET /api/professionals` preserva retrocompatibilidade total com o array esperado pelo frontend atual.
-- [ ] Os cabeçalhos `X-Total-Count` e `X-Search-Suggestion` são enviados em todas as respostas de busca.
-- [ ] O endpoint `POST /api/professionals/{id}/contact` oferece suporte completo ao fluxo do `QuoteModal.tsx`.
-- [ ] Nenhum segredo ou credencial é exposto em logs ou código.
-- [ ] Suíte de testes automatizados com SQLite em memória cobre caminhos felizes, erros 422, limite 429 e proteção de dados.
-- [ ] Nenhuma biblioteca externa adicional foi adicionada sem justificativa arquitetural.
+- [x] Todos os novos schemas utilizam Pydantic v2 com `from_attributes = True`.
+- [x] O endpoint público não expõe e-mails ou telefones em claro de profissionais (Conformidade com LGPD).
+- [x] A rota `GET /api/professionals` preserva retrocompatibilidade total com o array esperado pelo frontend atual.
+- [x] Os cabeçalhos `X-Total-Count` e `X-Search-Suggestion` são enviados em todas as respostas de busca.
+- [x] O endpoint `POST /api/professionals/{id}/contact` oferece suporte completo ao fluxo do `QuoteModal.tsx`.
+- [x] Nenhum segredo ou credencial é exposto em logs ou código.
+- [x] Suíte de testes automatizados com SQLite em memória cobre caminhos felizes, erros 422, limite 429 e proteção de dados.
+- [x] Nenhuma biblioteca externa adicional foi adicionada sem justificativa arquitetural.
+
+---
+
+## 11. Follow-ups Pós-Merge (PR #71)
+
+Itens não bloqueantes levantados na revisão do PR #71 para evolução futura:
+
+1. **Remoção definitiva de `envelope=true` em `GET /api/professionals`**:
+   - O parâmetro segue como `deprecated=True` para retrocompatibilidade, enquanto `GET /api/professionals/search` é o contrato canônico para respostas envelopadas (`PaginatedResponse`). Quando o frontend legado migrar 100% para `/api/professionals/search`, remover `envelope` de `GET /api/professionals`.
+2. **Envio assíncrono de e-mail em `POST /api/professionals/{id}/contact`**:
+   - Atualmente o envio via `email_service` é síncrono na requisição para permitir retorno imediato de `503 Service Unavailable` caso o transporte falhe. Futuramente, mover para fila/worker com retentativa (`BackgroundTasks` / Celery / Redis Queue) e persistência do pedido de orçamento em tabela dedicada.
+3. **Verificação de identidade / proteção de `Reply-To` no contato público**:
+   - `client_email` e `client_name` informados por visitantes anônimos populam `Reply-To` e assunto (já sanitizados contra CR/LF e limitados a 5 req/hora por IP). Evoluir para exigir autenticação de cliente ou verificação prévia (OTP/token/CAPTCHA) antes do disparo.
+4. **Rate Limiting distribuído (Redis) e Full-Text Search / `pg_trgm` nativo no PostgreSQL**:
+   - Migrar `SlidingWindowRateLimiter` in-memory para backend Redis quando a aplicação escalar horizontalmente com múltiplos workers/instâncias.
+   - Migrar o ranking textual e pré-filtro `LIKE '%termo%'` para índices GIN (`pg_trgm` / `tsvector`) no PostgreSQL quando a base ultrapassar `SEARCH_MAX_CANDIDATES` (50k+ registros).
