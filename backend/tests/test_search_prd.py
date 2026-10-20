@@ -556,9 +556,15 @@ class TestRetrocompatibilityAndEdgeCasesScenario6:
         db_session.commit()
 
         r1 = client.get("/api/professionals/search?q=quadros&skip=0&limit=20").json()
-        assert all("Quadriculado" not in item["name"] for item in r1["items"])
+        assert len(r1["items"]) == 20
+        assert r1["total"] == 30
+        assert r1["has_more"] is True
+        assert all(
+            "Quadros" in item["name"] and "Quadriculado" not in item["name"]
+            for item in r1["items"]
+        )
 
-        # Cenário 2: 5 "quadriculado" + 5 "quadros" (cap=10) -> sem IDs duplicados entre skip=0 e skip=5
+        # Cenário 2: 5 "quadriculado" + 5 "quadros" (cap=10) -> total ajustado para 5 e página 2 vazia sem has_more
         db_session.query(models.Professional).delete()
         db_session.commit()
 
@@ -598,8 +604,43 @@ class TestRetrocompatibilityAndEdgeCasesScenario6:
         page2 = client.get("/api/professionals/search?q=quadros&skip=5&limit=5").json()
         ids1 = {item["id"] for item in page1["items"]}
         ids2 = {item["id"] for item in page2["items"]}
-        assert len(ids1) == 5
+        assert len(page1["items"]) == 5
+        assert page1["total"] == 5
+        assert page1["has_more"] is False
+        assert len(page2["items"]) == 0
+        assert page2["total"] == 5
+        assert page2["has_more"] is False
         assert ids1.isdisjoint(ids2)
+
+        # Cenário 2b: 5 "quadriculado" + 10 "quadros" (cap=10) -> página 1 (5 de ranked) + página 2 (5 da cauda) e página cruzando fronteira
+        for i in range(5, 10):
+            db_session.add(
+                models.Professional(
+                    name=f"Prof Quadros {i}",
+                    email=f"quadros2.{i}@exemplo.com",
+                    phone="(11) 98765-4321",
+                    bio="Especialista em quadros de luz e instalações.",
+                    service_radius_km=20.0,
+                    specialties=["Elétrica"],
+                    city="São Paulo",
+                    state="SP",
+                    is_active=True,
+                    approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+                )
+            )
+        db_session.commit()
+
+        p1 = client.get("/api/professionals/search?q=quadros&skip=0&limit=5").json()
+        p2 = client.get("/api/professionals/search?q=quadros&skip=5&limit=5").json()
+        straddle = client.get("/api/professionals/search?q=quadros&skip=3&limit=5").json()
+        assert len(p1["items"]) == 5
+        assert p1["total"] == 10
+        assert p1["has_more"] is True
+        assert len(p2["items"]) == 5
+        assert p2["total"] == 10
+        assert p2["has_more"] is False
+        assert {item["id"] for item in p1["items"]}.isdisjoint({item["id"] for item in p2["items"]})
+        assert len(straddle["items"]) == 5
 
         # Verifica parser resiliente de SEARCH_MAX_CANDIDATES
         monkeypatch.setenv("SEARCH_MAX_CANDIDATES", "invalido")

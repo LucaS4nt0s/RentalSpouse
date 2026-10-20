@@ -3,7 +3,7 @@ import os
 import re
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import (
     APIRouter,
@@ -484,19 +484,34 @@ def _execute_professionals_search(
             city=city or "",
         )
 
-        total = filtered_query.count() if hit_candidate_cap else len(ranked)
+        total = (
+            len(ranked) + max(0, filtered_query.count() - MAX_SEARCH_CANDIDATES)
+            if hit_candidate_cap
+            else len(ranked)
+        )
         page = (skip // limit) + 1 if limit > 0 else 1
         pages = (total + limit - 1) // limit if total > 0 else 0
-        if skip < MAX_SEARCH_CANDIDATES:
-            paged_items = ranked[skip : skip + limit]
-        else:
+        if skip < len(ranked):
+            paged_items = list(ranked[skip : skip + limit])
+            missing = limit - len(paged_items)
+            if missing > 0 and hit_candidate_cap:
+                paged_items.extend(
+                    filtered_query.order_by(models.Professional.id.asc())
+                    .offset(MAX_SEARCH_CANDIDATES)
+                    .limit(missing)
+                    .all()
+                )
+        elif hit_candidate_cap:
+            tail_offset = MAX_SEARCH_CANDIDATES + (skip - len(ranked))
             paged_items = (
                 filtered_query.order_by(models.Professional.id.asc())
-                .offset(max(skip, MAX_SEARCH_CANDIDATES))
+                .offset(tail_offset)
                 .limit(limit)
                 .all()
             )
-        has_more = (skip + len(paged_items)) < total
+        else:
+            paged_items = []
+        has_more = len(paged_items) > 0 and (skip + len(paged_items)) < total
     else:
         total = query.count()
         page = (skip // limit) + 1 if limit > 0 else 1
@@ -533,12 +548,12 @@ def _execute_professionals_search(
 
 @router.get(
     "",
-    response_model=Union[List[ProfessionalPublicRead], PaginatedResponse[ProfessionalPublicRead]],
+    response_model=List[ProfessionalPublicRead],
     summary="Listar profissionais",
 )
 @profissionais_router.get(
     "",
-    response_model=Union[List[ProfessionalPublicRead], PaginatedResponse[ProfessionalPublicRead]],
+    response_model=List[ProfessionalPublicRead],
     include_in_schema=False,
 )
 def list_professionals(
