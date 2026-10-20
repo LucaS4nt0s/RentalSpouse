@@ -28,7 +28,11 @@ def migrate_columns_and_indexes(engine: Engine) -> None:
     existing_columns = {col["name"] for col in inspector.get_columns("professionals")}
 
     columns_to_add = [
+        ("approval_status", "VARCHAR(50) DEFAULT 'pending_approval' NOT NULL"),
+        ("approval_notes", "TEXT"),
         ("documents_submitted_at", "TIMESTAMP"),
+        ("approved_at", "TIMESTAMP"),
+        ("approved_by_id", "INTEGER"),
         ("normalized_city", "VARCHAR(100)"),
         ("normalized_specialties", "TEXT"),
         ("normalized_search", "TEXT"),
@@ -46,6 +50,7 @@ def migrate_columns_and_indexes(engine: Engine) -> None:
         # Índices B-Tree
         existing_indexes = {idx["name"] for idx in inspector.get_indexes("professionals")}
         indexes_to_create = [
+            ("ix_professionals_approval_status", "approval_status"),
             ("ix_professionals_normalized_city", "normalized_city"),
             ("ix_professionals_normalized_specialties", "normalized_specialties"),
             ("ix_professionals_normalized_search", "normalized_search"),

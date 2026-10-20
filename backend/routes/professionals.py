@@ -1,28 +1,61 @@
 from datetime import datetime, timezone
-from typing import List, Optional
+import os
+import re
+import threading
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse
-from sqlalchemy import String, cast, or_
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
+from fastapi.responses import FileResponse, JSONResponse
+from sqlalchemy import String, case, cast, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import models
+import notificacoes
 import search
 import storage
 from database import get_db
 from models import normalize_text
+from rate_limiter import check_contact_rate_limit, check_search_rate_limit
 from schemas import (
+    PaginatedResponse,
+    ProfessionalContactRequest,
+    ProfessionalContactResponse,
     ProfessionalCreate,
     ProfessionalDocumentRead,
     ProfessionalDocumentsSummaryRead,
+    ProfessionalPublicRead,
     ProfessionalRead,
     ProfessionalUpdate,
+    SpecialtyCategoryRead,
+    UFS_VALIDAS,
 )
 from security import get_optional_current_user, hash_senha
 
 router = APIRouter(prefix="/api/professionals", tags=["Profissionais"])
 profissionais_router = APIRouter(prefix="/api/profissionais", tags=["Profissionais"])
+
+def _parse_max_search_candidates() -> int:
+    try:
+        return max(1, min(50000, int(os.getenv("SEARCH_MAX_CANDIDATES", "2000"))))
+    except (TypeError, ValueError):
+        return 2000
+
+
+MAX_SEARCH_CANDIDATES = _parse_max_search_candidates()
+MAX_FALLBACK_CANDIDATES = MAX_SEARCH_CANDIDATES
 
 
 @router.post(
@@ -121,16 +154,411 @@ def _escape_like(val: str) -> str:
     return val.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-# Teto de candidatos carregados para o ranking inteligente. A busca textual (q)
-# precisa avaliar tolerância a erros e sinônimos, o que não é expressável de forma
-# portável em SQL; os filtros de banco (status/especialidade) reduzem o conjunto
-# antes desta etapa.
-MAX_SEARCH_CANDIDATES = 2000
+CANONICAL_SPECIALTIES = [
+    {
+        "id": "eletrica",
+        "name": "Elétrica",
+        "slug": "eletrica",
+        "icon": "Zap",
+        "description": "Instalações elétricas, quadros de luz, tomadas e chuveiros",
+        "clean_name": search.clean_text("Elétrica"),
+        "norm_name": normalize_text("Elétrica"),
+    },
+    {
+        "id": "hidraulica",
+        "name": "Hidráulica",
+        "slug": "hidraulica",
+        "icon": "Droplets",
+        "description": "Vazamentos, desentupimentos, torneiras e encanamento geral",
+        "clean_name": search.clean_text("Hidráulica"),
+        "norm_name": normalize_text("Hidráulica"),
+    },
+    {
+        "id": "montagem-moveis",
+        "name": "Montagem de Móveis",
+        "slug": "montagem-de-moveis",
+        "icon": "Hammer",
+        "description": "Montagem e desmontagem de armários, camas, mesas e estantes",
+        "clean_name": search.clean_text("Montagem de Móveis"),
+        "norm_name": normalize_text("Montagem de Móveis"),
+    },
+    {
+        "id": "pintura",
+        "name": "Pintura",
+        "slug": "pintura",
+        "icon": "Paintbrush",
+        "description": "Pintura residencial interna, externa, massa corrida e texturas",
+        "clean_name": search.clean_text("Pintura"),
+        "norm_name": normalize_text("Pintura"),
+    },
+    {
+        "id": "reparos-gerais",
+        "name": "Reparos Gerais",
+        "slug": "reparos-gerais",
+        "icon": "Wrench",
+        "description": "Serviços gerais de marido de aluguel, furadeira e pequenos reparos",
+        "clean_name": search.clean_text("Reparos Gerais"),
+        "norm_name": normalize_text("Reparos Gerais"),
+    },
+    {
+        "id": "marcenaria",
+        "name": "Marcenaria",
+        "slug": "marcenaria",
+        "icon": "Hammer",
+        "description": "Móveis planejados, portas, gavetas e ajustes em madeira",
+        "clean_name": search.clean_text("Marcenaria"),
+        "norm_name": normalize_text("Marcenaria"),
+    },
+    {
+        "id": "limpeza",
+        "name": "Limpeza",
+        "slug": "limpeza",
+        "icon": "Sparkles",
+        "description": "Limpeza pós-obra, faxina residencial, higienização e vidros",
+        "clean_name": search.clean_text("Limpeza"),
+        "norm_name": normalize_text("Limpeza"),
+    },
+    {
+        "id": "jardinagem",
+        "name": "Jardinagem",
+        "slug": "jardinagem",
+        "icon": "Flower2",
+        "description": "Poda de árvores, corte de grama, paisagismo e plantas",
+        "clean_name": search.clean_text("Jardinagem"),
+        "norm_name": normalize_text("Jardinagem"),
+    },
+    {
+        "id": "ar-condicionado",
+        "name": "Ar-condicionado",
+        "slug": "ar-condicionado",
+        "icon": "Wind",
+        "description": "Instalação, manutenção, recarga de gás e limpeza de ar-condicionado",
+        "clean_name": search.clean_text("Ar-condicionado"),
+        "norm_name": normalize_text("Ar-condicionado"),
+    },
+]
+
+_SPECIALTIES_CACHE_LOCK = threading.Lock()
+_SPECIALTIES_CACHE_TTL = 60.0
+_specialties_cache_state: Dict[str, Any] = {
+    "fingerprint": None,
+    "expires_at": 0.0,
+    "result": None,
+}
 
 
-@router.get("", response_model=List[ProfessionalRead], summary="Listar profissionais")
-@profissionais_router.get("", response_model=List[ProfessionalRead], include_in_schema=False)
+@router.get(
+    "/specialties",
+    response_model=List[SpecialtyCategoryRead],
+    summary="Catálogo de especialidades",
+)
+@profissionais_router.get(
+    "/specialties",
+    response_model=List[SpecialtyCategoryRead],
+    include_in_schema=False,
+)
+def get_specialties_catalog(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """
+    Retorna o catálogo canônico de especialidades suportadas com a contagem agregada
+    no banco de dados de profissionais aprovados e ativos em cada categoria, com cache em servidor.
+    """
+    check_search_rate_limit(request)
+
+    response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=600"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    base_filter = (
+        models.Professional.is_active.is_(True),
+        models.Professional.approval_status == models.ProfessionalApprovalStatus.APPROVED.value,
+    )
+
+    approved_count, max_updated = (
+        db.query(
+            func.count(models.Professional.id),
+            func.max(models.Professional.updated_at),
+        )
+        .filter(*base_filter)
+        .one()
+    )
+    fingerprint = (approved_count, str(max_updated))
+    now = time.time()
+
+    with _SPECIALTIES_CACHE_LOCK:
+        if (
+            _specialties_cache_state["result"] is not None
+            and _specialties_cache_state["fingerprint"] == fingerprint
+            and now < _specialties_cache_state["expires_at"]
+        ):
+            return _specialties_cache_state["result"]
+
+    if approved_count == 0:
+        categories_result = [
+            SpecialtyCategoryRead(
+                id=cat["id"],
+                name=cat["name"],
+                slug=cat["slug"],
+                icon=cat["icon"],
+                description=cat["description"],
+                professionals_count=0,
+            )
+            for cat in CANONICAL_SPECIALTIES
+        ]
+    else:
+        agg_exprs = []
+        for cat in CANONICAL_SPECIALTIES:
+            norm_cat = _escape_like(cat["norm_name"])
+            clean_cat = _escape_like(cat["clean_name"])
+            raw_cat = _escape_like(cat["name"])
+            cond = or_(
+                models.Professional.normalized_specialties.like(f"%{norm_cat}%", escape="\\"),
+                models.Professional.normalized_specialties.like(f"%{clean_cat}%", escape="\\"),
+                cast(models.Professional.specialties, String).ilike(f"%{raw_cat}%", escape="\\"),
+            )
+            agg_exprs.append(func.coalesce(func.sum(case((cond, 1), else_=0)), 0))
+
+        counts_row = db.query(*agg_exprs).filter(*base_filter).one()
+        categories_result = [
+            SpecialtyCategoryRead(
+                id=cat["id"],
+                name=cat["name"],
+                slug=cat["slug"],
+                icon=cat["icon"],
+                description=cat["description"],
+                professionals_count=int(counts_row[idx] or 0),
+            )
+            for idx, cat in enumerate(CANONICAL_SPECIALTIES)
+        ]
+
+    with _SPECIALTIES_CACHE_LOCK:
+        _specialties_cache_state["fingerprint"] = fingerprint
+        _specialties_cache_state["expires_at"] = now + _SPECIALTIES_CACHE_TTL
+        _specialties_cache_state["result"] = categories_result
+
+    return categories_result
+
+
+def _execute_professionals_search(
+    request: Request,
+    response: Response,
+    q: Optional[str],
+    specialty: Optional[str],
+    city: Optional[str],
+    state: Optional[str],
+    approval_status: Optional[str],
+    skip: int,
+    limit: int,
+    db: Session,
+) -> PaginatedResponse[ProfessionalPublicRead]:
+    """
+    Executa a busca de profissionais (com pré-filtro SQL + ranqueamento inteligente em memória),
+    popula os cabeçalhos HTTP de paginação/segurança e retorna um PaginatedResponse tipado.
+    """
+    check_search_rate_limit(request)
+
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    if state:
+        uf = state.strip().upper()
+        if uf not in UFS_VALIDAS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Estado '{state}' inválido. Deve ser uma sigla de UF brasileira válida.",
+            )
+
+    has_query = bool(q and q.strip())
+    clean_q = search.clean_text(q) if has_query else ""
+
+    # Rejeita consultas vazias ou compostas unicamente por símbolos/metacaracteres
+    if has_query and (not clean_q or re.fullmatch(r"[%_*\s\\]+", q or "")):
+        response.headers["X-Total-Count"] = "0"
+        response.headers["X-Page"] = "1"
+        response.headers["X-Per-Page"] = str(limit)
+        response.headers["X-Has-More"] = "false"
+        return PaginatedResponse[ProfessionalPublicRead](
+            items=[],
+            total=0,
+            page=1,
+            size=limit,
+            pages=0,
+            has_more=False,
+            detected_suggestion=None,
+        )
+
+    query = db.query(models.Professional).filter(models.Professional.is_active.is_(True))
+
+    if approval_status and approval_status.strip().lower() != "all":
+        query = query.filter(models.Professional.approval_status == approval_status.strip().lower())
+
+    if state:
+        query = query.filter(models.Professional.state == state.strip().upper())
+
+    if city and city.strip():
+        norm_city = normalize_text(city)
+        escaped_norm_city = _escape_like(norm_city)
+        escaped_city = _escape_like(city.strip())
+        query = query.filter(
+            or_(
+                models.Professional.normalized_city == norm_city,
+                models.Professional.normalized_city.like(f"{escaped_norm_city}%", escape="\\"),
+                models.Professional.normalized_city.like(f"%{escaped_norm_city}%", escape="\\"),
+                models.Professional.city.ilike(f"%{escaped_city}%", escape="\\"),
+            )
+        )
+
+    if specialty and specialty.strip() and specialty.strip().lower() != "todas":
+        norm_spec = normalize_text(specialty)
+        escaped_norm_spec = _escape_like(norm_spec)
+        escaped_spec = _escape_like(specialty.strip())
+        query = query.filter(
+            or_(
+                models.Professional.normalized_specialties.like(f"{escaped_norm_spec}%", escape="\\"),
+                models.Professional.normalized_specialties.like(f"%{escaped_norm_spec}%", escape="\\"),
+                cast(models.Professional.specialties, String).ilike(f"%{escaped_spec}%", escape="\\"),
+            )
+        )
+
+    if has_query:
+        # Tiered Two-Stage Search:
+        # Fase 1: Pré-filtro no banco de dados (usa igualdade/prefixo B-Tree e trigram GIN pg_trgm no PostgreSQL)
+        suggestion_tuple = search.find_best_category_suggestion(clean_q)
+        detected_category = suggestion_tuple[0] if suggestion_tuple else None
+
+        q_terms = {clean_q}
+        for t in clean_q.split():
+            if len(t) >= 3:
+                q_terms.add(t)
+            if len(t) >= 4:
+                q_terms.add(t[:4])
+
+        if detected_category:
+            q_terms.add(search.clean_text(detected_category))
+            q_terms.add(normalize_text(detected_category))
+            for syn in search.synonyms_for(detected_category):
+                q_terms.add(search.clean_text(syn))
+
+        conditions = []
+        for term in q_terms:
+            if not term:
+                continue
+            esc = _escape_like(term)
+            conditions.append(models.Professional.normalized_search.like(f"%{esc}%", escape="\\"))
+            conditions.append(models.Professional.normalized_specialties.like(f"%{esc}%", escape="\\"))
+
+        filtered_query = query.filter(or_(*conditions))
+        # ponytail: teto SEARCH_MAX_CANDIDATES=2000 evita OOM em buscas amplas; migrar ranking para SQL/FTS se base > 50k
+        candidates = (
+            filtered_query.order_by(models.Professional.id.asc())
+            .limit(MAX_SEARCH_CANDIDATES)
+            .all()
+        )
+        hit_candidate_cap = len(candidates) >= MAX_SEARCH_CANDIDATES
+
+        # Fallback para tolerância a erros de digitação nos primeiros caracteres de termos curtos
+        if len(candidates) < 25:
+            extra_candidates = (
+                query.order_by(models.Professional.id.asc())
+                .limit(MAX_SEARCH_CANDIDATES)
+                .all()
+            )
+            seen_ids = {c.id for c in candidates}
+            for extra in extra_candidates:
+                if extra.id not in seen_ids:
+                    candidates.append(extra)
+                    seen_ids.add(extra.id)
+                    if len(candidates) >= MAX_SEARCH_CANDIDATES:
+                        break
+
+        # Fase 2: Refinamento e Ranking Fino em Memória (search.py)
+        ranked, detected_suggestion = search.filter_professionals_intelligent(
+            candidates,
+            q=q or "",
+            specialty=specialty or "",
+            city=city or "",
+        )
+
+        total = (
+            len(ranked) + max(0, filtered_query.count() - MAX_SEARCH_CANDIDATES)
+            if hit_candidate_cap
+            else len(ranked)
+        )
+        page = (skip // limit) + 1 if limit > 0 else 1
+        pages = (total + limit - 1) // limit if total > 0 else 0
+        if skip < len(ranked):
+            paged_items = list(ranked[skip : skip + limit])
+            missing = limit - len(paged_items)
+            if missing > 0 and hit_candidate_cap:
+                paged_items.extend(
+                    filtered_query.order_by(models.Professional.id.asc())
+                    .offset(MAX_SEARCH_CANDIDATES)
+                    .limit(missing)
+                    .all()
+                )
+        elif hit_candidate_cap:
+            tail_offset = MAX_SEARCH_CANDIDATES + (skip - len(ranked))
+            paged_items = (
+                filtered_query.order_by(models.Professional.id.asc())
+                .offset(tail_offset)
+                .limit(limit)
+                .all()
+            )
+        else:
+            paged_items = []
+        has_more = len(paged_items) > 0 and (skip + len(paged_items)) < total
+    else:
+        total = query.count()
+        page = (skip // limit) + 1 if limit > 0 else 1
+        pages = (total + limit - 1) // limit if total > 0 else 0
+        paged_items = (
+            query.order_by(models.Professional.id.asc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+        has_more = (skip + len(paged_items)) < total
+        detected_suggestion = None
+        response.headers["Cache-Control"] = "public, max-age=30, stale-while-revalidate=60"
+
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["X-Page"] = str(page)
+    response.headers["X-Per-Page"] = str(limit)
+    response.headers["X-Has-More"] = "true" if has_more else "false"
+    if detected_suggestion:
+        response.headers["X-Search-Suggestion"] = normalize_text(detected_suggestion).title()
+
+    serialized_items = [ProfessionalPublicRead.model_validate(p) for p in paged_items]
+
+    return PaginatedResponse[ProfessionalPublicRead](
+        items=serialized_items,
+        total=total,
+        page=page,
+        size=limit,
+        pages=pages,
+        has_more=has_more,
+        detected_suggestion=detected_suggestion,
+    )
+
+
+@router.get(
+    "",
+    response_model=List[ProfessionalPublicRead],
+    summary="Listar profissionais",
+)
+@profissionais_router.get(
+    "",
+    response_model=List[ProfessionalPublicRead],
+    include_in_schema=False,
+)
 def list_professionals(
+    request: Request,
+    response: Response,
     q: Optional[str] = Query(
         None,
         max_length=120,
@@ -142,85 +570,164 @@ def list_professionals(
     city: Optional[str] = Query(
         None, max_length=100, description="Filtra por cidade base"
     ),
+    state: Optional[str] = Query(
+        None, min_length=2, max_length=2, description="Sigla da UF (ex: SP, RJ)"
+    ),
     approval_status: Optional[str] = Query(
         models.ProfessionalApprovalStatus.APPROVED.value,
         description="Filtra por status de aprovação cadastral (padrão: approved; use 'all' para desativar filtro)",
     ),
     skip: int = Query(0, ge=0, description="Número de registros a pular"),
-    limit: int = Query(50, ge=1, le=100, description="Limite máximo de registros"),
+    limit: int = Query(20, ge=1, le=50, description="Limite máximo de registros"),
+    envelope: bool = Query(
+        False,
+        deprecated=True,
+        description="Depreciado (use GET /api/professionals/search): se true, retorna objeto PaginatedResponse com metadados",
+    ),
     db: Session = Depends(get_db),
 ):
     """
-    Lista profissionais cadastrados ativos, com suporte a busca textual (q), filtros por
-    especialidade, cidade, status de aprovação (padrão: aprovados) e paginação executados no banco de dados.
+    Lista profissionais cadastrados ativos com suporte a busca inteligente (Tiered Two-Stage Search),
+    filtros por especialidade, cidade, UF, paginação, mascaramento seguro LGPD e cabeçalhos de metadados.
     """
-    query = db.query(models.Professional).filter(models.Professional.is_active.is_(True))
-
-    if approval_status and approval_status.strip().lower() != "all":
-        query = query.filter(models.Professional.approval_status == approval_status.strip().lower())
-
-    has_query = bool(q and q.strip())
-
-    # A cidade é sempre filtrada no banco (normalized_city já é sem acento). Isso
-    # evita esgotar o teto de candidatos globais antes do filtro de cidade rodar.
-    if city and city.strip():
-        norm_city = normalize_text(city)
-        escaped_norm_city = _escape_like(norm_city)
-        escaped_city = _escape_like(city.strip())
-        query = query.filter(
-            or_(
-                models.Professional.normalized_city.ilike(f"%{escaped_norm_city}%", escape="\\"),
-                models.Professional.city.ilike(f"%{escaped_city}%", escape="\\"),
-            )
+    paginated = _execute_professionals_search(
+        request=request,
+        response=response,
+        q=q,
+        specialty=specialty,
+        city=city,
+        state=state,
+        approval_status=approval_status,
+        skip=skip,
+        limit=limit,
+        db=db,
+    )
+    if envelope:
+        return JSONResponse(
+            content=paginated.model_dump(mode="json"),
+            headers=dict(response.headers),
         )
+    return paginated.items
 
-    # "Todas" é o chip neutro do frontend e equivale a não filtrar por especialidade.
-    if specialty and specialty.strip() and specialty.strip().lower() != "todas":
-        norm_spec = normalize_text(specialty)
-        escaped_norm_spec = _escape_like(norm_spec)
-        escaped_spec = _escape_like(specialty.strip())
-        query = query.filter(
-            or_(
-                models.Professional.normalized_specialties.ilike(f"%{escaped_norm_spec}%", escape="\\"),
-                cast(models.Professional.specialties, String).ilike(f"%{escaped_spec}%", escape="\\"),
-            )
-        )
 
-    if has_query:
-        # Termo composto apenas por símbolos (ex: "%", "_") não é uma busca válida.
-        if not search.clean_text(q):
-            return []
-
-        candidates = (
-            query.order_by(models.Professional.id.asc())
-            .limit(MAX_SEARCH_CANDIDATES)
-            .all()
-        )
-        ranked, _ = search.filter_professionals_intelligent(
-            candidates,
-            q=q or "",
-            specialty=specialty or "",
-            city=city or "",
-        )
-        return ranked[skip : skip + limit]
-
-    return (
-        query.order_by(models.Professional.id.asc())
-        .offset(skip)
-        .limit(limit)
-        .all()
+@router.get(
+    "/search",
+    response_model=PaginatedResponse[ProfessionalPublicRead],
+    summary="Busca envelopada de profissionais",
+)
+@profissionais_router.get(
+    "/search",
+    response_model=PaginatedResponse[ProfessionalPublicRead],
+    include_in_schema=False,
+)
+def search_professionals_enveloped(
+    request: Request,
+    response: Response,
+    q: Optional[str] = Query(None, max_length=120),
+    specialty: Optional[str] = Query(None, max_length=100),
+    city: Optional[str] = Query(None, max_length=100),
+    state: Optional[str] = Query(None, min_length=2, max_length=2),
+    approval_status: Optional[str] = Query(models.ProfessionalApprovalStatus.APPROVED.value),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    return _execute_professionals_search(
+        request=request,
+        response=response,
+        q=q,
+        specialty=specialty,
+        city=city,
+        state=state,
+        approval_status=approval_status,
+        skip=skip,
+        limit=limit,
+        db=db,
     )
 
 
-@router.get("/{professional_id}", response_model=ProfessionalRead, summary="Obter profissional por ID")
-@profissionais_router.get("/{professional_id}", response_model=ProfessionalRead, include_in_schema=False)
+@router.post(
+    "/{professional_id}/contact",
+    response_model=ProfessionalContactResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Solicitar orçamento / contato com o profissional",
+)
+@profissionais_router.post(
+    "/{professional_id}/contact",
+    response_model=ProfessionalContactResponse,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
+)
+def request_professional_contact(
+    professional_id: int,
+    payload: ProfessionalContactRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_optional_current_user),
+):
+    """
+    Envia uma solicitação de contato e orçamento ao profissional aprovado e ativo.
+    Dispara notificação segura por e-mail sem expor os dados de contato do profissional ao cliente.
+    """
+    client_id = current_user.email if current_user else None
+    check_contact_rate_limit(request, client_identifier=client_id)
+
+    professional = (
+        db.query(models.Professional)
+        .filter(
+            models.Professional.id == professional_id,
+            models.Professional.is_active.is_(True),
+            models.Professional.approval_status == models.ProfessionalApprovalStatus.APPROVED.value,
+        )
+        .first()
+    )
+    if not professional:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profissional não encontrado ou não está disponível para contato.",
+        )
+
+    client_name = current_user.name if (current_user and current_user.name) else payload.client_name
+    client_email = current_user.email if (current_user and current_user.email) else payload.client_email
+
+    enviado = notificacoes.notificar_profissional_solicitacao_orcamento(
+        profissional=professional,
+        cliente_nome=client_name,
+        cliente_email=client_email,
+        cliente_telefone=payload.client_phone,
+        categoria=payload.service_category,
+        mensagem=payload.message,
+        cliente_cidade=payload.client_city,
+    )
+    if not enviado:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Não foi possível enviar a solicitação de orçamento no momento. Tente novamente em instantes.",
+        )
+
+    return ProfessionalContactResponse(
+        success=True,
+        message="Sua solicitação de orçamento foi enviada com sucesso para o profissional. Ele entrará em contato em breve.",
+        professional_id=professional.id,
+        professional_name=professional.name,
+        contacted_at=datetime.now(timezone.utc),
+    )
+
+
+@router.get("/{professional_id}", response_model=ProfessionalPublicRead, summary="Obter profissional por ID")
+@profissionais_router.get("/{professional_id}", response_model=ProfessionalPublicRead, include_in_schema=False)
 def get_professional_by_id(
     professional_id: int,
+    response: Response,
     db: Session = Depends(get_db),
 ):
     """
-    Busca os detalhes completos do perfil de um profissional pelo ID.
+    Busca os detalhes públicos do perfil de um profissional pelo ID com mascaramento LGPD.
     """
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
     professional = (
         db.query(models.Professional)
         .filter(models.Professional.id == professional_id)
