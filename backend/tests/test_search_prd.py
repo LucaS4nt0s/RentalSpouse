@@ -492,6 +492,22 @@ class TestRetrocompatibilityAndEdgeCasesScenario6:
         assert len(body_last["items"]) == 40
         assert body_last["has_more"] is False
 
+        # Garante que mesmo quando o teto de memória (MAX_FALLBACK_CANDIDATES) é atingido,
+        # o total é calculado via SQL count() sem OOM e páginas posteriores seguem acessíveis.
+        import routes.professionals as prof_routes
+
+        orig_cap = prof_routes.MAX_FALLBACK_CANDIDATES
+        try:
+            prof_routes.MAX_FALLBACK_CANDIDATES = 50
+            resp_capped = client.get("/api/professionals/search?q=quadros&skip=260&limit=50")
+            assert resp_capped.status_code == 200
+            body_capped = resp_capped.json()
+            assert body_capped["total"] == 300
+            assert len(body_capped["items"]) == 40
+            assert body_capped["has_more"] is False
+        finally:
+            prof_routes.MAX_FALLBACK_CANDIDATES = orig_cap
+
     def test_rate_limiter_ignores_forged_xff_and_evicts_keys(
         self, client: TestClient, monkeypatch
     ):

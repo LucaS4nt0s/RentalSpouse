@@ -6,7 +6,6 @@ raspagem não autorizada (scraping) e abuso de chamadas concorrentes.
 
 Suporta:
 - Eviction automático de chaves expiradas e teto máximo de memória (LRU) em modo in-memory.
-- Backend distribuído opcional via Redis (quando REDIS_URL está configurado) para múltiplos workers.
 - Validação de proxies confiáveis (TRUSTED_PROXIES) antes de aceitar cabeçalhos X-Forwarded-For.
 """
 

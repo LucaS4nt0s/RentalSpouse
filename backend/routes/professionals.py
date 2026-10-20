@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import os
 import re
 import threading
 import time
@@ -46,7 +47,7 @@ from security import get_optional_current_user, hash_senha
 router = APIRouter(prefix="/api/professionals", tags=["Profissionais"])
 profissionais_router = APIRouter(prefix="/api/profissionais", tags=["Profissionais"])
 
-MAX_FALLBACK_CANDIDATES = 2000
+MAX_FALLBACK_CANDIDATES = max(1, int(os.getenv("SEARCH_MAX_CANDIDATES", "2000")))
 
 
 @router.post(
@@ -443,11 +444,14 @@ def _execute_professionals_search(
             conditions.append(models.Professional.normalized_search.like(f"%{esc}%", escape="\\"))
             conditions.append(models.Professional.normalized_specialties.like(f"%{esc}%", escape="\\"))
 
+        filtered_query = query.filter(or_(*conditions))
+        # ponytail: teto SEARCH_MAX_CANDIDATES=2000 evita OOM em buscas amplas; migrar ranking para SQL/FTS se base > 50k
         candidates = (
-            query.filter(or_(*conditions))
-            .order_by(models.Professional.id.asc())
+            filtered_query.order_by(models.Professional.id.asc())
+            .limit(MAX_FALLBACK_CANDIDATES)
             .all()
         )
+        hit_candidate_cap = len(candidates) >= MAX_FALLBACK_CANDIDATES
 
         # Fallback para tolerância a erros de digitação nos primeiros caracteres de termos curtos
         if len(candidates) < 25:
@@ -472,10 +476,18 @@ def _execute_professionals_search(
             city=city or "",
         )
 
-        total = len(ranked)
+        total = max(len(ranked), filtered_query.count()) if hit_candidate_cap else len(ranked)
         page = (skip // limit) + 1 if limit > 0 else 1
         pages = (total + limit - 1) // limit if total > 0 else 0
-        paged_items = ranked[skip : skip + limit]
+        if skip < len(ranked):
+            paged_items = ranked[skip : skip + limit]
+        else:
+            paged_items = (
+                filtered_query.order_by(models.Professional.id.asc())
+                .offset(skip)
+                .limit(limit)
+                .all()
+            )
         has_more = (skip + len(paged_items)) < total
     else:
         total = query.count()
@@ -546,7 +558,8 @@ def list_professionals(
     limit: int = Query(20, ge=1, le=50, description="Limite máximo de registros"),
     envelope: bool = Query(
         False,
-        description="Se true, retorna resposta envelopada com metadados (prefira GET /api/professionals/search)",
+        deprecated=True,
+        description="Depreciado (use GET /api/professionals/search): se true, retorna objeto PaginatedResponse com metadados",
     ),
     db: Session = Depends(get_db),
 ):
