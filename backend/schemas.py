@@ -1,9 +1,9 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import enum
 import re
 from typing import Any, Generic, List, Optional, TypeVar, Union
 
-from pydantic import BaseModel, EmailStr, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator, model_validator
 
 # Conjunto de Unidades Federativas válidas do Brasil
 UFS_VALIDAS = {
@@ -838,4 +838,192 @@ class ProfessionalModerationDecisionRead(BaseModel):
 
     model_config = {"from_attributes": True}
 
+
+# =============================================================================
+# Schemas para Orçamentos e Notificações (Issues #22 / #34 / #29)
+# =============================================================================
+
+
+class OrcamentoFotoRead(BaseModel):
+    """Schema de leitura para uma foto anexada ao orçamento."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    orcamento_id: int
+    nome_original: str
+    tamanho_bytes: int
+    mime_type: str
+    enviado_em: datetime
+    url_download: Optional[str] = None
+
+
+class OrcamentoCreate(BaseModel):
+    """Schema para validação de dados textuais da solicitação de orçamento."""
+
+    professional_id: int = Field(..., gt=0, description="ID do profissional destinatário")
+    descricao: str = Field(
+        ...,
+        min_length=10,
+        max_length=2000,
+        description="Descrição detalhada do problema ou serviço necessário",
+    )
+    cliente_nome: Optional[str] = Field(
+        None,
+        min_length=2,
+        max_length=100,
+        description="Nome do cliente solicitante (se não autenticado)",
+    )
+    cliente_email: Optional[EmailStr] = Field(
+        None,
+        description="E-mail de contato para retorno do orçamento",
+    )
+    cliente_telefone: Optional[str] = Field(
+        None,
+        max_length=20,
+        description="Telefone/WhatsApp para alinhamento da visita",
+    )
+
+
+class OrcamentoRead(BaseModel):
+    """Schema de retorno detalhado de um orçamento com fotos e status."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    cliente_id: Optional[int] = None
+    cliente_nome: str
+    cliente_email: str
+    cliente_telefone: Optional[str] = None
+    professional_id: int
+    descricao: str
+    status: str
+    valor_estimado: Optional[float] = None
+    resposta_profissional: Optional[str] = None
+    respondido_em: Optional[datetime] = None
+    motivo_recusa: Optional[str] = None
+    justificativa_recusa: Optional[str] = None
+    data_prevista: Optional[datetime] = None
+    decidido_em: Optional[datetime] = None
+    criado_em: datetime
+    atualizado_em: datetime
+    fotos: List[OrcamentoFotoRead] = []
+
+
+class OrcamentoResponder(BaseModel):
+    """Payload para o profissional responder com valor estimado e parecer técnico."""
+
+    valor_estimado: float = Field(
+        ...,
+        gt=0,
+        description="Valor estimado em reais para o serviço antes da visita",
+    )
+    resposta_profissional: str = Field(
+        ...,
+        min_length=5,
+        max_length=2000,
+        description="Observações técnicas, escopo considerado e condições da estimativa",
+    )
+
+    @field_validator("resposta_profissional")
+    @classmethod
+    def _normalizar_resposta(cls, v: str) -> str:
+        v = (v or "").strip()
+        if len(v) < 5:
+            raise ValueError("O parecer técnico deve conter pelo menos 5 caracteres válidos.")
+        return v
+
+
+class OrcamentoAceitar(BaseModel):
+    """Payload para o profissional aceitar a solicitação de orçamento (Issue #29)."""
+
+    valor_estimado: Optional[float] = Field(
+        None,
+        gt=0,
+        description="Valor estimado inicial em reais (opcional no aceite direto)",
+    )
+    mensagem: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="Mensagem, parecer ou condições do aceite informados ao cliente",
+    )
+    data_prevista: Optional[datetime] = Field(
+        None,
+        description="Data e horário sugeridos para visita técnica ou realização do serviço",
+    )
+
+    @field_validator("mensagem")
+    @classmethod
+    def _normalizar_mensagem(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            cleaned = v.strip()
+            return cleaned if cleaned else None
+        return None
+
+    @field_validator("data_prevista")
+    @classmethod
+    def _validar_data_prevista(cls, v: Optional[datetime]) -> Optional[datetime]:
+        if v is not None:
+            now = datetime.now(timezone.utc)
+            v_cmp = v if v.tzinfo is not None else v.replace(tzinfo=timezone.utc)
+            if v_cmp < now:
+                raise ValueError("A data prevista não pode ser uma data no passado.")
+        return v
+
+
+class OrcamentoRecusar(BaseModel):
+    """Payload para o profissional recusar a solicitação de orçamento (Issue #29)."""
+
+    motivo: str = Field(
+        ...,
+        min_length=3,
+        max_length=150,
+        description="Motivo resumido da recusa (ex: 'Agenda cheia', 'Fora do raio')",
+    )
+    justificativa_detalhada: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="Explicação complementar detalhada para o cliente",
+    )
+
+    @field_validator("motivo")
+    @classmethod
+    def _normalizar_motivo(cls, v: str) -> str:
+        v = (v or "").strip()
+        if len(v) < 3:
+            raise ValueError("Informe um motivo com pelo menos 3 caracteres visíveis.")
+        return v
+
+    @field_validator("justificativa_detalhada")
+    @classmethod
+    def _normalizar_justificativa(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            cleaned = v.strip()
+            return cleaned if cleaned else None
+        return None
+
+
+class OrcamentoResumoCapacidade(BaseModel):
+    """Resumo de capacidade de trabalho e métricas de solicitações para o profissional."""
+
+    total: int = 0
+    pendentes: int = 0
+    aceitos: int = 0
+    recusados: int = 0
+    respondidos: int = 0
+
+
+class NotificacaoRead(BaseModel):
+    """Schema de notificação em tempo real ou persistida no banco."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_email: str
+    titulo: str
+    mensagem: str
+    tipo: str
+    referencia_id: Optional[int] = None
+    lida: bool
+    criada_em: datetime
 
