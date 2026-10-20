@@ -492,13 +492,13 @@ class TestRetrocompatibilityAndEdgeCasesScenario6:
         assert len(body_last["items"]) == 40
         assert body_last["has_more"] is False
 
-        # Garante que mesmo quando o teto de memória (MAX_FALLBACK_CANDIDATES) é atingido,
+        # Garante que mesmo quando o teto de memória (MAX_SEARCH_CANDIDATES) é atingido,
         # o total é calculado via SQL count() sem OOM e páginas posteriores seguem acessíveis.
         import routes.professionals as prof_routes
 
-        orig_cap = prof_routes.MAX_FALLBACK_CANDIDATES
+        orig_cap = prof_routes.MAX_SEARCH_CANDIDATES
         try:
-            prof_routes.MAX_FALLBACK_CANDIDATES = 50
+            prof_routes.MAX_SEARCH_CANDIDATES = 50
             resp_capped = client.get("/api/professionals/search?q=quadros&skip=260&limit=50")
             assert resp_capped.status_code == 200
             body_capped = resp_capped.json()
@@ -506,7 +506,106 @@ class TestRetrocompatibilityAndEdgeCasesScenario6:
             assert len(body_capped["items"]) == 40
             assert body_capped["has_more"] is False
         finally:
-            prof_routes.MAX_FALLBACK_CANDIDATES = orig_cap
+            prof_routes.MAX_SEARCH_CANDIDATES = orig_cap
+
+    def test_capped_pagination_does_not_leak_rejected_or_duplicate_ids(
+        self, client: TestClient, db_session, monkeypatch
+    ):
+        """
+        Reproduz os cenários do re-review com cap=10:
+        1. 10 profissionais com 'quadriculado' (descartados pelo ranking para q=quadros) + 30 com 'quadros':
+           skip=0&limit=20 não pode devolver os 'quadriculado' rejeitados na janela.
+        2. 5 'quadriculado' + 5 'quadros' com cap=10:
+           skip=0&limit=5 e skip=5&limit=5 não podem repetir os mesmos IDs.
+        """
+        import routes.professionals as prof_routes
+
+        monkeypatch.setattr(prof_routes, "MAX_SEARCH_CANDIDATES", 10)
+
+        # Cenário 1: 10 "quadriculado" + 30 "quadros"
+        for i in range(10):
+            db_session.add(
+                models.Professional(
+                    name=f"Prof Quadriculado {i}",
+                    email=f"quadriculado.{i}@exemplo.com",
+                    phone="(11) 98765-4321",
+                    bio="Especialista em piso quadriculado residencial.",
+                    service_radius_km=20.0,
+                    specialties=["Pintura"],
+                    city="São Paulo",
+                    state="SP",
+                    is_active=True,
+                    approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+                )
+            )
+        for i in range(30):
+            db_session.add(
+                models.Professional(
+                    name=f"Prof Quadros {i}",
+                    email=f"quadros.{i}@exemplo.com",
+                    phone="(11) 98765-4321",
+                    bio="Especialista em quadros de luz e instalações.",
+                    service_radius_km=20.0,
+                    specialties=["Elétrica"],
+                    city="São Paulo",
+                    state="SP",
+                    is_active=True,
+                    approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+                )
+            )
+        db_session.commit()
+
+        r1 = client.get("/api/professionals/search?q=quadros&skip=0&limit=20").json()
+        assert all("Quadriculado" not in item["name"] for item in r1["items"])
+
+        # Cenário 2: 5 "quadriculado" + 5 "quadros" (cap=10) -> sem IDs duplicados entre skip=0 e skip=5
+        db_session.query(models.Professional).delete()
+        db_session.commit()
+
+        for i in range(5):
+            db_session.add(
+                models.Professional(
+                    name=f"Prof Quadriculado {i}",
+                    email=f"quadriculado2.{i}@exemplo.com",
+                    phone="(11) 98765-4321",
+                    bio="Especialista em piso quadriculado residencial.",
+                    service_radius_km=20.0,
+                    specialties=["Pintura"],
+                    city="São Paulo",
+                    state="SP",
+                    is_active=True,
+                    approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+                )
+            )
+        for i in range(5):
+            db_session.add(
+                models.Professional(
+                    name=f"Prof Quadros {i}",
+                    email=f"quadros2.{i}@exemplo.com",
+                    phone="(11) 98765-4321",
+                    bio="Especialista em quadros de luz e instalações.",
+                    service_radius_km=20.0,
+                    specialties=["Elétrica"],
+                    city="São Paulo",
+                    state="SP",
+                    is_active=True,
+                    approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+                )
+            )
+        db_session.commit()
+
+        page1 = client.get("/api/professionals/search?q=quadros&skip=0&limit=5").json()
+        page2 = client.get("/api/professionals/search?q=quadros&skip=5&limit=5").json()
+        ids1 = {item["id"] for item in page1["items"]}
+        ids2 = {item["id"] for item in page2["items"]}
+        assert len(ids1) == 5
+        assert ids1.isdisjoint(ids2)
+
+        # Verifica parser resiliente de SEARCH_MAX_CANDIDATES
+        monkeypatch.setenv("SEARCH_MAX_CANDIDATES", "invalido")
+        assert prof_routes._parse_max_search_candidates() == 2000
+        monkeypatch.setenv("SEARCH_MAX_CANDIDATES", "-50")
+        assert prof_routes._parse_max_search_candidates() == 1
 
     def test_rate_limiter_ignores_forged_xff_and_evicts_keys(
         self, client: TestClient, monkeypatch

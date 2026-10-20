@@ -3,7 +3,7 @@ import os
 import re
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from fastapi import (
     APIRouter,
@@ -47,7 +47,15 @@ from security import get_optional_current_user, hash_senha
 router = APIRouter(prefix="/api/professionals", tags=["Profissionais"])
 profissionais_router = APIRouter(prefix="/api/profissionais", tags=["Profissionais"])
 
-MAX_FALLBACK_CANDIDATES = max(1, int(os.getenv("SEARCH_MAX_CANDIDATES", "2000")))
+def _parse_max_search_candidates() -> int:
+    try:
+        return max(1, min(50000, int(os.getenv("SEARCH_MAX_CANDIDATES", "2000"))))
+    except (TypeError, ValueError):
+        return 2000
+
+
+MAX_SEARCH_CANDIDATES = _parse_max_search_candidates()
+MAX_FALLBACK_CANDIDATES = MAX_SEARCH_CANDIDATES
 
 
 @router.post(
@@ -448,16 +456,16 @@ def _execute_professionals_search(
         # ponytail: teto SEARCH_MAX_CANDIDATES=2000 evita OOM em buscas amplas; migrar ranking para SQL/FTS se base > 50k
         candidates = (
             filtered_query.order_by(models.Professional.id.asc())
-            .limit(MAX_FALLBACK_CANDIDATES)
+            .limit(MAX_SEARCH_CANDIDATES)
             .all()
         )
-        hit_candidate_cap = len(candidates) >= MAX_FALLBACK_CANDIDATES
+        hit_candidate_cap = len(candidates) >= MAX_SEARCH_CANDIDATES
 
         # Fallback para tolerância a erros de digitação nos primeiros caracteres de termos curtos
         if len(candidates) < 25:
             extra_candidates = (
                 query.order_by(models.Professional.id.asc())
-                .limit(MAX_FALLBACK_CANDIDATES)
+                .limit(MAX_SEARCH_CANDIDATES)
                 .all()
             )
             seen_ids = {c.id for c in candidates}
@@ -465,7 +473,7 @@ def _execute_professionals_search(
                 if extra.id not in seen_ids:
                     candidates.append(extra)
                     seen_ids.add(extra.id)
-                    if len(candidates) >= MAX_FALLBACK_CANDIDATES:
+                    if len(candidates) >= MAX_SEARCH_CANDIDATES:
                         break
 
         # Fase 2: Refinamento e Ranking Fino em Memória (search.py)
@@ -476,15 +484,15 @@ def _execute_professionals_search(
             city=city or "",
         )
 
-        total = max(len(ranked), filtered_query.count()) if hit_candidate_cap else len(ranked)
+        total = filtered_query.count() if hit_candidate_cap else len(ranked)
         page = (skip // limit) + 1 if limit > 0 else 1
         pages = (total + limit - 1) // limit if total > 0 else 0
-        if skip < len(ranked):
+        if skip < MAX_SEARCH_CANDIDATES:
             paged_items = ranked[skip : skip + limit]
         else:
             paged_items = (
                 filtered_query.order_by(models.Professional.id.asc())
-                .offset(skip)
+                .offset(max(skip, MAX_SEARCH_CANDIDATES))
                 .limit(limit)
                 .all()
             )
@@ -525,12 +533,12 @@ def _execute_professionals_search(
 
 @router.get(
     "",
-    response_model=List[ProfessionalPublicRead],
+    response_model=Union[List[ProfessionalPublicRead], PaginatedResponse[ProfessionalPublicRead]],
     summary="Listar profissionais",
 )
 @profissionais_router.get(
     "",
-    response_model=List[ProfessionalPublicRead],
+    response_model=Union[List[ProfessionalPublicRead], PaginatedResponse[ProfessionalPublicRead]],
     include_in_schema=False,
 )
 def list_professionals(
