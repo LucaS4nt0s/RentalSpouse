@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, event
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, event
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -281,3 +281,76 @@ class Notificacao(Base):
     referencia_id = Column(Integer, nullable=True)
     lida = Column(Boolean, default=False, nullable=False, index=True)
     criada_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class DenunciaMotivo(str, enum.Enum):
+    """Motivos padronizados aceitos em uma denúncia de profissional (issue #68)."""
+
+    SERVICO_NAO_REALIZADO = "servico_nao_realizado"   # Não realizou (ou abandonou) o serviço contratado
+    COBRANCA_INDEVIDA = "cobranca_indevida"           # Cobrou valor diferente do combinado
+    CONDUTA_INADEQUADA = "conduta_inadequada"         # Conduta desrespeitosa/ofensiva
+    INFORMACOES_FALSAS = "informacoes_falsas"         # Perfil, especialidades ou documentos falsos
+    OUTRO = "outro"                                   # Outro motivo (relato livre na descrição)
+
+
+class DenunciaStatus(str, enum.Enum):
+    """Situação da denúncia na trilha de moderação (painel do administrador: issue #23)."""
+
+    PENDENTE = "pendente"
+    EM_ANALISE = "em_analise"
+    RESOLVIDA = "resolvida"
+    ARQUIVADA = "arquivada"
+
+
+# Status que mantêm a denúncia "em aberto". Enquanto existir uma denúncia do
+# mesmo cliente contra o mesmo profissional nesses estados, uma nova denúncia
+# idêntica é recusada (anti-spam); após resolvida/arquivada, o cliente pode
+# denunciar novamente.
+DENUNCIA_STATUS_EM_ABERTO = (
+    DenunciaStatus.PENDENTE.value,
+    DenunciaStatus.EM_ANALISE.value,
+)
+
+
+class Denuncia(Base):
+    """
+    Denúncia registrada por um cliente contra um profissional (issue #68).
+
+    O autor (`cliente_id`) é sempre derivado do token de acesso do cliente; o
+    alvo (`professional_id`) vem do payload. A moderação pelo administrador
+    (issue #23) apenas muda `status` — nenhuma transição é exposta ao cliente.
+    """
+
+    __tablename__ = "denuncias"
+    __table_args__ = (
+        Index("ix_denuncias_cliente_profissional", "cliente_id", "professional_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    cliente_id = Column(
+        Integer,
+        ForeignKey("clientes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    professional_id = Column(
+        Integer,
+        ForeignKey("professionals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    motivo = Column(String(50), nullable=False, index=True)
+    descricao = Column(Text, nullable=False)
+    status = Column(
+        String(30),
+        default=DenunciaStatus.PENDENTE.value,
+        nullable=False,
+        index=True,
+    )
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ShieldCheck, MapPin, MessageSquare, ArrowRight, User } from 'lucide-react';
+import { ShieldCheck, MapPin, MessageSquare, ArrowRight, User, Flag } from 'lucide-react';
 import { Professional } from '../../types/professional';
 
 export interface ProfessionalCardProps {
@@ -9,6 +9,8 @@ export interface ProfessionalCardProps {
   activeSpecialty?: string;
   onSpecialtyClick?: (specialty: string) => void;
   onRequestQuote?: (professional: Professional) => void;
+  /** Abre o fluxo de denúncia do profissional (issue #68). */
+  onReportProfessional?: (professional: Professional) => void;
 }
 
 export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
@@ -16,6 +18,7 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
   activeSpecialty,
   onSpecialtyClick,
   onRequestQuote,
+  onReportProfessional,
 }) => {
   // Iniciais do nome para o avatar caso não haja foto
   const getInitials = (name: string) => {
@@ -128,6 +131,19 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
           <MessageSquare className="h-4 w-4" />
           <span>Solicitar Orçamento</span>
         </button>
+
+        {onReportProfessional && (
+          <button
+            type="button"
+            onClick={() => onReportProfessional(professional)}
+            title="Denunciar este profissional"
+            aria-label={`Denunciar ${professional.name}`}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rental-border px-3 py-2.5 text-xs font-semibold text-rental-muted transition-all hover:border-[var(--rs-error)]/50 hover:text-[var(--rs-error)] active:scale-[0.98]"
+          >
+            <Flag className="h-4 w-4" />
+            <span className="hidden sm:inline">Denunciar</span>
+          </button>
+        )}
       </div>
     </article>
   );

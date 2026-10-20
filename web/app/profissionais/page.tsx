@@ -23,6 +23,7 @@ import { ProfessionalCardSkeleton } from '../../components/profissionais/Profess
 import { SearchEmptyState } from '../../components/profissionais/SearchEmptyState';
 import { SearchErrorState } from '../../components/profissionais/SearchErrorState';
 import { QuoteModal } from '../../components/profissionais/QuoteModal';
+import { DenunciaModal } from '../../components/denuncias/DenunciaModal';
 import { NotificationBell } from '../../components/notificacoes/NotificationBell';
 import { Professional } from '../../types/professional';
 
@@ -47,6 +48,9 @@ function ProfissionaisSearchContent() {
 
   // Modal de Solicitação de Orçamento
   const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
+
+  // Modal de Denúncia do Profissional (issue #68)
+  const [reportTarget, setReportTarget] = useState<Professional | null>(null);
 
   // Sincroniza estado de digitação do input com a URL e busca apenas quando houver alteração
   useEffect(() => {
@@ -96,6 +100,14 @@ function ProfissionaisSearchContent() {
 
   const handleCloseQuoteModal = useCallback(() => {
     setSelectedProfessional(null);
+  }, []);
+
+  const handleOpenReportModal = useCallback((prof: Professional) => {
+    setReportTarget(prof);
+  }, []);
+
+  const handleCloseReportModal = useCallback(() => {
+    setReportTarget(null);
   }, []);
 
   return (
@@ -246,6 +258,7 @@ function ProfissionaisSearchContent() {
                     activeSpecialty={specialty}
                     onSpecialtyClick={setSpecialty}
                     onRequestQuote={handleOpenQuoteModal}
+                    onReportProfessional={handleOpenReportModal}
                   />
                 ))}
               </div>
@@ -270,6 +283,12 @@ function ProfissionaisSearchContent() {
       <QuoteModal
         professional={selectedProfessional}
         onClose={handleCloseQuoteModal}
+      />
+
+      {/* Modal de Denúncia do Profissional (issue #68) */}
+      <DenunciaModal
+        professional={reportTarget}
+        onClose={handleCloseReportModal}
       />
 
       {/* Footer */}
