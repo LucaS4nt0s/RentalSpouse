@@ -226,6 +226,35 @@ def get_optional_current_user(
         return None
 
     user = db.query(models.User).filter(models.User.email == email).first()
+    if user is None:
+        cliente = db.query(models.Cliente).filter(models.Cliente.email == email).first()
+        if cliente is not None and cliente.email_verificado:
+            user = models.User(
+                name=cliente.nome,
+                email=cliente.email,
+                hashed_password=cliente.senha_hash,
+                role=models.UserRole.CLIENT.value,
+                is_active=True,
+                email_verificado=cliente.email_verificado,
+                created_at=cliente.criado_em,
+            )
+        else:
+            profissional = (
+                db.query(models.Professional)
+                .filter(models.Professional.email == email)
+                .first()
+            )
+            if profissional is not None and profissional.is_active:
+                user = models.User(
+                    name=profissional.name,
+                    email=profissional.email,
+                    hashed_password=profissional.senha_hash or "",
+                    role=models.UserRole.PROFESSIONAL.value,
+                    is_active=profissional.is_active,
+                    email_verificado=True,
+                    created_at=profissional.created_at,
+                )
+
     if user is None or not user.is_active:
         return None
 

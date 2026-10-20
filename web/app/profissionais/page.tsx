@@ -8,6 +8,7 @@ import {
   LogOut,
   MessageSquare,
   Sparkles,
+  Briefcase,
 } from 'lucide-react';
 import { ThemeToggle } from '../../components/ui/ThemeToggle';
 import { useAuth } from '../../context/AuthContext';
@@ -23,6 +24,7 @@ import { SearchEmptyState } from '../../components/profissionais/SearchEmptyStat
 import { SearchErrorState } from '../../components/profissionais/SearchErrorState';
 import { QuoteModal } from '../../components/profissionais/QuoteModal';
 import { DenunciaModal } from '../../components/denuncias/DenunciaModal';
+import { NotificationBell } from '../../components/notificacoes/NotificationBell';
 import { Professional } from '../../types/professional';
 
 function ProfissionaisSearchContent() {
@@ -128,6 +130,16 @@ function ProfissionaisSearchContent() {
               Início
             </Link>
 
+            {isAuthenticated && user && (user.tipo === 'profissional' || user.role === 'professional') && (
+              <Link
+                href="/profissional/orcamentos"
+                className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
+              >
+                <Briefcase className="h-3.5 w-3.5" />
+                <span>Meus Orçamentos</span>
+              </Link>
+            )}
+
             {isAuthenticated && user ? (
               <div className="flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-rental-primary/10 text-rental-primary text-xs font-bold">
@@ -136,6 +148,7 @@ function ProfissionaisSearchContent() {
                 <span className="hidden md:inline text-xs font-semibold text-rental-ink">
                   {user.nome.split(' ')[0]}
                 </span>
+                <NotificationBell />
                 <button
                   type="button"
                   onClick={logout}

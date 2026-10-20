@@ -183,3 +183,132 @@ def delete_professional_directory(professional_id: int) -> bool:
     except Exception:
         return False
 
+
+
+# =============================================================================
+# Armazenamento e Validação de Fotos de Orçamentos (Issues #22 / #34)
+# =============================================================================
+
+DEFAULT_ORCAMENTOS_DIR = os.getenv("ORCAMENTOS_UPLOAD_DIR", "uploads/orcamentos")
+ALLOWED_PHOTO_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".png", ".webp"}
+ALLOWED_PHOTO_MIME_TYPES: Set[str] = {"image/jpeg", "image/png", "image/webp"}
+MAX_ORCAMENTO_PHOTO_SIZE = 5 * 1024 * 1024  # 5 MB por foto
+MAX_PHOTOS_PER_ORCAMENTO = 5
+
+
+def get_orcamentos_storage_root() -> Path:
+    """Retorna o caminho absoluto do diretório raiz de fotos de orçamentos."""
+    upload_dir = os.getenv("ORCAMENTOS_UPLOAD_DIR", DEFAULT_ORCAMENTOS_DIR)
+    root = Path(upload_dir).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def validate_orcamento_photo(
+    filename: Optional[str],
+    mime_type: Optional[str],
+    file_or_content: int | bytes,
+) -> None:
+    """
+    Valida formato, tipo MIME, tamanho (max 5MB) e magic bytes de fotos de orçamentos.
+    Levanta ValueError caso viole alguma regra de segurança ou limite operacional.
+    """
+    if not filename or not filename.strip():
+        raise ValueError("O nome da foto não pode ser vazio.")
+
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_PHOTO_EXTENSIONS:
+        raise ValueError(
+            f"Extensão '{ext}' não permitida para fotos de orçamento. Use JPEG, PNG ou WebP."
+        )
+
+    if isinstance(file_or_content, (bytes, bytearray)):
+        file_size = len(file_or_content)
+        content: Optional[bytes] = bytes(file_or_content)
+    else:
+        file_size = int(file_or_content)
+        content = None
+
+    if file_size <= 0:
+        raise ValueError("O arquivo de foto enviado está vazio (0 bytes).")
+
+    if file_size > MAX_ORCAMENTO_PHOTO_SIZE:
+        max_mb = MAX_ORCAMENTO_PHOTO_SIZE // (1024 * 1024)
+        raise ValueError(f"A foto excede o limite máximo permitido de {max_mb} MB.")
+
+    if mime_type:
+        normalized_mime = mime_type.lower().split(";")[0].strip()
+        if normalized_mime not in ALLOWED_PHOTO_MIME_TYPES:
+            raise ValueError(
+                f"Tipo MIME '{mime_type}' inválido. Formatos aceitos: JPEG, PNG e WebP."
+            )
+
+    if content is not None:
+        signatures = MAGIC_SIGNATURES.get(ext, [])
+        if ext == ".webp":
+            is_valid_magic = content.startswith(b"RIFF") and len(content) >= 12 and content[8:12] == b"WEBP"
+        else:
+            is_valid_magic = any(content.startswith(sig) for sig in signatures)
+
+        if not is_valid_magic:
+            raise ValueError(
+                f"O conteúdo binário do arquivo não corresponde a uma imagem válida ({ext})."
+            )
+
+
+def resolve_orcamento_photo_path(relative_path: str) -> Path:
+    """
+    Resolve o caminho absoluto da foto do orçamento a partir do caminho relativo seguro,
+    impedindo tentativas de path traversal.
+    """
+    if not relative_path or not relative_path.strip():
+        raise ValueError("Caminho de foto inválido.")
+
+    root = get_orcamentos_storage_root()
+    normalized = Path(relative_path.replace("\\", "/"))
+    target = (root / normalized).resolve()
+
+    try:
+        target.relative_to(root)
+    except ValueError:
+        raise PermissionError("Acesso não autorizado: tentativa de path traversal detectada.")
+
+    return target
+
+
+def save_orcamento_photo(
+    orcamento_id: int,
+    original_filename: str,
+    content: bytes,
+) -> tuple[str, str]:
+    """
+    Salva os bytes da foto sob o diretório do orçamento correspondente.
+    Retorna uma tupla (caminho_relativo, nome_sanitizado).
+    """
+    root = get_orcamentos_storage_root()
+    clean_name = sanitize_filename(original_filename)
+    unique_filename = f"{uuid.uuid4().hex}_{clean_name}"
+
+    orcamento_dir = root / str(orcamento_id)
+    orcamento_dir.mkdir(parents=True, exist_ok=True)
+
+    dest_file = orcamento_dir / unique_filename
+    dest_file.write_bytes(content)
+
+    relative_path = f"{orcamento_id}/{unique_filename}"
+    return relative_path, clean_name
+
+
+def delete_orcamento_directory(orcamento_id: int) -> bool:
+    """Exclui todas as fotos e o diretório de um orçamento excluído."""
+    try:
+        root = get_orcamentos_storage_root()
+        orcamento_dir = (root / str(orcamento_id)).resolve()
+        if orcamento_dir.is_dir() and orcamento_dir != root:
+            orcamento_dir.relative_to(root)
+            import shutil
+            shutil.rmtree(orcamento_dir, ignore_errors=True)
+            return True
+        return False
+    except Exception:
+        return False

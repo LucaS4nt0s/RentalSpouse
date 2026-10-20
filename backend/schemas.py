@@ -1,9 +1,9 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import enum
 import re
-from typing import Any, List, Optional
+from typing import Any, Generic, List, Optional, TypeVar, Union
 
-from pydantic import BaseModel, EmailStr, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator, model_validator
 
 # Conjunto de Unidades Federativas válidas do Brasil
 UFS_VALIDAS = {
@@ -536,6 +536,159 @@ class ProfessionalRead(ProfessionalBase):
 
     model_config = {"from_attributes": True}
 
+
+T = TypeVar("T")
+
+
+class ProfessionalPublicRead(BaseModel):
+    """
+    Schema seguro para busca e diretório público de profissionais.
+    Garante conformidade com a LGPD através do mascaramento de e-mail e telefone
+    no lado do servidor, sem expor PII a scrapers e acessos não autorizados.
+    """
+
+    id: int
+    name: str
+    email: str = Field(..., description="E-mail parcialmente mascarado para proteção de dados")
+    phone: Optional[str] = Field(None, description="Telefone parcialmente mascarado para proteção de dados")
+    bio: str
+    service_radius_km: float
+    specialties: List[str]
+    city: Optional[str] = None
+    state: Optional[str] = None
+    is_active: bool
+    approval_status: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def mask_email_server_side(cls, v: Optional[str]) -> str:
+        """Aplica mascaramento de e-mail conforme LGPD: jo***o@dominio.com"""
+        if not v or "@" not in str(v):
+            return "E-mail protegido"
+        raw = str(v).strip().lower()
+        user_part, domain = raw.split("@", 1)
+        if len(user_part) <= 2:
+            masked_user = f"{user_part[0]}***"
+        else:
+            masked_user = f"{user_part[:2]}***{user_part[-1]}"
+        return f"{masked_user}@{domain}"
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def mask_phone_server_side(cls, v: Optional[str]) -> Optional[str]:
+        """Aplica mascaramento de telefone conforme LGPD: (11) 9****-**45"""
+        if not v:
+            return None
+        digits = "".join(filter(str.isdigit, str(v)))
+        if len(digits) < 8:
+            return "Telefone protegido"
+        if len(digits) == 11:  # Celular com DDD (XX) 9XXXX-XXXX
+            return f"({digits[:2]}) {digits[2]}****-**{digits[-2:]}"
+        if len(digits) == 10:  # Fixo com DDD (XX) XXXX-XXXX
+            return f"({digits[:2]}) {digits[2]}***-**{digits[-2:]}"
+        return f"***-**{digits[-4:]}"
+
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    """Envelope de paginação contendo metadados de navegação e busca."""
+
+    items: List[T]
+    total: int = Field(..., ge=0, description="Total absoluto de itens encontrados")
+    page: int = Field(..., ge=1, description="Número da página atual")
+    size: int = Field(..., ge=1, description="Quantidade de itens por página")
+    pages: int = Field(..., ge=0, description="Total de páginas disponíveis")
+    has_more: bool = Field(..., description="Indica se há páginas subsequentes")
+    detected_suggestion: Optional[str] = Field(
+        None, description="Sugestão de correção ortográfica calculada pelo servidor"
+    )
+
+
+class SpecialtyCategoryRead(BaseModel):
+    """Schema para catálogo canônico de especialidades da plataforma."""
+
+    id: str
+    name: str
+    slug: str
+    icon: str
+    description: str
+    professionals_count: int = Field(0, ge=0)
+
+
+class ProfessionalContactRequest(BaseModel):
+    """Payload de solicitação de contato / orçamento com o profissional."""
+
+    client_name: str = Field(..., min_length=2, max_length=100)
+    client_email: str = Field(..., max_length=255)
+    client_phone: Optional[str] = Field(None, max_length=20)
+    service_category: str = Field(..., min_length=2, max_length=100)
+    message: str = Field(..., min_length=10, max_length=2000)
+    client_city: Optional[str] = Field(None, max_length=100)
+
+    @field_validator("client_name", mode="before")
+    @classmethod
+    def validate_client_name(cls, v: str) -> str:
+        if not isinstance(v, str):
+            return v
+        cleaned = re.sub(r"[\r\n\x00-\x1f]+", " ", v).strip()
+        if len(cleaned) < 2:
+            raise ValueError("O nome do cliente deve ter no mínimo 2 caracteres.")
+        return cleaned
+
+    @field_validator("client_email", mode="before")
+    @classmethod
+    def validate_client_email(cls, v: str) -> str:
+        if not isinstance(v, str):
+            return v
+        if "\r" in v or "\n" in v:
+            raise ValueError("E-mail contém caracteres de controle inválidos.")
+        cleaned = v.strip().lower()
+        if not EMAIL_REGEX.match(cleaned):
+            raise ValueError("E-mail com formato inválido.")
+        return cleaned
+
+    @field_validator("service_category", mode="before")
+    @classmethod
+    def validate_service_category(cls, v: str) -> str:
+        if not isinstance(v, str):
+            return v
+        cleaned = re.sub(r"[\r\n\x00-\x1f]+", " ", v).strip()
+        if len(cleaned) < 2:
+            raise ValueError("A categoria do serviço deve ter no mínimo 2 caracteres.")
+        return cleaned
+
+    @field_validator("client_phone", "client_city", mode="before")
+    @classmethod
+    def validate_optional_single_line(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not isinstance(v, str):
+            return v
+        cleaned = re.sub(r"[\r\n\x00-\x1f]+", " ", v).strip()
+        return cleaned or None
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, v: str) -> str:
+        cleaned = (v or "").strip()
+        if len(cleaned) < 10:
+            raise ValueError("A mensagem deve ter no mínimo 10 caracteres.")
+        if "<script" in cleaned.lower() or "</script>" in cleaned.lower():
+            raise ValueError("A mensagem contém caracteres ou scripts inválidos.")
+        return cleaned
+
+
+class ProfessionalContactResponse(BaseModel):
+    """Resposta de confirmação de envio da solicitação de orçamento."""
+
+    success: bool = True
+    message: str
+    professional_id: int
+    professional_name: str
+    contacted_at: datetime
+
+
 # ---------------------------------------------------------------------------
 # Schemas de Documentos do Profissional
 # ---------------------------------------------------------------------------
@@ -595,6 +748,289 @@ class ProfessionalDocumentsMeSummaryRead(ProfessionalDocumentsSummaryRead):
         ...,
         description="Tipos de documento obrigatórios ainda ausentes (photo_id, proof_of_residence).",
     )
+
+
+# ---------------------------------------------------------------------------
+# Schemas de Moderação Administrativa de Profissionais (Issue #64)
+# ---------------------------------------------------------------------------
+
+
+class ProfessionalModerationItemRead(BaseModel):
+    """Item da fila/listagem de moderação para administradores."""
+
+    id: int
+    name: str
+    email: str
+    phone: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    specialties: List[str]
+    approval_status: str
+    approval_notes: Optional[str] = None
+    documents_submitted_at: Optional[datetime] = None
+    approved_at: Optional[datetime] = None
+    approved_by_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+    documents_count: int = 0
+    has_photo_id: bool = False
+    has_proof_of_residence: bool = False
+    has_technical_certificate: bool = False
+    has_profile_photo: bool = False
+    is_complete: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class ProfessionalModerationReviewRead(BaseModel):
+    """Dados cadastrais completos e documentos anexados para auditoria administrativa."""
+
+    id: int
+    name: str
+    email: str
+    phone: Optional[str] = None
+    bio: str
+    service_radius_km: float
+    specialties: List[str]
+    city: Optional[str] = None
+    state: Optional[str] = None
+    is_active: bool
+    approval_status: str
+    approval_notes: Optional[str] = None
+    documents_submitted_at: Optional[datetime] = None
+    approved_at: Optional[datetime] = None
+    approved_by_id: Optional[int] = None
+    approved_by_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    is_complete: bool
+    documents: List[ProfessionalDocumentRead] = []
+
+    model_config = {"from_attributes": True}
+
+
+class ProfessionalRejectPayload(BaseModel):
+    """Payload obrigatório para rejeição de documentos do profissional."""
+
+    reason: str = Field(
+        ...,
+        min_length=5,
+        max_length=1000,
+        description="Justificativa da reprovação dos documentos enviada ao profissional.",
+    )
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, v: str) -> str:
+        cleaned = v.strip() if v else ""
+        if len(cleaned) < 5:
+            raise ValueError("O motivo da rejeição deve ter no mínimo 5 caracteres válidos.")
+        return cleaned
+
+
+class ProfessionalModerationDecisionRead(BaseModel):
+    """Resposta estruturada após uma ação de aprovação ou rejeição administrativa."""
+
+    id: int
+    name: str
+    email: str
+    approval_status: str
+    approval_notes: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    approved_by_id: Optional[int] = None
+    updated_at: datetime
+    message: str
+
+    model_config = {"from_attributes": True}
+
+
+# =============================================================================
+# Schemas para Orçamentos e Notificações (Issues #22 / #34 / #29)
+# =============================================================================
+
+
+class OrcamentoFotoRead(BaseModel):
+    """Schema de leitura para uma foto anexada ao orçamento."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    orcamento_id: int
+    nome_original: str
+    tamanho_bytes: int
+    mime_type: str
+    enviado_em: datetime
+    url_download: Optional[str] = None
+
+
+class OrcamentoCreate(BaseModel):
+    """Schema para validação de dados textuais da solicitação de orçamento."""
+
+    professional_id: int = Field(..., gt=0, description="ID do profissional destinatário")
+    descricao: str = Field(
+        ...,
+        min_length=10,
+        max_length=2000,
+        description="Descrição detalhada do problema ou serviço necessário",
+    )
+    cliente_nome: Optional[str] = Field(
+        None,
+        min_length=2,
+        max_length=100,
+        description="Nome do cliente solicitante (se não autenticado)",
+    )
+    cliente_email: Optional[EmailStr] = Field(
+        None,
+        description="E-mail de contato para retorno do orçamento",
+    )
+    cliente_telefone: Optional[str] = Field(
+        None,
+        max_length=20,
+        description="Telefone/WhatsApp para alinhamento da visita",
+    )
+
+
+class OrcamentoRead(BaseModel):
+    """Schema de retorno detalhado de um orçamento com fotos e status."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    cliente_id: Optional[int] = None
+    cliente_nome: str
+    cliente_email: str
+    cliente_telefone: Optional[str] = None
+    professional_id: int
+    descricao: str
+    status: str
+    valor_estimado: Optional[float] = None
+    resposta_profissional: Optional[str] = None
+    respondido_em: Optional[datetime] = None
+    motivo_recusa: Optional[str] = None
+    justificativa_recusa: Optional[str] = None
+    data_prevista: Optional[datetime] = None
+    decidido_em: Optional[datetime] = None
+    criado_em: datetime
+    atualizado_em: datetime
+    fotos: List[OrcamentoFotoRead] = []
+
+
+class OrcamentoResponder(BaseModel):
+    """Payload para o profissional responder com valor estimado e parecer técnico."""
+
+    valor_estimado: float = Field(
+        ...,
+        gt=0,
+        description="Valor estimado em reais para o serviço antes da visita",
+    )
+    resposta_profissional: str = Field(
+        ...,
+        min_length=5,
+        max_length=2000,
+        description="Observações técnicas, escopo considerado e condições da estimativa",
+    )
+
+    @field_validator("resposta_profissional")
+    @classmethod
+    def _normalizar_resposta(cls, v: str) -> str:
+        v = (v or "").strip()
+        if len(v) < 5:
+            raise ValueError("O parecer técnico deve conter pelo menos 5 caracteres válidos.")
+        return v
+
+
+class OrcamentoAceitar(BaseModel):
+    """Payload para o profissional aceitar a solicitação de orçamento (Issue #29)."""
+
+    valor_estimado: Optional[float] = Field(
+        None,
+        gt=0,
+        description="Valor estimado inicial em reais (opcional no aceite direto)",
+    )
+    mensagem: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="Mensagem, parecer ou condições do aceite informados ao cliente",
+    )
+    data_prevista: Optional[datetime] = Field(
+        None,
+        description="Data e horário sugeridos para visita técnica ou realização do serviço",
+    )
+
+    @field_validator("mensagem")
+    @classmethod
+    def _normalizar_mensagem(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            cleaned = v.strip()
+            return cleaned if cleaned else None
+        return None
+
+    @field_validator("data_prevista")
+    @classmethod
+    def _validar_data_prevista(cls, v: Optional[datetime]) -> Optional[datetime]:
+        if v is not None:
+            now = datetime.now(timezone.utc)
+            v_cmp = v if v.tzinfo is not None else v.replace(tzinfo=timezone.utc)
+            if v_cmp < now:
+                raise ValueError("A data prevista não pode ser uma data no passado.")
+        return v
+
+
+class OrcamentoRecusar(BaseModel):
+    """Payload para o profissional recusar a solicitação de orçamento (Issue #29)."""
+
+    motivo: str = Field(
+        ...,
+        min_length=3,
+        max_length=150,
+        description="Motivo resumido da recusa (ex: 'Agenda cheia', 'Fora do raio')",
+    )
+    justificativa_detalhada: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="Explicação complementar detalhada para o cliente",
+    )
+
+    @field_validator("motivo")
+    @classmethod
+    def _normalizar_motivo(cls, v: str) -> str:
+        v = (v or "").strip()
+        if len(v) < 3:
+            raise ValueError("Informe um motivo com pelo menos 3 caracteres visíveis.")
+        return v
+
+    @field_validator("justificativa_detalhada")
+    @classmethod
+    def _normalizar_justificativa(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            cleaned = v.strip()
+            return cleaned if cleaned else None
+        return None
+
+
+class OrcamentoResumoCapacidade(BaseModel):
+    """Resumo de capacidade de trabalho e métricas de solicitações para o profissional."""
+
+    total: int = 0
+    pendentes: int = 0
+    aceitos: int = 0
+    recusados: int = 0
+    respondidos: int = 0
+
+
+class NotificacaoRead(BaseModel):
+    """Schema de notificação em tempo real ou persistida no banco."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_email: str
+    titulo: str
+    mensagem: str
+    tipo: str
+    referencia_id: Optional[int] = None
+    lida: bool
+    criada_em: datetime
 
 
 # ---------------------------------------------------------------------------
