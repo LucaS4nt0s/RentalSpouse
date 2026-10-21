@@ -1029,3 +1029,98 @@ class TestRefatoracaoSeniorEmail:
             ok, msg, lat = testar_conectividade_tcp("127.0.0.1", 25, timeout=1)
             assert ok is False
             assert "Timeout" in msg
+
+    def test_gmail_senha_com_espacos_tem_espacos_removidos(self, monkeypatch):
+        monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
+        monkeypatch.setenv("SMTP_PORT", "587")
+        monkeypatch.setenv("SMTP_USER", "lucas@gmail.com")
+        monkeypatch.setenv("SMTP_PASSWORD", "abcd efgh ijkl mnop")
+
+        cfg = email_service.ConfiguracaoSmtp.do_ambiente()
+        assert cfg.senha == "abcdefghijklmnop"
+
+    def test_porta_465_adota_ssl_mandatorio(self, monkeypatch):
+        monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
+        monkeypatch.setenv("SMTP_PORT", "465")
+        monkeypatch.setenv("SMTP_USE_SSL", "false")
+
+        cfg = email_service.ConfiguracaoSmtp.do_ambiente()
+        assert cfg.porta == 465
+        assert cfg.usar_ssl is True
+
+    def test_backend_configurado_auto_detecta_smtp_quando_host_informado(self, monkeypatch):
+        monkeypatch.delenv("EMAIL_BACKEND", raising=False)
+        monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
+        assert email_service.backend_configurado() == "smtp"
+
+        monkeypatch.setenv("EMAIL_BACKEND", "console")
+        assert email_service.backend_configurado() == "console"
+
+    def test_remetente_fallback_para_dominio_valido_sem_usuario_email(self, monkeypatch):
+        monkeypatch.delenv("EMAIL_FROM_ADDRESS", raising=False)
+        monkeypatch.setenv("SMTP_USER", "apikey_sem_arroba")
+
+        nome, endereco = email_service.remetente()
+        assert endereco == "nao-responda@rentalspouse.com"
+
+    def test_transporte_smtp_nao_falha_se_servidor_nao_suportar_starttls(self, monkeypatch):
+        transporte = email_service.TransporteSmtp(
+            host="localhost",
+            porta=1025,
+            usuario="",
+            senha="",
+            usar_tls=True,
+            timeout=5,
+            max_tentativas=1,
+        )
+
+        mock_smtp_instance = MagicMock()
+        mock_smtp_instance.has_extn.return_value = False
+
+        with patch("smtplib.SMTP") as mock_smtp_cls:
+            mock_smtp_cls.return_value.__enter__.return_value = mock_smtp_instance
+            msg = email_service.EmailMessage()
+            msg["To"] = EMAIL_PRINCIPAL
+            transporte.enviar(msg)
+
+            mock_smtp_instance.starttls.assert_not_called()
+            mock_smtp_instance.send_message.assert_called_once()
+
+    def test_enviar_email_de_verificacao_captura_excecao_inesperada(self, monkeypatch):
+        monkeypatch.setattr(
+            email_service,
+            "enviar_email_verificacao",
+            MagicMock(side_effect=RuntimeError("Erro inesperado de infraestrutura")),
+        )
+        pendente = verificacao.EmailPendente(
+            destinatario="alvo@example.com",
+            nome="Teste",
+            token="token123",
+            expira_horas=24,
+        )
+        resultado = verificacao.enviar_email_de_verificacao(pendente)
+        assert resultado is False
+
+    def test_env_loader_parsing_defensivo(self, tmp_path, monkeypatch):
+        import os
+        import env_loader
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "# Comentario\n"
+            "export TEST_KEY_1=valor_um\n"
+            "TEST_KEY_2=\"valor com aspas\"\n"
+            "TEST_KEY_3='valor simples'\n"
+            "IGNORA_LINHA_INVALIDA\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(env_loader, "encontrar_arquivo_env", lambda: env_file)
+        monkeypatch.delenv("TEST_KEY_1", raising=False)
+        monkeypatch.delenv("TEST_KEY_2", raising=False)
+        monkeypatch.delenv("TEST_KEY_3", raising=False)
+
+        with patch.dict("sys.modules", {"dotenv": None}):
+            caminho = env_loader.carregar_env()
+            assert caminho == env_file
+            assert os.getenv("TEST_KEY_1") == "valor_um"
+            assert os.getenv("TEST_KEY_2") == "valor com aspas"
+            assert os.getenv("TEST_KEY_3") == "valor simples"
