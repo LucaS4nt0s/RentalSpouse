@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import env_loader  # noqa: F401
 import database
 from migrations import run_all_migrations
 from routes.admin_moderation import router as admin_moderation_router
@@ -90,4 +91,5 @@ app.include_router(admin_moderation_router)
 app.include_router(orcamentos_router)
 app.include_router(notificacoes_router)
 app.include_router(notificacoes_ws_router)
+
 

@@ -21,6 +21,7 @@ Transportes disponíveis, selecionados pela variável de ambiente `EMAIL_BACKEND
 | `memoria` | Guarda as mensagens em memória (testes automatizados)  |
 """
 
+import env_loader  # noqa: F401
 import html
 import logging
 import os
@@ -150,18 +151,23 @@ class ConfiguracaoSmtp:
 
     @classmethod
     def do_ambiente(cls) -> "ConfiguracaoSmtp":
-        host = os.getenv("SMTP_HOST", "").strip()
+        host = os.getenv("SMTP_HOST", "").strip().strip('"').strip("'")
         porta = _parse_int_seguro(os.getenv("SMTP_PORT"), padrao=587, minimo=1, maximo=65535)
-        usar_ssl = _parse_bool_seguro(os.getenv("SMTP_USE_SSL"), padrao=(porta == 465))
-        usar_tls = _parse_bool_seguro(os.getenv("SMTP_USE_TLS"), padrao=True)
+        usar_ssl = (porta == 465) or _parse_bool_seguro(os.getenv("SMTP_USE_SSL"), padrao=(porta == 465))
+        usar_tls = _parse_bool_seguro(os.getenv("SMTP_USE_TLS"), padrao=(porta != 465))
         timeout = _parse_int_seguro(os.getenv("SMTP_TIMEOUT"), padrao=10, minimo=1, maximo=120)
         max_tentativas = _parse_int_seguro(os.getenv("SMTP_MAX_RETRIES"), padrao=3, minimo=1, maximo=10)
+
+        usuario = os.getenv("SMTP_USER", "").strip().strip('"').strip("'")
+        senha = os.getenv("SMTP_PASSWORD", "").strip().strip('"').strip("'")
+        if "gmail.com" in host.lower() and len(senha.replace(" ", "")) == 16:
+            senha = senha.replace(" ", "")
 
         return cls(
             host=host,
             porta=porta,
-            usuario=os.getenv("SMTP_USER", "").strip(),
-            senha=os.getenv("SMTP_PASSWORD", ""),
+            usuario=usuario,
+            senha=senha,
             usar_tls=usar_tls,
             usar_ssl=usar_ssl,
             timeout=timeout,
@@ -199,7 +205,10 @@ class TransporteSmtp:
         self.backoff_inicial = max(0.01, backoff_inicial)
 
     def _executar_disparo(self, mensagem: EmailMessage) -> None:
-        """Executa um ciclo pontual de conexão e entrega SMTP."""
+        """Executa um ciclo pontual de conexão e entrega SMTP com suporte resiliente a STARTTLS/SSL."""
+        destinatario = str(mensagem.get("To", "")).strip()
+        _, endereco_remetente = remetente()
+
         if self.usar_ssl:
             contexto_ssl = ssl.create_default_context()
             with smtplib.SMTP_SSL(
@@ -211,16 +220,23 @@ class TransporteSmtp:
                 smtp.ehlo()
                 if self.usuario:
                     smtp.login(self.usuario, self.senha)
-                smtp.send_message(mensagem)
+                smtp.send_message(mensagem, from_addr=endereco_remetente, to_addrs=[destinatario])
         else:
             with smtplib.SMTP(self.host, self.porta, timeout=self.timeout) as smtp:
                 smtp.ehlo()
                 if self.usar_tls:
-                    smtp.starttls()
-                    smtp.ehlo()
+                    if smtp.has_extn("STARTTLS"):
+                        smtp.starttls()
+                        smtp.ehlo()
+                    else:
+                        logger.warning(
+                            "Servidor SMTP em %s:%d não anunciou extensão STARTTLS. Continuando sem TLS.",
+                            self.host,
+                            self.porta,
+                        )
                 if self.usuario:
                     smtp.login(self.usuario, self.senha)
-                smtp.send_message(mensagem)
+                smtp.send_message(mensagem, from_addr=endereco_remetente, to_addrs=[destinatario])
 
     def enviar(self, mensagem: EmailMessage) -> None:
         """
@@ -305,8 +321,18 @@ def limpar_caixa_de_saida() -> None:
 
 
 def backend_configurado() -> str:
-    """Nome do transporte selecionado em `EMAIL_BACKEND`."""
-    return os.getenv("EMAIL_BACKEND", BACKEND_PADRAO).strip().lower()
+    """
+    Nome do transporte selecionado em `EMAIL_BACKEND`.
+
+    Caso EMAIL_BACKEND não esteja definido ou seja vazio, mas SMTP_HOST
+    esteja configurado, adota automaticamente 'smtp' para permitir o envio real.
+    """
+    valor = os.getenv("EMAIL_BACKEND", "").strip().lower()
+    if not valor:
+        if os.getenv("SMTP_HOST", "").strip():
+            return "smtp"
+        return BACKEND_PADRAO
+    return valor
 
 
 def app_base_url() -> str:
@@ -321,16 +347,17 @@ def remetente() -> Tuple[str, str]:
     Caso o endereço padrão seja um domínio fictício (ex.: .local) ou vazio,
     e houver um SMTP_USER configurado com formato de e-mail, adota o SMTP_USER
     como remetente para evitar rejeições de envio (ex.: erro 550 por SPF/spoofing).
+    Se não houver SMTP_USER com @, adota um domínio padrão válido (rentalspouse.com).
     """
     nome = (os.getenv("EMAIL_FROM_NAME") or "RentalSpouse").strip()
-    endereco = (os.getenv("EMAIL_FROM_ADDRESS") or "").strip()
-    smtp_user = (os.getenv("SMTP_USER") or "").strip()
+    endereco = (os.getenv("EMAIL_FROM_ADDRESS") or "").strip().strip('"').strip("'")
+    smtp_user = (os.getenv("SMTP_USER") or "").strip().strip('"').strip("'")
 
     if not endereco or endereco.endswith(".local"):
         if "@" in smtp_user:
             endereco = smtp_user
         elif not endereco:
-            endereco = "nao-responda@rentalspouse.local"
+            endereco = "nao-responda@rentalspouse.com"
 
     return (nome, endereco)
 
@@ -363,6 +390,13 @@ def obter_transporte() -> TransporteEmail:
             usar_ssl=cfg.usar_ssl,
             max_tentativas=cfg.max_tentativas,
             backoff_inicial=cfg.backoff_inicial,
+        )
+
+    if backend == "console" and os.getenv("SMTP_HOST", "").strip():
+        logger.warning(
+            "SMTP_HOST='%s' está configurado, mas EMAIL_BACKEND está definido como 'console'. "
+            "Os e-mails serão apenas registrados no log. Para envio real, defina EMAIL_BACKEND=smtp.",
+            os.getenv("SMTP_HOST", "").strip(),
         )
 
     if backend != "console":
@@ -414,13 +448,13 @@ def montar_mensagem_verificacao(
     mensagem = EmailMessage()
     mensagem["Subject"] = "Confirme seu e-mail na RentalSpouse"
     mensagem["From"] = formataddr((nome_remetente, endereco_remetente))
-    mensagem["To"] = destinatario
+    mensagem["To"] = (destinatario or "").strip()
     mensagem["Date"] = formatdate(localtime=True)
 
     dominio = "rentalspouse.com"
     if "@" in endereco_remetente:
         dominio_candidato = endereco_remetente.split("@")[-1].strip()
-        if dominio_candidato and "." in dominio_candidato:
+        if dominio_candidato and "." in dominio_candidato and not dominio_candidato.endswith(".local"):
             dominio = dominio_candidato
 
     mensagem["Message-ID"] = make_msgid(domain=dominio)
@@ -515,3 +549,4 @@ def enviar_email_verificacao(
         expira_horas=expira_horas,
     )
     transporte.enviar(mensagem)
+
