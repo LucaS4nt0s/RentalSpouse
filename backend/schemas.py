@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 import enum
 import re
 from typing import Any, Generic, List, Optional, TypeVar, Union
@@ -516,6 +516,7 @@ class ProfessionalUpdate(BaseModel):
 
 
 from models import (
+    AgendamentoStatus as AgendamentoStatusEnum,
     DenunciaMotivo as DenunciaMotivoEnum,
     DenunciaStatus as DenunciaStatusEnum,
     DocumentType as DocumentTypeEnum,
@@ -1118,4 +1119,158 @@ class DenunciaRead(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Schemas da agenda de disponibilidade e agendamento de slots (issue #78)
+# ---------------------------------------------------------------------------
+
+# Janela máxima consultável de uma vez na agenda (evita varreduras longas) e
+# janela padrão usada quando o cliente não informa `data_fim` (calendário de 30
+# dias consumido pela interface).
+AGENDA_JANELA_MAX_DIAS = 60
+AGENDA_JANELA_PADRAO_DIAS = 30
+
+# Nomes dos dias da semana na convenção de `datetime.weekday()` (0 = segunda).
+DIAS_SEMANA_NOMES = (
+    "segunda-feira",
+    "terça-feira",
+    "quarta-feira",
+    "quinta-feira",
+    "sexta-feira",
+    "sábado",
+    "domingo",
+)
+
+
+def normalizar_datetime_utc(momento: datetime) -> datetime:
+    """
+    Converte um `datetime` (aware ou naive) para o padrão naive-UTC do projeto.
+
+    Datas sem fuso são interpretadas como UTC — o mesmo instante que a agenda
+    devolve — de forma que o cliente possa enviar de volta, sem conversão, o
+    horário que escolheu na grade.
+    """
+    if momento.tzinfo is None:
+        return momento
+    return momento.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+class DisponibilidadeCreate(BaseModel):
+    """Janela semanal de atendimento informada pelo profissional."""
+
+    dia_semana: int = Field(
+        ...,
+        ge=0,
+        le=6,
+        description=f"Dia da semana na convenção de `datetime.weekday()`: 0 = {DIAS_SEMANA_NOMES[0]} ... 6 = {DIAS_SEMANA_NOMES[6]}.",
+    )
+    hora_inicio: time = Field(..., description="Início da janela de atendimento (HH:MM).")
+    hora_fim: time = Field(..., description="Fim da janela de atendimento (HH:MM).")
+    duracao_slot_min: int = Field(
+        60,
+        ge=5,
+        le=480,
+        description="Duração de cada slot em minutos (o intervalo entre dois atendimentos).",
+    )
+
+    @model_validator(mode="after")
+    def validar_janela(self):
+        """Garante uma janela coerente e com espaço para pelo menos um slot inteiro."""
+        if self.hora_fim <= self.hora_inicio:
+            raise ValueError("hora_fim deve ser posterior a hora_inicio.")
+
+        minutos_janela = (
+            self.hora_fim.hour * 60
+            + self.hora_fim.minute
+            - (self.hora_inicio.hour * 60 + self.hora_inicio.minute)
+        )
+        if minutos_janela < self.duracao_slot_min:
+            raise ValueError(
+                "A janela de atendimento precisa comportar pelo menos um slot "
+                f"completo de {self.duracao_slot_min} minutos."
+            )
+        return self
+
+
+class DisponibilidadeRead(BaseModel):
+    """Janela semanal de atendimento já persistida."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    professional_id: int
+    dia_semana: int
+    hora_inicio: time
+    hora_fim: time
+    duracao_slot_min: int
+
+
+class AgendaSlotRead(BaseModel):
+    """
+    Slot de atendimento devolvido pela agenda.
+
+    A agenda devolve apenas slots livres: horários já reservados, bloqueados
+    (#16) ou no passado são omitidos. `disponivel` existe para manter o contrato
+    estável caso a interface passe a exibir slots ocupados desabilitados.
+    """
+
+    data_hora_inicio: datetime = Field(..., description="Início do slot (UTC naive).")
+    data_hora_fim: datetime = Field(..., description="Fim do slot (UTC naive).")
+    disponivel: bool = Field(True, description="Sempre `true`: a agenda só devolve slots livres.")
+
+
+class AgendaDiaRead(BaseModel):
+    """Agenda de um dia: todos os dias da janela são devolvidos, mesmo sem grade."""
+
+    data: date
+    slots: List[AgendaSlotRead] = Field(
+        default_factory=list,
+        description="Slots livres do dia. Lista vazia = dia sem grade ou totalmente ocupado.",
+    )
+
+
+class AgendamentoCreate(BaseModel):
+    """Payload de reserva de um slot da agenda."""
+
+    professional_id: int = Field(..., gt=0, description="ID do profissional cujo slot será reservado.")
+    data_hora_inicio: datetime = Field(
+        ...,
+        description=(
+            "Início do slot escolhido, exatamente como devolvido por "
+            "`GET /api/professionals/{id}/agenda`. Datas sem fuso são tratadas como UTC."
+        ),
+    )
+    orcamento_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="Solicitação de orçamento que originou o agendamento (opcional).",
+    )
+
+    @field_validator("data_hora_inicio")
+    @classmethod
+    def validar_data_futura(cls, v: datetime) -> datetime:
+        """Normaliza para naive-UTC e recusa instantes que já passaram."""
+        inicio = normalizar_datetime_utc(v)
+        if inicio <= datetime.now(timezone.utc).replace(tzinfo=None):
+            raise ValueError("O agendamento precisa ser feito para um horário no futuro.")
+        return inicio
+
+
+class AgendamentoRead(BaseModel):
+    """Agendamento serializado para o cliente autor."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    professional_id: int
+    cliente_id: int = Field(..., description="Cliente autor da reserva (derivado do token, nunca do payload).")
+    orcamento_id: Optional[int] = None
+    data_hora_inicio: datetime
+    data_hora_fim: datetime
+    status: str = Field(
+        ...,
+        description=f"Situação do agendamento: {', '.join(s.value for s in AgendamentoStatusEnum)}.",
+    )
+    criado_em: datetime
 
