@@ -8,8 +8,8 @@ import {
   ExternalLink,
   Inbox,
   RefreshCw,
-  Sparkles,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { useIsProfessional } from '../documentos/ProfessionalDocumentsLink';
 
@@ -33,6 +33,7 @@ function formatRelativeTime(dateString: string): string {
 }
 
 export const NotificationBell: React.FC = () => {
+  const { isAuthenticated } = useAuth();
   const isProfessional = useIsProfessional();
   const {
     notificacoes,
@@ -73,7 +74,7 @@ export const NotificationBell: React.FC = () => {
     };
   }, [isOpen]);
 
-  if (!isProfessional) return null;
+  if (!isAuthenticated) return null;
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -165,8 +166,10 @@ export const NotificationBell: React.FC = () => {
                 <p className="text-xs font-semibold text-rental-ink">
                   Nenhuma notificação no momento
                 </p>
-                <p className="text-[11px] text-rental-muted max-w-[200px] mx-auto">
-                  Você receberá alertas instantâneos assim que clientes solicitarem novos orçamentos.
+                <p className="text-[11px] text-rental-muted max-w-[220px] mx-auto">
+                  {isProfessional
+                    ? 'Você receberá alertas instantâneos assim que clientes solicitarem novos orçamentos.'
+                    : 'Você receberá alertas instantâneos assim que os profissionais responderem aos seus orçamentos.'}
                 </p>
               </div>
             ) : (
@@ -219,14 +222,18 @@ export const NotificationBell: React.FC = () => {
             )}
           </div>
 
-          {/* Rodapé com atalho para o painel de orçamentos e capacidade */}
+          {/* Rodapé com atalho para o painel de orçamentos */}
           <div className="p-2.5 border-t border-rental-border bg-rental-surface2/50 text-center">
             <Link
-              href="/profissional/orcamentos"
+              href={isProfessional ? '/profissional/orcamentos' : '/cliente/orcamentos'}
               onClick={() => setIsOpen(false)}
               className="text-xs font-bold text-rental-primary hover:underline flex items-center justify-center gap-1.5"
             >
-              <span>Gerenciar orçamentos e capacidade</span>
+              <span>
+                {isProfessional
+                  ? 'Gerenciar orçamentos e capacidade'
+                  : 'Ver meus orçamentos e respostas'}
+              </span>
               <ExternalLink className="h-3 w-3" />
             </Link>
           </div>
