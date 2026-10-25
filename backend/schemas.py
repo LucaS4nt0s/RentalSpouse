@@ -358,18 +358,8 @@ class VerificacaoConfirmadaResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class SolicitarRecuperacaoSenhaRequest(BaseModel):
+class SolicitarRecuperacaoSenhaRequest(ReenviarVerificacaoRequest):
     """Payload de solicitação do link de redefinição de senha."""
-
-    email: str = Field(..., max_length=255, description="E-mail da conta cadastrada")
-
-    @field_validator("email")
-    @classmethod
-    def validar_email(cls, valor: str) -> str:
-        limpo = (valor or "").strip().lower()
-        if not EMAIL_REGEX.match(limpo):
-            raise ValueError("E-mail com formato inválido.")
-        return limpo
 
 
 class RedefinirSenhaRequest(BaseModel):
@@ -397,12 +387,11 @@ class RedefinirSenhaRequest(BaseModel):
     @field_validator("nova_senha")
     @classmethod
     def validar_nova_senha(cls, valor: str) -> str:
-        if len(valor or "") < 8:
-            raise ValueError("A nova senha deve conter no mínimo 8 caracteres.")
-        if not any(c.isalpha() for c in valor):
-            raise ValueError("A nova senha deve conter pelo menos uma letra.")
-        if not any(c.isdigit() for c in valor):
-            raise ValueError("A nova senha deve conter pelo menos um número.")
+        ClienteCreate.validar_senha(valor)
+        if not (any(c.isupper() for c in valor) and any(c.islower() for c in valor)):
+            raise ValueError("A nova senha deve conter letras maiúsculas e minúsculas.")
+        if not any(not c.isalnum() and not c.isspace() for c in valor):
+            raise ValueError("A nova senha deve conter pelo menos um caractere especial.")
         return valor
 
     @model_validator(mode="after")

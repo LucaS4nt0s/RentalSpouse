@@ -20,8 +20,7 @@ Garantias de segurança:
 """
 
 import logging
-import os
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import NamedTuple, Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -29,6 +28,7 @@ from sqlalchemy.orm import Session
 import email_service
 import models
 from security import gerar_token_verificacao, hash_senha, hash_token
+from verificacao import _inteiro_de_ambiente, utcnow
 
 logger = logging.getLogger("rentalspouse.recuperacao_senha")
 
@@ -67,16 +67,6 @@ class EmailPendente(NamedTuple):
     expira_minutos: int
 
 
-def _inteiro_de_ambiente(nome: str, padrao: int) -> int:
-    """Lê um inteiro positivo de variável de ambiente, com fallback seguro."""
-    bruto = os.getenv(nome, "").strip()
-    try:
-        valor = int(bruto)
-    except (TypeError, ValueError):
-        return padrao
-    return valor if valor > 0 else padrao
-
-
 def expiracao_minutos() -> int:
     """Validade do token de redefinição, em minutos."""
     return _inteiro_de_ambiente("SENHA_RESET_EXPIRA_MINUTOS", EXPIRACAO_PADRAO_MINUTOS)
@@ -89,35 +79,32 @@ def intervalo_reenvio_segundos() -> int:
     )
 
 
-def utcnow() -> datetime:
-    """Retorna o instante atual em UTC sem tzinfo, compatível com as colunas do banco."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
 def _localizar_conta(db: Session, email: str) -> Optional[Tuple[str, bool]]:
     """
     Localiza a conta pelo e-mail, priorizando a tabela unificada `users`.
 
-    Retorna `(nome, ativo)` ou `None`. Contas desativadas não recebem o link,
-    mas a resposta pública continua genérica.
+    Retorna `(nome, ativo)` ou `None`. Contas desativadas em qualquer tabela
+    não recebem o link nem podem redefinir a senha.
     """
     user = db.query(models.User).filter(models.User.email == email).first()
-    if user is not None:
-        return user.name, bool(user.is_active)
-
     cliente = db.query(models.Cliente).filter(models.Cliente.email == email).first()
-    if cliente is not None:
-        return cliente.nome, True
-
     profissional = (
         db.query(models.Professional)
         .filter(models.Professional.email == email)
         .first()
     )
-    if profissional is not None:
-        return profissional.name, bool(profissional.is_active)
+    nome = (
+        (user.name if user else None)
+        or (cliente.nome if cliente else None)
+        or (profissional.name if profissional else None)
+    )
+    if nome is None:
+        return None
 
-    return None
+    ativo = (user is None or bool(user.is_active)) and (
+        profissional is None or bool(profissional.is_active)
+    )
+    return nome, ativo
 
 
 def solicitar_recuperacao(db: Session, email: str) -> Optional[EmailPendente]:
@@ -233,24 +220,28 @@ def redefinir_senha(db: Session, token: str, nova_senha: str) -> str:
     Consome o token e aplica a nova senha em todas as tabelas que contêm a conta.
 
     Retorna o e-mail cuja senha foi alterada. Levanta `ErroRecuperacaoSenha`
-    quando o link é inválido, expirado ou já foi utilizado.
+    quando o link é inválido, expirado, já foi utilizado ou a conta está inativa.
     """
     registro = _obter_registro_valido(db, token)
-    novo_hash = hash_senha(nova_senha)
     agora = utcnow()
-    atualizados = 0
+    conta = _localizar_conta(db, registro.email)
+    if conta is None or not conta[1]:
+        registro.usado_em = agora
+        db.add(registro)
+        db.commit()
+        raise ErroRecuperacaoSenha(MENSAGEM_TOKEN_INVALIDO)
+
+    novo_hash = hash_senha(nova_senha)
 
     user = db.query(models.User).filter(models.User.email == registro.email).first()
     if user is not None:
         user.hashed_password = novo_hash
-        atualizados += 1
 
     cliente = (
         db.query(models.Cliente).filter(models.Cliente.email == registro.email).first()
     )
     if cliente is not None:
         cliente.senha_hash = novo_hash
-        atualizados += 1
 
     profissional = (
         db.query(models.Professional)
@@ -259,13 +250,6 @@ def redefinir_senha(db: Session, token: str, nova_senha: str) -> str:
     )
     if profissional is not None:
         profissional.senha_hash = novo_hash
-        atualizados += 1
-
-    if atualizados == 0:
-        registro.usado_em = agora
-        db.add(registro)
-        db.commit()
-        raise ErroRecuperacaoSenha(MENSAGEM_TOKEN_INVALIDO)
 
     registro.usado_em = agora
     db.add(registro)

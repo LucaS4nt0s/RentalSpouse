@@ -20,7 +20,7 @@ EMAIL_CLIENTE = "maria.senha@exemplo.com"
 EMAIL_PROFISSIONAL = "profissional.senha@exemplo.com"
 EMAIL_ADMIN = "admin.senha@exemplo.com"
 SENHA_ATUAL = "SenhaAtual123"
-NOVA_SENHA = "NovaSenha456"
+NOVA_SENHA = "NovaSenha@456"
 
 
 def criar_cliente(
@@ -361,13 +361,13 @@ class TestRedefinicao:
             json={
                 "token": "token-suficientemente-longo-123",
                 "nova_senha": NOVA_SENHA,
-                "confirmar_nova_senha": "OutraSenha789",
+                "confirmar_nova_senha": "OutraSenha@789",
             },
         )
 
         assert resposta.status_code == 422
 
-    @pytest.mark.parametrize("senha_fraca", ["curta1", "somenteletras", "12345678"])
+    @pytest.mark.parametrize("senha_fraca", ["curta@1", "somenteletras", "12345678", "SemEspecial1", "semmaiuscula@1", "SEMMINUSCULA@1"])
     def test_senha_fraca_retorna_422(self, client, senha_fraca):
         resposta = client.post(
             "/api/auth/redefinir-senha",
@@ -388,6 +388,21 @@ class TestRedefinicao:
         token = extrair_token(caixa_de_entrada[0])
 
         db_session.delete(cliente)
+        db_session.commit()
+
+        resposta = redefinir(client, token)
+
+        assert resposta.status_code == 400
+        assert resposta.json()["detail"] == recuperacao_senha.MENSAGEM_TOKEN_INVALIDO
+
+    def test_conta_desativada_apos_solicitacao_retorna_400(
+        self, client, caixa_de_entrada, db_session
+    ):
+        profissional = criar_profissional(db_session)
+        solicitar(client, EMAIL_PROFISSIONAL)
+        token = extrair_token(caixa_de_entrada[0])
+
+        profissional.is_active = False
         db_session.commit()
 
         resposta = redefinir(client, token)
