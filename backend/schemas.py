@@ -354,6 +354,65 @@ class VerificacaoConfirmadaResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Schemas de Recuperação de Senha (issue #75)
+# ---------------------------------------------------------------------------
+
+
+class SolicitarRecuperacaoSenhaRequest(BaseModel):
+    """Payload de solicitação do link de redefinição de senha."""
+
+    email: str = Field(..., max_length=255, description="E-mail da conta cadastrada")
+
+    @field_validator("email")
+    @classmethod
+    def validar_email(cls, valor: str) -> str:
+        limpo = (valor or "").strip().lower()
+        if not EMAIL_REGEX.match(limpo):
+            raise ValueError("E-mail com formato inválido.")
+        return limpo
+
+
+class RedefinirSenhaRequest(BaseModel):
+    """Payload de definição de uma nova senha a partir do token recebido por e-mail."""
+
+    token: str = Field(
+        ...,
+        min_length=16,
+        max_length=256,
+        description="Token de redefinição recebido no link enviado por e-mail",
+    )
+    nova_senha: str = Field(
+        ...,
+        min_length=8,
+        max_length=128,
+        description="Nova senha com no mínimo 8 caracteres",
+    )
+    confirmar_nova_senha: str = Field(
+        ...,
+        min_length=8,
+        max_length=128,
+        description="Confirmação da nova senha",
+    )
+
+    @field_validator("nova_senha")
+    @classmethod
+    def validar_nova_senha(cls, valor: str) -> str:
+        if len(valor or "") < 8:
+            raise ValueError("A nova senha deve conter no mínimo 8 caracteres.")
+        if not any(c.isalpha() for c in valor):
+            raise ValueError("A nova senha deve conter pelo menos uma letra.")
+        if not any(c.isdigit() for c in valor):
+            raise ValueError("A nova senha deve conter pelo menos um número.")
+        return valor
+
+    @model_validator(mode="after")
+    def validar_confirmacao(self):
+        if self.nova_senha != self.confirmar_nova_senha:
+            raise ValueError("A confirmação de senha não confere com a nova senha informada.")
+        return self
+
+
+# ---------------------------------------------------------------------------
 # Schemas de Profissional
 # ---------------------------------------------------------------------------
 

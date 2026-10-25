@@ -92,6 +92,26 @@ class Cliente(Base):
         }
 
 
+class RecuperacaoSenhaToken(Base):
+    """
+    Token de uso único para redefinição de senha (issue #75).
+
+    A tabela é independente de `users`, `clientes` e `professionals` para que o
+    mesmo fluxo atenda qualquer tipo de conta pelo e-mail informado. Assim como
+    na verificação de e-mail, o token em claro nunca é persistido: guardamos
+    apenas o hash SHA-256, e o link expira após um intervalo configurável.
+    """
+
+    __tablename__ = "recuperacao_senha_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    expira_em = Column(DateTime, nullable=False)
+    criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    usado_em = Column(DateTime, nullable=True)
+
+
 class DocumentType(str, enum.Enum):
     """Tipos de documentos aceitos para análise cadastral do profissional."""
 
