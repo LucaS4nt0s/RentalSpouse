@@ -259,6 +259,7 @@ function ProfissionaisSearchContent() {
                     onSpecialtyClick={setSpecialty}
                     onRequestQuote={handleOpenQuoteModal}
                     onReportProfessional={handleOpenReportModal}
+                    scheduleHref={`/profissionais/${prof.id}/agendar`}
                   />
                 ))}
               </div>
