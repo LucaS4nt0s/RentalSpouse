@@ -62,10 +62,8 @@ function RedefinirSenhaContent() {
 
     if (!novaSenha) {
       novosErros.novaSenha = 'Informe a nova senha.';
-    } else if (novaSenha.length < 8) {
-      novosErros.novaSenha = 'A nova senha deve conter no mínimo 8 caracteres.';
-    } else if (!/[A-Za-z]/.test(novaSenha) || !/\d/.test(novaSenha)) {
-      novosErros.novaSenha = 'A nova senha deve conter pelo menos uma letra e um número.';
+    } else if (!forcaSenha.isValid) {
+      novosErros.novaSenha = 'A nova senha deve cumprir todos os 5 critérios de segurança.';
     }
 
     if (!confirmarSenha) {
