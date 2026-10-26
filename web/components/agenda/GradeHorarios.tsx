@@ -86,22 +86,17 @@ export const GradeHorarios: React.FC<GradeHorariosProps> = ({
               slot.data_hora_inicio,
               slot.data_hora_fim,
             );
-            const ocupado = !slot.disponivel;
             const selecionado =
-              !ocupado &&
               slotSelecionado?.data_hora_inicio === slot.data_hora_inicio;
 
             return (
               <button
                 key={slot.data_hora_inicio}
                 type="button"
-                disabled={ocupado}
                 aria-pressed={selecionado}
                 onClick={() => onSelecionarSlot(slot)}
                 className={`flex flex-col items-center justify-center rounded-xl border px-3 py-3 text-center transition-all ${
-                  ocupado
-                    ? 'cursor-not-allowed border-rental-border/50 bg-rental-surface2/40 text-rental-muted line-through opacity-50'
-                    : selecionado
+                  selecionado
                     ? 'border-rental-primary bg-rental-primary text-white shadow-primary'
                     : 'border-rental-border bg-rental-surface text-rental-ink hover:border-rental-primary/50 hover:bg-rental-surface2'
                 }`}
@@ -111,14 +106,10 @@ export const GradeHorarios: React.FC<GradeHorariosProps> = ({
                 </span>
                 <span
                   className={`mt-0.5 text-[11px] font-medium ${
-                    ocupado
-                      ? 'text-rental-muted'
-                      : selecionado
-                      ? 'text-white/90'
-                      : 'text-rental-muted'
+                    selecionado ? 'text-white/90' : 'text-rental-muted'
                   }`}
                 >
-                  {ocupado ? 'Ocupado' : `${duracao} min`}
+                  {duracao ? `${duracao} min` : '—'}
                 </span>
               </button>
             );

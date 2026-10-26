@@ -50,6 +50,7 @@ export default function AgendarProfissionalPage() {
     conflito409,
     agendamentoCriado,
     meusAgendamentos,
+    nomesProfissionais,
     loadingMeus,
     erroMeus,
     selecionarDia,
@@ -94,7 +95,7 @@ export default function AgendarProfissionalPage() {
           <nav className="flex items-center gap-3">
             <Link
               href="/profissionais"
-              className="text-xs font-semibold text-rental-muted transition-colors hover:text-rental-primary"
+              className="hidden sm:inline-block text-xs font-semibold text-rental-muted transition-colors hover:text-rental-primary"
             >
               Profissionais
             </Link>
@@ -103,7 +104,7 @@ export default function AgendarProfissionalPage() {
               <button
                 type="button"
                 onClick={handleVerMeusAgendamentos}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
+                className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
               >
                 <ListChecks className="h-3.5 w-3.5" />
                 <span>Meus agendamentos</span>
@@ -367,8 +368,11 @@ export default function AgendarProfissionalPage() {
                             {formatarDataCompleta(dataIso)} • {hIni} às {hFim}
                           </p>
                           <p className="text-rental-muted">
-                            Profissional #{ag.professional_id} • Reserva #
-                            {ag.id}
+                            {nomesProfissionais[ag.professional_id] ??
+                              (profissional?.id === ag.professional_id
+                                ? profissional.name
+                                : `Profissional #${ag.professional_id}`)}{' '}
+                            • Reserva #{ag.id}
                           </p>
                         </div>
                       </div>

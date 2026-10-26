@@ -58,6 +58,9 @@ export function useAgenda(professionalId: number) {
 
   // Lista de "Meus agendamentos" (GET /api/agendamentos/meus)
   const [meusAgendamentos, setMeusAgendamentos] = useState<Agendamento[]>([]);
+  const [nomesProfissionais, setNomesProfissionais] = useState<
+    Record<number, string>
+  >({});
   const [loadingMeus, setLoadingMeus] = useState<boolean>(false);
   const [erroMeus, setErroMeus] = useState<string | null>(null);
 
@@ -85,6 +88,10 @@ export function useAgenda(professionalId: number) {
 
         if (profResp) {
           setProfissional(profResp);
+          setNomesProfissionais((prev) => ({
+            ...prev,
+            [profResp.id]: profResp.name,
+          }));
         }
         setDias(agendaResp);
 
@@ -215,6 +222,26 @@ export function useAgenda(professionalId: number) {
       setErroMeus(null);
       const lista = await listarMeusAgendamentos(token);
       setMeusAgendamentos(lista);
+
+      const idsUnicos = Array.from(
+        new Set(lista.map((ag) => ag.professional_id)),
+      );
+      const pares = await Promise.all(
+        idsUnicos.map(async (id) => {
+          if (profissional && profissional.id === id) {
+            return [id, profissional.name] as const;
+          }
+          const p = await obterProfissionalPorId(id).catch(() => null);
+          return p ? ([id, p.name] as const) : null;
+        }),
+      );
+      setNomesProfissionais((prev) => {
+        const proximo = { ...prev };
+        for (const par of pares) {
+          if (par) proximo[par[0]] = par[1];
+        }
+        return proximo;
+      });
     } catch (err: unknown) {
       setErroMeus(
         err instanceof Error
@@ -224,7 +251,7 @@ export function useAgenda(professionalId: number) {
     } finally {
       setLoadingMeus(false);
     }
-  }, [token, isAuthenticated, ehCliente]);
+  }, [token, isAuthenticated, ehCliente, profissional]);
 
   const iniciarNovoAgendamento = useCallback(() => {
     setAgendamentoCriado(null);
@@ -252,6 +279,7 @@ export function useAgenda(professionalId: number) {
     conflito409,
     agendamentoCriado,
     meusAgendamentos,
+    nomesProfissionais,
     loadingMeus,
     erroMeus,
     selecionarDia,

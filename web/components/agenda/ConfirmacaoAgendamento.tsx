@@ -113,7 +113,7 @@ export const ConfirmacaoAgendamento: React.FC<ConfirmacaoAgendamentoProps> = ({
           <div>
             <dt className="font-medium text-rental-muted">Duração</dt>
             <dd className="mt-0.5 font-bold text-rental-ink">
-              {duracao} minutos
+              {duracao ? `${duracao} minutos` : '—'}
             </dd>
           </div>
         </dl>
