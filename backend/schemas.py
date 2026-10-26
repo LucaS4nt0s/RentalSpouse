@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 import enum
 import re
 from typing import Any, Generic, List, Optional, TypeVar, Union
@@ -354,6 +354,54 @@ class VerificacaoConfirmadaResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Schemas de Recuperação de Senha (issue #75)
+# ---------------------------------------------------------------------------
+
+
+class SolicitarRecuperacaoSenhaRequest(ReenviarVerificacaoRequest):
+    """Payload de solicitação do link de redefinição de senha."""
+
+
+class RedefinirSenhaRequest(BaseModel):
+    """Payload de definição de uma nova senha a partir do token recebido por e-mail."""
+
+    token: str = Field(
+        ...,
+        min_length=16,
+        max_length=256,
+        description="Token de redefinição recebido no link enviado por e-mail",
+    )
+    nova_senha: str = Field(
+        ...,
+        min_length=8,
+        max_length=128,
+        description="Nova senha com no mínimo 8 caracteres",
+    )
+    confirmar_nova_senha: str = Field(
+        ...,
+        min_length=8,
+        max_length=128,
+        description="Confirmação da nova senha",
+    )
+
+    @field_validator("nova_senha")
+    @classmethod
+    def validar_nova_senha(cls, valor: str) -> str:
+        ClienteCreate.validar_senha(valor)
+        if not (any(c.isupper() for c in valor) and any(c.islower() for c in valor)):
+            raise ValueError("A nova senha deve conter letras maiúsculas e minúsculas.")
+        if not any(not c.isalnum() and not c.isspace() for c in valor):
+            raise ValueError("A nova senha deve conter pelo menos um caractere especial.")
+        return valor
+
+    @model_validator(mode="after")
+    def validar_confirmacao(self):
+        if self.nova_senha != self.confirmar_nova_senha:
+            raise ValueError("A confirmação de senha não confere com a nova senha informada.")
+        return self
+
+
+# ---------------------------------------------------------------------------
 # Schemas de Profissional
 # ---------------------------------------------------------------------------
 
@@ -515,7 +563,13 @@ class ProfessionalUpdate(BaseModel):
         return cleaned
 
 
-from models import DocumentType as DocumentTypeEnum, ProfessionalApprovalStatus as ProfessionalApprovalStatusEnum
+from models import (
+    AgendamentoStatus as AgendamentoStatusEnum,
+    DenunciaMotivo as DenunciaMotivoEnum,
+    DenunciaStatus as DenunciaStatusEnum,
+    DocumentType as DocumentTypeEnum,
+    ProfessionalApprovalStatus as ProfessionalApprovalStatusEnum,
+)
 
 
 class ProfessionalRead(ProfessionalBase):
@@ -1026,4 +1080,245 @@ class NotificacaoRead(BaseModel):
     referencia_id: Optional[int] = None
     lida: bool
     criada_em: datetime
+
+
+# ---------------------------------------------------------------------------
+# Schemas de Denúncia de Profissionais (issue #68)
+# ---------------------------------------------------------------------------
+
+# Limites do relato do cliente, compartilhados entre API e interface web.
+DENUNCIA_DESCRICAO_MIN_CARACTERES = 20
+DENUNCIA_DESCRICAO_MAX_CARACTERES = 2000
+
+
+class DenunciaCreate(BaseModel):
+    """Payload de criação de uma denúncia enviada pelo cliente autenticado."""
+
+    professional_id: int = Field(
+        ...,
+        gt=0,
+        description="ID do profissional denunciado (deve existir e estar ativo).",
+    )
+    motivo: str = Field(
+        ...,
+        description=(
+            "Motivo padronizado da denúncia. Aceita: "
+            f"{', '.join(m.value for m in DenunciaMotivoEnum)}."
+        ),
+    )
+    descricao: str = Field(
+        ...,
+        description=(
+            "Relato do ocorrido em texto livre, entre "
+            f"{DENUNCIA_DESCRICAO_MIN_CARACTERES} e {DENUNCIA_DESCRICAO_MAX_CARACTERES} caracteres."
+        ),
+    )
+
+    @field_validator("motivo")
+    @classmethod
+    def validar_motivo(cls, v: str) -> str:
+        """Normaliza (minúsculas/sem espaços) e restringe aos motivos catalogados."""
+        motivos_aceitos = [m.value for m in DenunciaMotivoEnum]
+        normalizado = (v or "").strip().lower()
+        if normalizado not in motivos_aceitos:
+            raise ValueError(
+                f"Motivo '{v}' inválido. Valores aceitos: {', '.join(motivos_aceitos)}."
+            )
+        return normalizado
+
+    @field_validator("descricao")
+    @classmethod
+    def validar_descricao(cls, v: str) -> str:
+        """Exige relato minimamente detalhado e limita o tamanho do texto."""
+        texto = (v or "").strip()
+        if len(texto) < DENUNCIA_DESCRICAO_MIN_CARACTERES:
+            raise ValueError(
+                "Descreva o ocorrido com pelo menos "
+                f"{DENUNCIA_DESCRICAO_MIN_CARACTERES} caracteres para que a equipe consiga avaliar a denúncia."
+            )
+        if len(texto) > DENUNCIA_DESCRICAO_MAX_CARACTERES:
+            raise ValueError(
+                "A descrição da denúncia deve ter no máximo "
+                f"{DENUNCIA_DESCRICAO_MAX_CARACTERES} caracteres."
+            )
+        return texto
+
+
+class DenunciaRead(BaseModel):
+    """Denúncia serializada na visão do cliente autor."""
+
+    id: int
+    cliente_id: int = Field(..., description="Autor da denúncia (derivado do token, nunca do payload).")
+    professional_id: int
+    professional_name: Optional[str] = Field(
+        None,
+        description="Nome do profissional denunciado (nulo se o cadastro não existir mais).",
+    )
+    motivo: str
+    descricao: str
+    status: str = Field(
+        DenunciaStatusEnum.PENDENTE.value,
+        description=(
+            "Situação da denúncia. Toda denúncia nasce como 'pendente'; as demais "
+            "transições pertencem à moderação do administrador (issue #23)."
+        ),
+    )
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Schemas da agenda de disponibilidade e agendamento de slots (issue #78)
+# ---------------------------------------------------------------------------
+
+# Janela máxima consultável de uma vez na agenda (evita varreduras longas) e
+# janela padrão usada quando o cliente não informa `data_fim` (calendário de 30
+# dias consumido pela interface).
+AGENDA_JANELA_MAX_DIAS = 60
+AGENDA_JANELA_PADRAO_DIAS = 30
+
+# Nomes dos dias da semana na convenção de `datetime.weekday()` (0 = segunda).
+DIAS_SEMANA_NOMES = (
+    "segunda-feira",
+    "terça-feira",
+    "quarta-feira",
+    "quinta-feira",
+    "sexta-feira",
+    "sábado",
+    "domingo",
+)
+
+
+def normalizar_datetime_utc(momento: datetime) -> datetime:
+    """
+    Converte um `datetime` (aware ou naive) para o padrão naive-UTC do projeto.
+
+    Datas sem fuso são interpretadas como UTC — o mesmo instante que a agenda
+    devolve — de forma que o cliente possa enviar de volta, sem conversão, o
+    horário que escolheu na grade.
+    """
+    if momento.tzinfo is None:
+        return momento
+    return momento.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+class DisponibilidadeCreate(BaseModel):
+    """Janela semanal de atendimento informada pelo profissional."""
+
+    dia_semana: int = Field(
+        ...,
+        ge=0,
+        le=6,
+        description=f"Dia da semana na convenção de `datetime.weekday()`: 0 = {DIAS_SEMANA_NOMES[0]} ... 6 = {DIAS_SEMANA_NOMES[6]}.",
+    )
+    hora_inicio: time = Field(..., description="Início da janela de atendimento (HH:MM).")
+    hora_fim: time = Field(..., description="Fim da janela de atendimento (HH:MM).")
+    duracao_slot_min: int = Field(
+        60,
+        ge=5,
+        le=480,
+        description="Duração de cada slot em minutos (o intervalo entre dois atendimentos).",
+    )
+
+    @model_validator(mode="after")
+    def validar_janela(self):
+        """Garante uma janela coerente e com espaço para pelo menos um slot inteiro."""
+        if self.hora_fim <= self.hora_inicio:
+            raise ValueError("hora_fim deve ser posterior a hora_inicio.")
+
+        minutos_janela = (
+            self.hora_fim.hour * 60
+            + self.hora_fim.minute
+            - (self.hora_inicio.hour * 60 + self.hora_inicio.minute)
+        )
+        if minutos_janela < self.duracao_slot_min:
+            raise ValueError(
+                "A janela de atendimento precisa comportar pelo menos um slot "
+                f"completo de {self.duracao_slot_min} minutos."
+            )
+        return self
+
+
+class DisponibilidadeRead(BaseModel):
+    """Janela semanal de atendimento já persistida."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    professional_id: int
+    dia_semana: int
+    hora_inicio: time
+    hora_fim: time
+    duracao_slot_min: int
+
+
+class AgendaSlotRead(BaseModel):
+    """
+    Slot de atendimento devolvido pela agenda.
+
+    A agenda devolve apenas slots livres: horários já reservados, bloqueados
+    (#16) ou no passado são omitidos. `disponivel` existe para manter o contrato
+    estável caso a interface passe a exibir slots ocupados desabilitados.
+    """
+
+    data_hora_inicio: datetime = Field(..., description="Início do slot (UTC naive).")
+    data_hora_fim: datetime = Field(..., description="Fim do slot (UTC naive).")
+    disponivel: bool = Field(True, description="Sempre `true`: a agenda só devolve slots livres.")
+
+
+class AgendaDiaRead(BaseModel):
+    """Agenda de um dia: todos os dias da janela são devolvidos, mesmo sem grade."""
+
+    data: date
+    slots: List[AgendaSlotRead] = Field(
+        default_factory=list,
+        description="Slots livres do dia. Lista vazia = dia sem grade ou totalmente ocupado.",
+    )
+
+
+class AgendamentoCreate(BaseModel):
+    """Payload de reserva de um slot da agenda."""
+
+    professional_id: int = Field(..., gt=0, description="ID do profissional cujo slot será reservado.")
+    data_hora_inicio: datetime = Field(
+        ...,
+        description=(
+            "Início do slot escolhido, exatamente como devolvido por "
+            "`GET /api/professionals/{id}/agenda`. Datas sem fuso são tratadas como UTC."
+        ),
+    )
+    orcamento_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="Solicitação de orçamento que originou o agendamento (opcional).",
+    )
+
+    @field_validator("data_hora_inicio")
+    @classmethod
+    def validar_data_futura(cls, v: datetime) -> datetime:
+        """Normaliza para naive-UTC e recusa instantes que já passaram."""
+        inicio = normalizar_datetime_utc(v)
+        if inicio <= datetime.now(timezone.utc).replace(tzinfo=None):
+            raise ValueError("O agendamento precisa ser feito para um horário no futuro.")
+        return inicio
+
+
+class AgendamentoRead(BaseModel):
+    """Agendamento serializado para o cliente autor."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    professional_id: int
+    cliente_id: int = Field(..., description="Cliente autor da reserva (derivado do token, nunca do payload).")
+    orcamento_id: Optional[int] = None
+    data_hora_inicio: datetime
+    data_hora_fim: datetime
+    status: str = Field(
+        ...,
+        description=f"Situação do agendamento: {', '.join(s.value for s in AgendamentoStatusEnum)}.",
+    )
+    criado_em: datetime
 

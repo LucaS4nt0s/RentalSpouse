@@ -8,8 +8,10 @@ import database
 from migrations import run_all_migrations
 from routes.admin_moderation import router as admin_moderation_router
 from routes.admins import router as admins_router
+from routes.agendamentos import router as agendamentos_router
 from routes.auth import router as auth_router
 from routes.clientes import router as clientes_router
+from routes.denuncias import router as denuncias_router
 from routes.hello import router as hello_router
 from routes.professional_documents_me import (
     router as professional_documents_me_router,
@@ -20,6 +22,7 @@ from routes.professionals import (
 )
 from routes.verificacao import router as verificacao_router
 from routes.orcamentos import router as orcamentos_router
+from routes.recuperacao_senha import router as recuperacao_senha_router
 from routes.notificacoes import (
     router as notificacoes_router,
     ws_router as notificacoes_ws_router,
@@ -83,9 +86,13 @@ app.include_router(professional_documents_me_router)
 app.include_router(professionals_router)
 app.include_router(profissionais_router)
 app.include_router(auth_router)
+app.include_router(recuperacao_senha_router)
 app.include_router(admins_router)
+app.include_router(denuncias_router)
 app.include_router(admin_moderation_router)
 app.include_router(orcamentos_router)
 app.include_router(notificacoes_router)
 app.include_router(notificacoes_ws_router)
+# Agenda de disponibilidade e agendamento de slots (issue #78).
+app.include_router(agendamentos_router)
 

@@ -201,7 +201,6 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [forgotPasswordNotice, setForgotPasswordNotice] = useState(false);
 
   // Estados de formulário e validação
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
@@ -397,13 +396,20 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
             <span className="font-semibold block">{serverError.message}</span>
             {serverError.type === 'invalid_credentials' && (
               <span className="mt-1 block text-rental-muted">
-                Esqueceu sua senha ou não tem cadastro?{' '}
+                Esqueceu sua senha?{' '}
+                <Link
+                  href="/esqueci-senha"
+                  className="font-bold text-rental-primary hover:underline ml-1"
+                >
+                  Recuperar acesso
+                </Link>
+                {' '}ou{' '}
                 <button
                   type="button"
                   onClick={onSwitchToSignUp}
-                  className="font-bold text-rental-primary hover:underline ml-1"
+                  className="font-bold text-rental-primary hover:underline"
                 >
-                  Cadastre-se aqui
+                  crie uma conta
                 </button>
               </span>
             )}
@@ -477,27 +483,13 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
             <label htmlFor="login-password" className="text-xs font-bold uppercase tracking-wide text-rental-muted">
               Senha
             </label>
-            <button
-              type="button"
-              tabIndex={-1}
-              onClick={() => setForgotPasswordNotice((v) => !v)}
+            <Link
+              href="/esqueci-senha"
               className="text-xs font-semibold text-rental-primary hover:underline"
             >
               Esqueci minha senha
-            </button>
+            </Link>
           </div>
-          {forgotPasswordNotice && (
-            <div className="mb-2 flex items-start gap-2.5 rounded-xl border border-rental-border bg-rental-surface2 p-3 text-xs text-rental-ink animate-fadeIn">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rental-primary" />
-              <div>
-                <span className="font-bold text-rental-ink">Recuperação de conta</span>
-                <p className="mt-0.5 text-rental-muted">
-                  O fluxo automatizado de redefinição de senha está em desenvolvimento. Para redefinir sua senha agora, solicite via{' '}
-                  <span className="font-semibold text-rental-primary">suporte@rentalspouse.com</span>.
-                </p>
-              </div>
-            </div>
-          )}
           <div className="relative">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-rental-muted">
               <Lock className="h-4 w-4" />
