@@ -33,6 +33,7 @@ import {
 import { Button } from '../../../components/ui/Button';
 import { ThemeToggle } from '../../../components/ui/ThemeToggle';
 import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
+import { useNotifications } from '../../../context/NotificationContext';
 import { QuoteDetailModal } from '../../../components/orcamentos/QuoteDetailModal';
 
 type FilterTab = 'todos' | 'respondido' | 'aceito' | 'pendente' | 'recusado';
@@ -52,15 +53,14 @@ export default function ClienteOrcamentosPage() {
   // Lightbox de foto
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
 
+  const { notificacoes } = useNotifications();
+
   const carregarOrcamentos = useCallback(async () => {
     if (!token) return;
     setIsLoading(true);
     setError(null);
     try {
-      const data = await listarMeusOrcamentos(
-        token,
-        activeTab === 'todos' ? undefined : activeTab
-      );
+      const data = await listarMeusOrcamentos(token);
       setOrcamentos(data);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Falha ao carregar orçamentos.';
@@ -68,15 +68,27 @@ export default function ClienteOrcamentosPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [token, activeTab]);
+  }, [token]);
 
   useEffect(() => {
     if (isAuthenticated) {
       carregarOrcamentos();
     }
-  }, [isAuthenticated, carregarOrcamentos]);
+  }, [isAuthenticated, carregarOrcamentos, notificacoes]);
 
-  // Contadores para os Cards de Resumo no topo
+  // Fecha o lightbox de foto com a tecla Escape
+  useEffect(() => {
+    if (!previewPhotoUrl) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPreviewPhotoUrl(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewPhotoUrl]);
+
+  // Contadores globais para os Cards de Resumo no topo (não zeram ao trocar de aba)
   const contadores = useMemo(() => {
     const total = orcamentos.length;
     let pendentes = 0;
@@ -94,17 +106,21 @@ export default function ClienteOrcamentosPage() {
     return { total, pendentes, respondidos, aceitos, recusados };
   }, [orcamentos]);
 
-  // Filtragem local adicional por texto de busca (nome do profissional ou descrição)
+  // Filtragem local por aba ativa e busca textual
   const orcamentosFiltrados = useMemo(() => {
-    if (!searchQuery.trim()) return orcamentos;
+    let list = orcamentos;
+    if (activeTab !== 'todos') {
+      list = list.filter((o) => o.status === activeTab);
+    }
+    if (!searchQuery.trim()) return list;
     const query = searchQuery.toLowerCase().trim();
-    return orcamentos.filter((o) => {
+    return list.filter((o) => {
       const profName = (o.professional_name || '').toLowerCase();
       const desc = (o.descricao || '').toLowerCase();
       const resposta = (o.resposta_profissional || '').toLowerCase();
       return profName.includes(query) || desc.includes(query) || resposta.includes(query);
     });
-  }, [orcamentos, searchQuery]);
+  }, [orcamentos, activeTab, searchQuery]);
 
   // 1. Loading inicial de autenticação
   if (authLoading) {

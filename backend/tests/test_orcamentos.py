@@ -640,6 +640,54 @@ class TestListarMeusOrcamentos:
         assert res_invasor.status_code == 403
         assert "Acesso negado aos detalhes deste orçamento." in res_invasor.json()["detail"]
 
+    def test_cliente_com_user_id_none_nao_vaza_orcamentos_sem_cliente_id(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        from datetime import date
+        email_cliente = "cliente.real@exemplo.com"
+        cli = models.Cliente(
+            nome="Cliente Real",
+            email=email_cliente,
+            cpf="11122233344",
+            data_nascimento=date(1990, 1, 1),
+            senha_hash=hash_senha("Senha123!"),
+            cep="01310100",
+            logradouro="Rua Real",
+            numero="10",
+            bairro="Centro",
+            cidade="São Paulo",
+            estado="SP",
+            email_verificado=True,
+        )
+        db_session.add(cli)
+        db_session.commit()
+
+        # Cria orçamento anônimo / convidado (cliente_id = None) com outro e-mail
+        orc_anonimo = models.Orcamento(
+            cliente_id=None,
+            cliente_nome="Convidado Anônimo",
+            cliente_email="outro.convidado@exemplo.com",
+            professional_id=profissional_teste.id,
+            descricao="Instalação elétrica de emergência sem cadastro.",
+            status="pendente",
+        )
+        db_session.add(orc_anonimo)
+        db_session.commit()
+
+        # Token do cliente (autenticado apenas pela tabela clientes, onde current_user.id é None)
+        token_cli = create_access_token({"sub": email_cliente, "role": "client"})
+        headers_cli = {"Authorization": f"Bearer {token_cli}"}
+
+        # O cliente não deve listar o orçamento anônimo de terceiro
+        res = client.get("/api/orcamentos/me", headers=headers_cli)
+        assert res.status_code == 200
+        assert len(res.json()) == 0
+
+        # O cliente não deve conseguir acessar os detalhes do orçamento de terceiro
+        res_detalhes = client.get(f"/api/orcamentos/{orc_anonimo.id}", headers=headers_cli)
+        assert res_detalhes.status_code == 403
+        assert "Acesso negado aos detalhes deste orçamento." in res_detalhes.json()["detail"]
+
 
 class TestAceitarOrcamento:
     """Validação da rota PATCH /api/orcamentos/{id}/aceitar (Issue #29)."""

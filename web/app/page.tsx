@@ -63,10 +63,11 @@ export default function Home() {
                     ? '/profissional/orcamentos'
                     : '/cliente/orcamentos'
                 }
-                className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
+                title="Meus Orçamentos"
               >
                 <Briefcase className="h-3.5 w-3.5" />
-                <span>Meus Orçamentos</span>
+                <span className="hidden sm:inline">Meus Orçamentos</span>
               </Link>
               <Link
                 href="/entrar"

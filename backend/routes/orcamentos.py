@@ -277,13 +277,11 @@ def listar_meus_orcamentos(
     elif current_user.role == models.UserRole.ADMIN.value:
         pass  # Admins podem visualizar todos
     else:
-        # Cliente: busca pelo e-mail ou cliente_id vinculado
+        # Cliente: busca pelo e-mail ou cliente_id vinculado na tabela clientes
         email_limpo = current_user.email.strip().lower()
         cli = db.query(models.Cliente).filter(models.Cliente.email == email_limpo).first()
-        cliente_filtro = (models.Orcamento.cliente_email == email_limpo) | (
-            models.Orcamento.cliente_id == current_user.id
-        )
-        if cli:
+        cliente_filtro = (models.Orcamento.cliente_email == email_limpo)
+        if cli and cli.id is not None:
             cliente_filtro = cliente_filtro | (models.Orcamento.cliente_id == cli.id)
         query = query.filter(cliente_filtro)
 
@@ -377,8 +375,7 @@ def obter_orcamento(
         cli = db.query(models.Cliente).filter(models.Cliente.email == email_limpo).first()
         eh_cliente_autor = (
             orcamento.cliente_email == email_limpo
-            or orcamento.cliente_id == current_user.id
-            or (cli is not None and orcamento.cliente_id == cli.id)
+            or (cli is not None and cli.id is not None and orcamento.cliente_id == cli.id)
         )
         if not (eh_profissional_alvo or eh_cliente_autor):
             raise HTTPException(
