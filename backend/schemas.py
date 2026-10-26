@@ -950,6 +950,7 @@ class OrcamentoRead(BaseModel):
     cliente_email: str
     cliente_telefone: Optional[str] = None
     professional_id: int
+    professional_name: Optional[str] = None
     descricao: str
     status: str
     valor_estimado: Optional[float] = None
