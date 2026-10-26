@@ -110,6 +110,31 @@ def migrate_columns_and_indexes(engine: Engine) -> None:
                     conn.execute(text(f"ALTER TABLE orcamentos ADD COLUMN {col_name} {col_type}"))
 
 
+def migrate_agenda_tables(engine: Engine) -> None:
+    """
+    Garante as tabelas da agenda de disponibilidade e de agendamentos (issue #78).
+
+    `Base.metadata.create_all(..., checkfirst=True)` é idempotente e reutiliza
+    exatamente o DDL declarado em `models.py` — inclusive o índice único parcial
+    que impede double-booking —, então não há risco de divergência entre modelo
+    e migração. Bancos legados (volumes existentes) recebem as tabelas sem
+    recriação do container/volume.
+    """
+    inspector = inspect(engine)
+    tabelas = [
+        models.DisponibilidadeProfissional.__table__,
+        models.Agendamento.__table__,
+    ]
+    ausentes = [tabela.name for tabela in tabelas if not inspector.has_table(tabela.name)]
+    if not ausentes:
+        return
+
+    logger.info(
+        "Migração RentalSpouse: criando tabela(s) da agenda %s...", ", ".join(ausentes)
+    )
+    models.Base.metadata.create_all(bind=engine, tables=tabelas)
+
+
 def backfill_normalized_fields(session_factory: Callable[[], Session], batch_size: int = 200) -> int:
     """
     Percorre profissionais que possuem campos normalizados como NULL em lotes
@@ -142,6 +167,7 @@ def backfill_normalized_fields(session_factory: Callable[[], Session], batch_siz
 
 
 def run_all_migrations(engine: Engine, session_factory: Callable[[], Session]) -> None:
-    """Executa a verificação/adição de colunas, índices e o backfill de dados."""
+    """Executa a verificação/adição de colunas, índices, tabelas novas e o backfill de dados."""
     migrate_columns_and_indexes(engine)
+    migrate_agenda_tables(engine)
     backfill_normalized_fields(session_factory)
