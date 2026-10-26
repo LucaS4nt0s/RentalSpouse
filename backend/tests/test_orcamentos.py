@@ -513,6 +513,132 @@ class TestListarMeusOrcamentos:
         res = client.get("/api/orcamentos/me", headers=headers_prof)
         assert res.status_code == 200
         assert len(res.json()) >= 2
+        # Verifica se o professional_name é retornado
+        assert res.json()[0]["professional_name"] == profissional_teste.name
+
+    def test_cliente_lista_seus_orcamentos_e_filtra_por_status(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        from datetime import date
+        email_cliente = "carolina.cliente@exemplo.com"
+        user_cli = models.User(
+            name="Carolina Cliente",
+            email=email_cliente,
+            hashed_password=hash_senha("Senha123!"),
+            role=models.UserRole.CLIENT.value,
+            is_active=True,
+        )
+        cli = models.Cliente(
+            nome="Carolina Cliente",
+            email=email_cliente,
+            cpf="98765432100",
+            data_nascimento=date(1995, 5, 20),
+            senha_hash=hash_senha("Senha123!"),
+            cep="01310100",
+            logradouro="Rua Teste",
+            numero="123",
+            bairro="Centro",
+            cidade="São Paulo",
+            estado="SP",
+            email_verificado=True,
+        )
+        db_session.add(user_cli)
+        db_session.add(cli)
+        db_session.commit()
+
+        token_cli = create_access_token({"sub": email_cliente, "role": "client"})
+        headers_cli = {"Authorization": f"Bearer {token_cli}"}
+
+        # Cria orçamento da Carolina
+        client.post(
+            "/api/orcamentos",
+            data={
+                "professional_id": str(profissional_teste.id),
+                "descricao": "Instalação de lustre de cristal na sala de jantar.",
+                "cliente_nome": "Carolina Cliente",
+                "cliente_email": email_cliente,
+            },
+        )
+
+        # Cria orçamento de outro cliente
+        client.post(
+            "/api/orcamentos",
+            data={
+                "professional_id": str(profissional_teste.id),
+                "descricao": "Troca de disjuntor principal da residência.",
+                "cliente_nome": "Outro Cliente",
+                "cliente_email": "outro.alguem@exemplo.com",
+            },
+        )
+
+        # Carolina lista seus orçamentos
+        res = client.get("/api/orcamentos/me", headers=headers_cli)
+        assert res.status_code == 200
+        orcamentos_carolina = res.json()
+        assert len(orcamentos_carolina) == 1
+        assert orcamentos_carolina[0]["cliente_email"] == email_cliente
+        assert orcamentos_carolina[0]["professional_name"] == profissional_teste.name
+        assert orcamentos_carolina[0]["status"] == "pendente"
+
+        # Filtra por pendente -> retorna 1
+        res_pend = client.get("/api/orcamentos/me?status_filtro=pendente", headers=headers_cli)
+        assert res_pend.status_code == 200
+        assert len(res_pend.json()) == 1
+
+        # Filtra por respondido -> retorna 0
+        res_resp = client.get("/api/orcamentos/me?status_filtro=respondido", headers=headers_cli)
+        assert res_resp.status_code == 200
+        assert len(res_resp.json()) == 0
+
+    def test_cliente_acesso_detalhes_seguranca_bloqueia_outro_cliente(
+        self, client: TestClient, profissional_teste: models.Professional, db_session: Session
+    ):
+        email_autor = "autor@exemplo.com"
+        email_invasor = "invasor@exemplo.com"
+
+        user_autor = models.User(
+            name="Autor",
+            email=email_autor,
+            hashed_password="hash",
+            role=models.UserRole.CLIENT.value,
+            is_active=True,
+        )
+        user_invasor = models.User(
+            name="Invasor",
+            email=email_invasor,
+            hashed_password="hash",
+            role=models.UserRole.CLIENT.value,
+            is_active=True,
+        )
+        db_session.add(user_autor)
+        db_session.add(user_invasor)
+        db_session.commit()
+
+        # Cria orçamento para o autor
+        res_post = client.post(
+            "/api/orcamentos",
+            data={
+                "professional_id": str(profissional_teste.id),
+                "descricao": "Reparo estrutural elétrico no escritório.",
+                "cliente_nome": "Autor",
+                "cliente_email": email_autor,
+            },
+        )
+        orc_id = res_post.json()["id"]
+
+        token_autor = create_access_token({"sub": email_autor, "role": "client"})
+        token_invasor = create_access_token({"sub": email_invasor, "role": "client"})
+
+        # Autor acessa detalhes com sucesso
+        res_autor = client.get(f"/api/orcamentos/{orc_id}", headers={"Authorization": f"Bearer {token_autor}"})
+        assert res_autor.status_code == 200
+        assert res_autor.json()["id"] == orc_id
+        assert res_autor.json()["professional_name"] == profissional_teste.name
+
+        # Invasor tenta acessar detalhes -> 403 Forbidden
+        res_invasor = client.get(f"/api/orcamentos/{orc_id}", headers={"Authorization": f"Bearer {token_invasor}"})
+        assert res_invasor.status_code == 403
+        assert "Acesso negado aos detalhes deste orçamento." in res_invasor.json()["detail"]
 
 
 class TestAceitarOrcamento:

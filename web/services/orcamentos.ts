@@ -17,6 +17,7 @@ export interface Orcamento {
   cliente_email: string;
   cliente_telefone?: string | null;
   professional_id: number;
+  professional_name?: string | null;
   descricao: string;
   status: 'pendente' | 'aceito' | 'respondido' | 'recusado' | 'cancelado' | string;
   valor_estimado?: number | null;

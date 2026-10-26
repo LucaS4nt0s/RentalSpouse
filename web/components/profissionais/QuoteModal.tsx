@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import {
   X,
   Phone,
@@ -269,6 +270,22 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
                 ✓ {photos.length} foto(s) anexada(s) com sucesso.
               </p>
             )}
+            <div className="mt-5 flex flex-col sm:flex-row items-center gap-2">
+              <Link
+                href="/cliente/orcamentos"
+                onClick={onClose}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-rental-primary px-4 py-2 text-xs font-bold text-white shadow-primary hover:bg-[var(--rs-primary-hover)] transition-all"
+              >
+                Acompanhar Meus Orçamentos
+              </Link>
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl border border-rental-border px-4 py-2 text-xs font-semibold text-rental-muted hover:text-rental-ink transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         ) : (
           <div>

@@ -19,6 +19,7 @@ import {
   ThumbsUp,
   ThumbsDown,
   ArrowLeft,
+  Briefcase,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -319,33 +320,52 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
             </div>
           ) : (
             <>
-              {/* Informações do Cliente Solicitante */}
-              <div className="rounded-2xl border border-rental-border bg-rental-surface2/30 p-4 space-y-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-rental-muted">
-                  Cliente Solicitante
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="flex items-center gap-2 text-rental-ink">
-                    <User className="h-4 w-4 text-rental-primary shrink-0" />
-                    <span className="font-semibold">{orcamento.cliente_nome}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-rental-ink">
-                    <Mail className="h-4 w-4 text-rental-primary shrink-0" />
-                    <span className="truncate">{orcamento.cliente_email}</span>
-                  </div>
-                  {orcamento.cliente_telefone && (
-                    <div className="flex items-center gap-2 text-rental-ink">
-                      <Phone className="h-4 w-4 text-rental-primary shrink-0" />
-                      <span>{orcamento.cliente_telefone}</span>
+              {/* Participantes: Profissional e Cliente */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Cartão do Profissional Destinatário */}
+                <div className="rounded-2xl border border-rental-border bg-rental-surface2/30 p-4 space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-rental-muted flex items-center gap-1.5">
+                    <Briefcase className="h-3.5 w-3.5 text-rental-primary shrink-0" />
+                    Profissional Destinatário
+                  </span>
+                  <div className="text-xs space-y-1">
+                    <div className="font-extrabold text-sm text-rental-ink">
+                      {orcamento.professional_name || `Profissional #${orcamento.professional_id}`}
                     </div>
-                  )}
-                  <div className="flex items-center gap-2 text-rental-muted">
-                    <Clock className="h-4 w-4 text-rental-muted shrink-0" />
-                    <span>
-                      Solicitado em {new Date(orcamento.criado_em).toLocaleString('pt-BR')}
+                    <span className="text-rental-muted text-[11px] block">
+                      Prestador parceiro RentalSpouse
                     </span>
                   </div>
                 </div>
+
+                {/* Cartão do Cliente Solicitante */}
+                <div className="rounded-2xl border border-rental-border bg-rental-surface2/30 p-4 space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-rental-muted flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 text-rental-primary shrink-0" />
+                    Cliente Solicitante
+                  </span>
+                  <div className="text-xs space-y-1 text-rental-ink">
+                    <div className="font-semibold text-rental-ink">{orcamento.cliente_nome}</div>
+                    <div className="flex items-center gap-1.5 text-rental-muted truncate">
+                      <Mail className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{orcamento.cliente_email}</span>
+                    </div>
+                    {orcamento.cliente_telefone && (
+                      <div className="flex items-center gap-1.5 text-rental-muted">
+                        <Phone className="h-3.5 w-3.5 shrink-0" />
+                        <span>{orcamento.cliente_telefone}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Data da Solicitação */}
+              <div className="flex items-center gap-2 text-xs text-rental-muted px-1">
+                <Clock className="h-4 w-4 shrink-0 text-rental-primary" />
+                <span>
+                  Solicitado em {new Date(orcamento.criado_em).toLocaleString('pt-BR')}
+                </span>
               </div>
 
               {/* Descrição do Problema */}
@@ -477,6 +497,19 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                         {orcamento.resposta_profissional}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* 4. Status: Pendente (visão do cliente) */}
+                {orcamento.status === 'pendente' && !isProfessional && (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 space-y-2">
+                    <div className="flex items-center gap-2 text-amber-500 font-extrabold text-sm">
+                      <Clock className="h-5 w-5" />
+                      <span>Aguardando Análise do Profissional</span>
+                    </div>
+                    <p className="text-xs text-rental-ink/80 leading-relaxed">
+                      Sua solicitação de orçamento foi enviada ao profissional. Assim que ele avaliar a descrição e fotos anexadas, você receberá uma notificação aqui com o parecer técnico e a estimativa de valor.
+                    </p>
                   </div>
                 )}
 

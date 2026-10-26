@@ -67,6 +67,8 @@ def _montar_orcamento_read(orcamento: models.Orcamento) -> OrcamentoRead:
             )
         )
 
+    prof_name = orcamento.professional.name if orcamento.professional else None
+
     return OrcamentoRead(
         id=orcamento.id,
         cliente_id=orcamento.cliente_id,
@@ -74,6 +76,7 @@ def _montar_orcamento_read(orcamento: models.Orcamento) -> OrcamentoRead:
         cliente_email=orcamento.cliente_email,
         cliente_telefone=orcamento.cliente_telefone,
         professional_id=orcamento.professional_id,
+        professional_name=prof_name,
         descricao=orcamento.descricao,
         status=orcamento.status,
         valor_estimado=orcamento.valor_estimado,
@@ -274,11 +277,15 @@ def listar_meus_orcamentos(
     elif current_user.role == models.UserRole.ADMIN.value:
         pass  # Admins podem visualizar todos
     else:
-        # Cliente: busca pelo e-mail ou cliente_id
-        query = query.filter(
-            (models.Orcamento.cliente_email == current_user.email.strip().lower())
-            | (models.Orcamento.cliente_id == current_user.id)
+        # Cliente: busca pelo e-mail ou cliente_id vinculado
+        email_limpo = current_user.email.strip().lower()
+        cli = db.query(models.Cliente).filter(models.Cliente.email == email_limpo).first()
+        cliente_filtro = (models.Orcamento.cliente_email == email_limpo) | (
+            models.Orcamento.cliente_id == current_user.id
         )
+        if cli:
+            cliente_filtro = cliente_filtro | (models.Orcamento.cliente_id == cli.id)
+        query = query.filter(cliente_filtro)
 
     if status_filtro:
         query = query.filter(models.Orcamento.status == status_filtro.strip().lower())
@@ -366,9 +373,12 @@ def obter_orcamento(
     if current_user and current_user.role != models.UserRole.ADMIN.value:
         prof = db.query(models.Professional).filter(models.Professional.email == current_user.email).first()
         eh_profissional_alvo = prof and prof.id == orcamento.professional_id
+        email_limpo = current_user.email.strip().lower()
+        cli = db.query(models.Cliente).filter(models.Cliente.email == email_limpo).first()
         eh_cliente_autor = (
-            orcamento.cliente_email == current_user.email.strip().lower()
+            orcamento.cliente_email == email_limpo
             or orcamento.cliente_id == current_user.id
+            or (cli is not None and orcamento.cliente_id == cli.id)
         )
         if not (eh_profissional_alvo or eh_cliente_autor):
             raise HTTPException(

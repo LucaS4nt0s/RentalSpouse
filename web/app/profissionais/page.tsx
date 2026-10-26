@@ -130,9 +130,13 @@ function ProfissionaisSearchContent() {
               Início
             </Link>
 
-            {isAuthenticated && user && (user.tipo === 'profissional' || user.role === 'professional') && (
+            {isAuthenticated && user && (
               <Link
-                href="/profissional/orcamentos"
+                href={
+                  user.tipo === 'profissional' || user.role === 'professional'
+                    ? '/profissional/orcamentos'
+                    : '/cliente/orcamentos'
+                }
                 className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
               >
                 <Briefcase className="h-3.5 w-3.5" />
