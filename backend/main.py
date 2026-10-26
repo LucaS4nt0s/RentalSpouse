@@ -22,6 +22,7 @@ from routes.professionals import (
 )
 from routes.verificacao import router as verificacao_router
 from routes.orcamentos import router as orcamentos_router
+from routes.recuperacao_senha import router as recuperacao_senha_router
 from routes.notificacoes import (
     router as notificacoes_router,
     ws_router as notificacoes_ws_router,
@@ -85,6 +86,7 @@ app.include_router(professional_documents_me_router)
 app.include_router(professionals_router)
 app.include_router(profissionais_router)
 app.include_router(auth_router)
+app.include_router(recuperacao_senha_router)
 app.include_router(admins_router)
 app.include_router(denuncias_router)
 app.include_router(admin_moderation_router)

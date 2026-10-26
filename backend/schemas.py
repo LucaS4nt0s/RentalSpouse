@@ -354,6 +354,54 @@ class VerificacaoConfirmadaResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Schemas de Recuperação de Senha (issue #75)
+# ---------------------------------------------------------------------------
+
+
+class SolicitarRecuperacaoSenhaRequest(ReenviarVerificacaoRequest):
+    """Payload de solicitação do link de redefinição de senha."""
+
+
+class RedefinirSenhaRequest(BaseModel):
+    """Payload de definição de uma nova senha a partir do token recebido por e-mail."""
+
+    token: str = Field(
+        ...,
+        min_length=16,
+        max_length=256,
+        description="Token de redefinição recebido no link enviado por e-mail",
+    )
+    nova_senha: str = Field(
+        ...,
+        min_length=8,
+        max_length=128,
+        description="Nova senha com no mínimo 8 caracteres",
+    )
+    confirmar_nova_senha: str = Field(
+        ...,
+        min_length=8,
+        max_length=128,
+        description="Confirmação da nova senha",
+    )
+
+    @field_validator("nova_senha")
+    @classmethod
+    def validar_nova_senha(cls, valor: str) -> str:
+        ClienteCreate.validar_senha(valor)
+        if not (any(c.isupper() for c in valor) and any(c.islower() for c in valor)):
+            raise ValueError("A nova senha deve conter letras maiúsculas e minúsculas.")
+        if not any(not c.isalnum() and not c.isspace() for c in valor):
+            raise ValueError("A nova senha deve conter pelo menos um caractere especial.")
+        return valor
+
+    @model_validator(mode="after")
+    def validar_confirmacao(self):
+        if self.nova_senha != self.confirmar_nova_senha:
+            raise ValueError("A confirmação de senha não confere com a nova senha informada.")
+        return self
+
+
+# ---------------------------------------------------------------------------
 # Schemas de Profissional
 # ---------------------------------------------------------------------------
 
