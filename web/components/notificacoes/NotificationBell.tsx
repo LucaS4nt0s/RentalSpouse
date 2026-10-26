@@ -82,9 +82,13 @@ export const NotificationBell: React.FC = () => {
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="relative flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-rental-border bg-rental-surface text-rental-muted hover:border-rental-primary/40 hover:text-rental-primary transition-colors focus:outline-none"
+        className="relative flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-rental-border bg-rental-surface text-rental-muted hover:border-rental-primary/40 hover:text-rental-primary transition-colors focus:outline-none focus:ring-2 focus:ring-rental-primary/50"
         title="Notificações em tempo real"
-        aria-label="Abrir notificações"
+        aria-label={
+          unreadCount > 0
+            ? `Abrir notificações (${unreadCount} nova${unreadCount > 1 ? 's' : ''})`
+            : 'Abrir notificações'
+        }
         aria-expanded={isOpen}
       >
         <Bell className="h-4 w-4" />
@@ -176,6 +180,8 @@ export const NotificationBell: React.FC = () => {
               notificacoes.map((item) => (
                 <div
                   key={item.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => {
                     if (!item.lida) markAsRead(item.id);
                     if (item.referencia_id) {
@@ -183,7 +189,17 @@ export const NotificationBell: React.FC = () => {
                       setIsOpen(false);
                     }
                   }}
-                  className={`group relative rounded-2xl p-3 border transition-all cursor-pointer ${
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      if (!item.lida) markAsRead(item.id);
+                      if (item.referencia_id) {
+                        openQuoteModal(item.referencia_id);
+                        setIsOpen(false);
+                      }
+                    }
+                  }}
+                  className={`group relative rounded-2xl p-3 border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-rental-primary/50 ${
                     item.lida
                       ? 'border-rental-border bg-rental-surface hover:bg-rental-surface2/40'
                       : 'border-rental-primary/30 bg-rental-primary/5 hover:bg-rental-primary/10'

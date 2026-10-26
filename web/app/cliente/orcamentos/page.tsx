@@ -403,18 +403,22 @@ export default function ClienteOrcamentosPage() {
                   : 'Você ainda não enviou solicitações de orçamento. Encontre profissionais qualificados e solicite uma estimativa com fotos.'}
               </p>
             </div>
-            <div className="pt-2 flex justify-center gap-3">
-              {searchQuery ? (
+            <div className="pt-2 flex flex-wrap justify-center gap-3">
+              {searchQuery && (
                 <Button variant="secondary" size="sm" onClick={() => setSearchQuery('')}>
                   Limpar busca
                 </Button>
-              ) : (
-                <Link href="/profissionais">
-                  <Button variant="primary" size="md" leftIcon={<Sparkles className="h-4 w-4" />}>
-                    Buscar Profissionais Disponíveis
-                  </Button>
-                </Link>
               )}
+              {activeTab !== 'todos' && (
+                <Button variant="secondary" size="sm" onClick={() => setActiveTab('todos')}>
+                  Ver todos os orçamentos ({contadores.total})
+                </Button>
+              )}
+              <Link href="/profissionais">
+                <Button variant="primary" size="md" leftIcon={<Sparkles className="h-4 w-4" />}>
+                  Buscar Profissionais Disponíveis
+                </Button>
+              </Link>
             </div>
           </div>
         ) : (
