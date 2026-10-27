@@ -898,6 +898,12 @@ class ProfessionalModerationDecisionRead(BaseModel):
 # =============================================================================
 
 
+def _garantir_utc(v: Optional[datetime]) -> Optional[datetime]:
+    if isinstance(v, datetime) and v.tzinfo is None:
+        return v.replace(tzinfo=timezone.utc)
+    return v
+
+
 class OrcamentoFotoRead(BaseModel):
     """Schema de leitura para uma foto anexada ao orçamento."""
 
@@ -910,6 +916,8 @@ class OrcamentoFotoRead(BaseModel):
     mime_type: str
     enviado_em: datetime
     url_download: Optional[str] = None
+
+    _utc = field_validator("enviado_em", mode="after")(_garantir_utc)
 
 
 class OrcamentoCreate(BaseModel):
@@ -963,6 +971,10 @@ class OrcamentoRead(BaseModel):
     criado_em: datetime
     atualizado_em: datetime
     fotos: List[OrcamentoFotoRead] = []
+
+    _utc = field_validator(
+        "respondido_em", "data_prevista", "decidido_em", "criado_em", "atualizado_em", mode="after"
+    )(_garantir_utc)
 
 
 class OrcamentoResponder(BaseModel):
@@ -1019,7 +1031,7 @@ class OrcamentoAceitar(BaseModel):
     @classmethod
     def _validar_data_prevista(cls, v: Optional[datetime]) -> Optional[datetime]:
         if v is not None:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
             v_cmp = v if v.tzinfo is not None else v.replace(tzinfo=timezone.utc)
             if v_cmp < now:
                 raise ValueError("A data prevista não pode ser uma data no passado.")
@@ -1081,6 +1093,8 @@ class NotificacaoRead(BaseModel):
     referencia_id: Optional[int] = None
     lida: bool
     criada_em: datetime
+
+    _utc = field_validator("criada_em", mode="after")(_garantir_utc)
 
 
 # ---------------------------------------------------------------------------
