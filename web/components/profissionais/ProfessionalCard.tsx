@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { ShieldCheck, MapPin, MessageSquare, ArrowRight, User, Flag } from 'lucide-react';
+import Link from 'next/link';
+import { ShieldCheck, MapPin, MessageSquare, Calendar, Flag } from 'lucide-react';
 import { Professional } from '../../types/professional';
 
 export interface ProfessionalCardProps {
@@ -11,6 +12,8 @@ export interface ProfessionalCardProps {
   onRequestQuote?: (professional: Professional) => void;
   /** Abre o fluxo de denúncia do profissional (issue #68). */
   onReportProfessional?: (professional: Professional) => void;
+  /** Rota para a tela de agendamento do profissional (issue #79). */
+  scheduleHref?: string;
 }
 
 export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
@@ -19,6 +22,7 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
   onSpecialtyClick,
   onRequestQuote,
   onReportProfessional,
+  scheduleHref,
 }) => {
   // Iniciais do nome para o avatar caso não haja foto
   const getInitials = (name: string) => {
@@ -123,6 +127,15 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
 
       {/* Ações do Card */}
       <div className="mt-5 pt-1 flex items-center gap-2">
+        <Link
+          href={scheduleHref ?? `/profissionais/${professional.id}/agendar`}
+          aria-label={`Agendar atendimento com ${professional.name}`}
+          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rental-primary/40 bg-rental-primary/10 px-3.5 py-2.5 text-xs sm:text-sm font-bold text-rental-primary transition-all hover:bg-rental-primary hover:text-white active:scale-[0.98]"
+        >
+          <Calendar className="h-4 w-4" />
+          <span>Agendar</span>
+        </Link>
+
         <button
           type="button"
           onClick={() => onRequestQuote && onRequestQuote(professional)}
