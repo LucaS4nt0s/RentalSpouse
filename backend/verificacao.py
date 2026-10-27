@@ -167,6 +167,7 @@ def enviar_email_de_verificacao(pendente: EmailPendente) -> bool:
 
     Retorna `True` quando a mensagem foi efetivamente entregue ao transporte.
     """
+    destinatario_mascarado = email_service.mascarar_email(pendente.destinatario)
     try:
         email_service.enviar_email_verificacao(
             destinatario=pendente.destinatario,
@@ -177,7 +178,14 @@ def enviar_email_de_verificacao(pendente: EmailPendente) -> bool:
     except email_service.ErroEnvioEmail as erro:
         logger.error(
             "Não foi possível enviar o e-mail de verificação para %s: %s",
-            pendente.destinatario,
+            destinatario_mascarado,
+            erro,
+        )
+        return False
+    except Exception as erro:
+        logger.exception(
+            "Erro inesperado ao despachar e-mail de verificação para %s: %s",
+            destinatario_mascarado,
             erro,
         )
         return False
