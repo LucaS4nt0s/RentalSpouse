@@ -130,13 +130,18 @@ function ProfissionaisSearchContent() {
               Início
             </Link>
 
-            {isAuthenticated && user && (user.tipo === 'profissional' || user.role === 'professional') && (
+            {isAuthenticated && user && (
               <Link
-                href="/profissional/orcamentos"
-                className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
+                href={
+                  user.tipo === 'profissional' || user.role === 'professional'
+                    ? '/profissional/orcamentos'
+                    : '/cliente/orcamentos'
+                }
+                className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
+                title="Meus Orçamentos"
               >
                 <Briefcase className="h-3.5 w-3.5" />
-                <span>Meus Orçamentos</span>
+                <span className="hidden sm:inline">Meus Orçamentos</span>
               </Link>
             )}
 
@@ -259,6 +264,7 @@ function ProfissionaisSearchContent() {
                     onSpecialtyClick={setSpecialty}
                     onRequestQuote={handleOpenQuoteModal}
                     onReportProfessional={handleOpenReportModal}
+                    scheduleHref={`/profissionais/${prof.id}/agendar`}
                   />
                 ))}
               </div>

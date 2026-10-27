@@ -64,11 +64,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
   const reconnectAttemptsRef = useRef<number>(0);
   const isMountedRef = useRef<boolean>(true);
 
-  const isProfessional = Boolean(
-    isAuthenticated &&
-      (user?.tipo === 'profissional' || user?.role === 'professional')
-  );
-
   // 1. Carregamento inicial via REST
   const refreshNotifications = useCallback(async () => {
     if (!token || !isAuthenticated) return;

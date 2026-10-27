@@ -1,4 +1,4 @@
-"""
+﻿"""
 Camada de transporte de e-mail transacional do RentalSpouse.
 
 Responsabilidade única: **entregar** uma mensagem de e-mail com alta
@@ -550,3 +550,124 @@ def enviar_email_verificacao(
     )
     transporte.enviar(mensagem)
 
+
+# ---------------------------------------------------------------------------
+# Recuperação de senha (issue #75)
+# ---------------------------------------------------------------------------
+
+
+def montar_link_redefinicao(token: str) -> str:
+    """Monta o link de redefinição de senha enviado por e-mail."""
+    return f"{app_base_url()}/redefinir-senha?token={quote(token)}"
+
+
+def montar_mensagem_redefinicao(
+    destinatario: str,
+    nome: str,
+    token: str,
+    expira_minutos: int,
+) -> EmailMessage:
+    """Compõe o e-mail transacional de redefinição de senha (texto puro + HTML)."""
+    nome_remetente, endereco_remetente = remetente()
+    link = montar_link_redefinicao(token)
+    primeiro_nome_puro = (nome or "").split(" ")[0] or "olá"
+    primeiro_nome_html = html.escape(primeiro_nome_puro)
+    link_html = html.escape(link, quote=True)
+
+    mensagem = EmailMessage()
+    mensagem["Subject"] = "Redefinição de senha na RentalSpouse"
+    mensagem["From"] = formataddr((nome_remetente, endereco_remetente))
+    mensagem["To"] = destinatario
+    mensagem["Date"] = formatdate(localtime=True)
+
+    dominio = "rentalspouse.com"
+    if "@" in endereco_remetente:
+        dominio_candidato = endereco_remetente.split("@")[-1].strip()
+        if dominio_candidato and "." in dominio_candidato:
+            dominio = dominio_candidato
+
+    mensagem["Message-ID"] = make_msgid(domain=dominio)
+    mensagem["Auto-Submitted"] = "auto-generated"
+    mensagem["X-Mailer"] = "RentalSpouse Transacional/1.0"
+
+    reply_to = (os.getenv("EMAIL_REPLY_TO") or "").strip() or endereco_remetente
+    if reply_to and "@" in reply_to:
+        mensagem["Reply-To"] = reply_to
+
+    texto = (
+        f"Olá, {primeiro_nome_puro}!\n\n"
+        "Recebemos uma solicitação para redefinir a senha da sua conta na RentalSpouse.\n"
+        "Crie uma nova senha acessando o link abaixo:\n\n"
+        f"{link}\n\n"
+        f"Este link é de uso único e expira em {expira_minutos} minuto(s).\n\n"
+        "Se você não solicitou essa redefinição, ignore esta mensagem. "
+        "Sua senha atual continua válida.\n\n"
+        "Equipe RentalSpouse"
+    )
+
+    corpo_html = f"""\
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <body style="margin:0;padding:24px;background:#f4f6fb;font-family:Arial,Helvetica,sans-serif;color:#0E1B2E;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="520" cellpadding="0" cellspacing="0"
+                 style="background:#ffffff;border-radius:16px;padding:32px;border:1px solid #e2e8f0;">
+            <tr>
+              <td>
+                <h1 style="margin:0 0 16px;font-size:20px;color:#1E40AF;">Redefinição de senha</h1>
+                <p style="margin:0 0 16px;font-size:14px;line-height:22px;">
+                  Olá, <strong>{primeiro_nome_html}</strong>! Recebemos uma solicitação para
+                  redefinir a senha da sua conta na RentalSpouse.
+                </p>
+                <p style="margin:0 0 24px;font-size:14px;line-height:22px;">
+                  Clique no botão abaixo para criar uma nova senha:
+                </p>
+                <p style="margin:0 0 20px;">
+                  <a href="{link_html}"
+                     style="display:inline-block;background:#1D4ED8;color:#ffffff;text-decoration:none;
+                            font-size:14px;font-weight:bold;padding:12px 24px;border-radius:12px;">
+                    Criar nova senha
+                  </a>
+                </p>
+                <p style="margin:0 0 20px;font-size:12px;line-height:18px;color:#64748B;">
+                  Se o botão não funcionar, copie e cole este link no navegador:<br/>
+                  <a href="{link_html}" style="color:#1D4ED8;word-break:break-all;">{link_html}</a>
+                </p>
+                <p style="margin:0 0 16px;font-size:12px;line-height:20px;color:#64748B;">
+                  Este link é de uso único e expira em {expira_minutos} minuto(s).
+                </p>
+                <p style="margin:0;font-size:12px;line-height:20px;color:#64748B;">
+                  Se você não solicitou essa redefinição, ignore esta mensagem.
+                  Sua senha atual continua válida.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"""
+
+    mensagem.set_content(texto)
+    mensagem.add_alternative(corpo_html, subtype="html")
+    return mensagem
+
+
+def enviar_email_redefinicao(
+    destinatario: str,
+    nome: str,
+    token: str,
+    expira_minutos: int,
+) -> None:
+    """Compõe e entrega o e-mail de redefinição de senha pelo transporte ativo."""
+    transporte = obter_transporte()
+    mensagem = montar_mensagem_redefinicao(
+        destinatario=destinatario,
+        nome=nome,
+        token=token,
+        expira_minutos=expira_minutos,
+    )
+    transporte.enviar(mensagem)

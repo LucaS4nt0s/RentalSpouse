@@ -1,6 +1,23 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, event
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    String,
+    Text,
+    Time,
+    UniqueConstraint,
+    event,
+    text,
+)
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -90,6 +107,26 @@ class Cliente(Base):
             "cidade": self.cidade,
             "estado": self.estado,
         }
+
+
+class RecuperacaoSenhaToken(Base):
+    """
+    Token de uso único para redefinição de senha (issue #75).
+
+    A tabela é independente de `users`, `clientes` e `professionals` para que o
+    mesmo fluxo atenda qualquer tipo de conta pelo e-mail informado. Assim como
+    na verificação de e-mail, o token em claro nunca é persistido: guardamos
+    apenas o hash SHA-256, e o link expira após um intervalo configurável.
+    """
+
+    __tablename__ = "recuperacao_senha_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    expira_em = Column(DateTime, nullable=False)
+    criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    usado_em = Column(DateTime, nullable=True)
 
 
 class DocumentType(str, enum.Enum):
@@ -354,3 +391,134 @@ class Denuncia(Base):
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+
+class AgendamentoStatus(str, enum.Enum):
+    """Status do ciclo de vida de um agendamento de slot (issue #78)."""
+
+    AGENDADO = "agendado"
+    CANCELADO = "cancelado"
+    CONCLUIDO = "concluido"
+
+
+# Status que efetivamente ocupam o horário do profissional. Um agendamento
+# cancelado é histórico: libera o slot para uma nova reserva (o cancelamento em
+# si pertence à issue #24, que só precisa mudar `status`).
+AGENDAMENTO_STATUS_OCUPANTES = (
+    AgendamentoStatus.AGENDADO.value,
+    AgendamentoStatus.CONCLUIDO.value,
+)
+
+
+class DisponibilidadeProfissional(Base):
+    """
+    Janela semanal de atendimento informada pelo profissional (issue #78).
+
+    Cada linha é uma faixa contínua de atendimento em um dia da semana, fatiada
+    em slots de `duracao_slot_min` minutos pela rota de agenda. `dia_semana`
+    segue a convenção de `datetime.weekday()`: 0 = segunda-feira ... 6 = domingo.
+
+    Os horários (`hora_inicio` / `hora_fim`) e os instantes gerados para os slots
+    usam o mesmo padrão naive-UTC das demais colunas de data do projeto (ver
+    `verificacao.utcnow`): `TIMESTAMP WITHOUT TIME ZONE` no PostgreSQL e
+    DATETIME no SQLite dos testes.
+    """
+
+    __tablename__ = "disponibilidade_profissional"
+    __table_args__ = (
+        UniqueConstraint(
+            "professional_id",
+            "dia_semana",
+            "hora_inicio",
+            name="uq_disponibilidade_professional_dia_inicio",
+        ),
+        CheckConstraint(
+            "dia_semana >= 0 AND dia_semana <= 6",
+            name="ck_disponibilidade_dia_semana_valido",
+        ),
+        CheckConstraint("duracao_slot_min > 0", name="ck_disponibilidade_duracao_positiva"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    professional_id = Column(
+        Integer,
+        ForeignKey("professionals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    dia_semana = Column(Integer, nullable=False, index=True)
+    hora_inicio = Column(Time, nullable=False)
+    hora_fim = Column(Time, nullable=False)
+    duracao_slot_min = Column(Integer, default=60, nullable=False)
+    criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    atualizado_em = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    professional = relationship("Professional")
+
+
+class Agendamento(Base):
+    """
+    Reserva de um slot da agenda por um cliente autenticado (issue #78).
+
+    `data_hora_inicio`/`data_hora_fim` são derivados da grade semanal do
+    profissional no momento da reserva (o cliente não escolhe a duração) e
+    seguem o padrão naive-UTC do projeto.
+
+    Anti double-booking: além de o índice `(professional_id, data_hora_inicio)`
+    acelerar a consulta de ocupação, existe um índice único **parcial** que
+    vale apenas para agendamentos não cancelados — assim dois clientes nunca
+    conseguem reservar o mesmo instante, mas um agendamento cancelado (#24)
+    devolve o slot para a agenda. O índice parcial usa a cláusula específica de
+    cada dialeto (SQLite nos testes, PostgreSQL em produção).
+    """
+
+    __tablename__ = "agendamentos"
+    __table_args__ = (
+        Index("ix_agendamentos_professional_data_hora", "professional_id", "data_hora_inicio"),
+        Index(
+            "uq_agendamentos_professional_data_hora_ativo",
+            "professional_id",
+            "data_hora_inicio",
+            unique=True,
+            postgresql_where=text("status <> 'cancelado'"),
+            sqlite_where=text("status <> 'cancelado'"),
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    professional_id = Column(
+        Integer,
+        ForeignKey("professionals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    cliente_id = Column(
+        Integer,
+        ForeignKey("clientes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    orcamento_id = Column(
+        Integer,
+        ForeignKey("orcamentos.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    data_hora_inicio = Column(DateTime, nullable=False)
+    data_hora_fim = Column(DateTime, nullable=False)
+    status = Column(
+        String(30),
+        default=AgendamentoStatus.AGENDADO.value,
+        nullable=False,
+        index=True,
+    )
+    criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    professional = relationship("Professional")
+    cliente = relationship("Cliente")
+    orcamento = relationship("Orcamento")

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Zap, ArrowRight, Wrench, ShieldCheck, Star, Clock, User, LogOut } from 'lucide-react';
+import { Zap, ArrowRight, Wrench, ShieldCheck, Star, Clock, User, LogOut, Briefcase } from 'lucide-react';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
 import {
   ProfessionalDocumentsLink,
@@ -57,6 +57,18 @@ export default function Home() {
             <div className="h-8 w-28 animate-pulse rounded-xl bg-rental-surface2" />
           ) : isAuthenticated && user ? (
             <div className="flex items-center gap-3">
+              <Link
+                href={
+                  user.tipo === 'profissional' || user.role === 'professional'
+                    ? '/profissional/orcamentos'
+                    : '/cliente/orcamentos'
+                }
+                className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
+                title="Meus Orçamentos"
+              >
+                <Briefcase className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Meus Orçamentos</span>
+              </Link>
               <Link
                 href="/entrar"
                 className="flex items-center gap-2 text-xs font-semibold hover:opacity-85 transition-opacity"
