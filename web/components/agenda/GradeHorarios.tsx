@@ -93,6 +93,7 @@ export const GradeHorarios: React.FC<GradeHorariosProps> = ({
               <button
                 key={slot.data_hora_inicio}
                 type="button"
+                disabled={!slot.disponivel}
                 aria-pressed={selecionado}
                 onClick={() => onSelecionarSlot(slot)}
                 className={`flex flex-col items-center justify-center rounded-xl border px-3 py-3 text-center transition-all ${

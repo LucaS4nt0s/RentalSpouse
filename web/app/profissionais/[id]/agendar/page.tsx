@@ -127,14 +127,14 @@ export default function AgendarProfissionalPage() {
               </Link>
             )}
 
-            <ThemeToggle />
+            <ThemeToggle showLabel={false} />
           </nav>
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-4 py-8 sm:px-6">
-        {/* Navegação de retorno */}
-        <div>
+        {/* Navegação de retorno e Meus agendamentos */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <Link
             href="/profissionais"
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-rental-muted transition-colors hover:text-rental-primary"
@@ -142,6 +142,17 @@ export default function AgendarProfissionalPage() {
             <ArrowLeft className="h-4 w-4" />
             <span>Voltar para busca de profissionais</span>
           </Link>
+
+          {isAuthenticated && ehCliente && (
+            <button
+              type="button"
+              onClick={handleVerMeusAgendamentos}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-rental-primary transition-colors hover:underline"
+            >
+              <ListChecks className="h-4 w-4" />
+              <span>Meus agendamentos</span>
+            </button>
+          )}
         </div>
 
         {/* Cabeçalho do Profissional */}
@@ -369,9 +380,7 @@ export default function AgendarProfissionalPage() {
                           </p>
                           <p className="text-rental-muted">
                             {nomesProfissionais[ag.professional_id] ??
-                              (profissional?.id === ag.professional_id
-                                ? profissional.name
-                                : `Profissional #${ag.professional_id}`)}{' '}
+                              `Profissional #${ag.professional_id}`}{' '}
                             • Reserva #{ag.id}
                           </p>
                         </div>
