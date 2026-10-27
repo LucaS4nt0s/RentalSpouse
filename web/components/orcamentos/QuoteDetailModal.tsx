@@ -619,6 +619,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             </label>
                             <input
                               type="datetime-local"
+                              min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
                               value={dataPrevistaAceiteInput}
                               onChange={(e) => setDataPrevistaAceiteInput(e.target.value)}
                               className="w-full rounded-xl border border-rental-border bg-rental-surface px-3.5 py-2 text-sm text-rental-ink focus:border-rental-primary focus:outline-none"
