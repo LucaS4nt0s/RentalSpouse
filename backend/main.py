@@ -96,3 +96,7 @@ app.include_router(notificacoes_ws_router)
 # Agenda de disponibilidade e agendamento de slots (issue #78).
 app.include_router(agendamentos_router)
 
+
+# Pagamentos In-App via PIX e Cartão de Crédito - Mercado Pago (issue #18).
+from routes.pagamentos import router as pagamentos_router
+app.include_router(pagamentos_router)
