@@ -7,6 +7,7 @@ import {
   AgendaSlot,
   Agendamento,
   ApiError,
+  cancelarAgendamento as cancelarAgendamentoService,
   consultarAgendaProfissional,
   criarAgendamento,
   listarMeusAgendamentos,
@@ -260,6 +261,31 @@ export function useAgenda(professionalId: number) {
     setConflito409(null);
   }, []);
 
+  const cancelarAgendamento = useCallback(
+    async (agendamentoId: number, motivo?: string): Promise<boolean> => {
+      if (!token || !isAuthenticated) {
+        throw new Error(
+          'Você precisa estar autenticado para cancelar um agendamento.',
+        );
+      }
+
+      const atualizado = await cancelarAgendamentoService(
+        token,
+        agendamentoId,
+        motivo,
+      );
+
+      setMeusAgendamentos((prev) =>
+        prev.map((ag) =>
+          ag.id === agendamentoId ? { ...ag, ...atualizado } : ag,
+        ),
+      );
+      await recarregarAgenda(true);
+      return true;
+    },
+    [token, isAuthenticated, recarregarAgenda],
+  );
+
   return {
     user,
     isAuthenticated,
@@ -286,6 +312,7 @@ export function useAgenda(professionalId: number) {
     selecionarSlot,
     recarregarAgenda,
     confirmarAgendamento,
+    cancelarAgendamento,
     carregarMeusAgendamentos,
     iniciarNovoAgendamento,
   };
