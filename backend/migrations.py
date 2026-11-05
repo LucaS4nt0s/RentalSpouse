@@ -171,3 +171,16 @@ def run_all_migrations(engine: Engine, session_factory: Callable[[], Session]) -
     migrate_columns_and_indexes(engine)
     migrate_agenda_tables(engine)
     backfill_normalized_fields(session_factory)
+
+
+
+_orig_migrate_agenda_tables = migrate_agenda_tables
+
+
+def migrate_agenda_tables(engine: Engine) -> None:
+    """Garante as tabelas da agenda (#78) e de pagamentos (#18)."""
+    _orig_migrate_agenda_tables(engine)
+    inspector = inspect(engine)
+    if not inspector.has_table(models.Pagamento.__table__.name):
+        logger.info("Migração RentalSpouse: criando tabela 'pagamentos'...")
+        models.Base.metadata.create_all(bind=engine, tables=[models.Pagamento.__table__])

@@ -216,3 +216,15 @@ def check_contact_rate_limit(request: Request, client_identifier: Optional[str] 
 def reset_rate_limits() -> None:
     """Redefine o histórico de rate limits (usado em testes automatizados)."""
     _limiter.reset()
+
+
+
+def check_payment_rate_limit(request: Request, cliente_id: int) -> None:
+    """Rate limit anti-carding: máx. 5 tentativas por minuto por cliente/IP (issue #18)."""
+    client_ip = get_client_ip(request)
+    _limiter.check(
+        key=f"payment:{cliente_id}:{client_ip}",
+        limit=5,
+        window_seconds=60,
+        error_detail="Muitas tentativas de pagamento em sequência. Aguarde 1 minuto e tente novamente.",
+    )

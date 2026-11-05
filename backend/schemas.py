@@ -1323,3 +1323,188 @@ class AgendamentoRead(BaseModel):
     )
     criado_em: datetime
 
+
+
+
+# ---------------------------------------------------------------------------
+# Schemas de Pagamento via PIX e Cartão de Crédito - Mercado Pago (issue #18)
+# ---------------------------------------------------------------------------
+
+from models import (
+    PagamentoMetodo as PagamentoMetodoEnum,
+    PagamentoStatus as PagamentoStatusEnum,
+)
+
+
+class CartaoTokenizadoInput(BaseModel):
+    """
+    Dados tokenizados do cartão de crédito enviados pelo cliente (PCI-DSS SAQ-A / EP).
+
+    `extra = "forbid"` rejeita com HTTP 422 qualquer tentativa de enviar `numero_cartao`,
+    `pan`, `cvv` ou `validade` ao backend.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    card_token: str = Field(
+        ...,
+        min_length=8,
+        max_length=255,
+        description="Token descartável de uso único gerado client-side no Mercado Pago.",
+    )
+    payment_method_id: str = Field(
+        ...,
+        min_length=2,
+        max_length=30,
+        description="Bandeira identificada pelo Mercado Pago (visa, master, elo, amex, hipercard).",
+    )
+    issuer_id: Optional[str] = Field(
+        None,
+        max_length=50,
+        description="ID do banco emissor no Mercado Pago (opcional).",
+    )
+    nome_titular: str = Field(
+        ...,
+        min_length=2,
+        max_length=100,
+        description="Nome impresso no cartão.",
+    )
+    cpf_titular: str = Field(
+        ...,
+        max_length=14,
+        description="CPF do titular do cartão (validado por dígitos verificadores).",
+    )
+    device_session_id: Optional[str] = Field(
+        None,
+        max_length=128,
+        description="Device fingerprint antifraude do Mercado Pago (X-meli-session-id).",
+    )
+
+    @field_validator("card_token", "payment_method_id")
+    @classmethod
+    def _limpar_identificadores(cls, v: str, info) -> str:
+        limpo = (v or "").strip()
+        if not limpo:
+            raise ValueError(f"O campo '{info.field_name}' não pode ser vazio.")
+        return limpo.lower() if info.field_name == "payment_method_id" else limpo
+
+    @field_validator("nome_titular")
+    @classmethod
+    def _validar_nome_titular(cls, v: str) -> str:
+        limpo = re.sub(r"[\r\n\x00-\x1f]+", " ", v or "").strip()
+        if len(limpo) < 2:
+            raise ValueError("O nome do titular deve conter pelo menos 2 caracteres.")
+        return limpo
+
+    @field_validator("cpf_titular")
+    @classmethod
+    def _validar_cpf_titular(cls, v: str) -> str:
+        return ClienteBase.validar_cpf(v)
+
+
+class PagamentoCreate(BaseModel):
+    """
+    Payload de criação de pagamento (PIX ou Cartão de Crédito tokenizado).
+
+    O campo `valor` NÃO existe no payload (extra="forbid"): o servidor extrai o valor
+    exclusivamente de `orcamento.valor_estimado` no banco de dados (Anti-Tampering).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    orcamento_id: int = Field(..., gt=0, description="ID do orçamento aceito/respondido a ser pago.")
+    agendamento_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="ID do agendamento associado ao orçamento (opcional).",
+    )
+    metodo: str = Field(
+        ...,
+        description="Método de pagamento: 'pix' ou 'cartao_credito'.",
+    )
+    parcelas: int = Field(
+        1,
+        ge=1,
+        le=12,
+        description="Número de parcelas (1 para PIX; 1 a 12 para cartão de crédito).",
+    )
+    idempotency_key: str = Field(
+        ...,
+        min_length=8,
+        max_length=64,
+        description="Chave única de idempotência da intenção de pagamento (UUID).",
+    )
+    cartao: Optional[CartaoTokenizadoInput] = Field(
+        None,
+        description="Dados tokenizados do cartão (obrigatório quando metodo='cartao_credito').",
+    )
+
+    @field_validator("metodo")
+    @classmethod
+    def _validar_metodo(cls, v: str) -> str:
+        normalizado = (v or "").strip().lower()
+        aceitos = [m.value for m in PagamentoMetodoEnum]
+        if normalizado not in aceitos:
+            raise ValueError(f"Método '{v}' inválido. Valores aceitos: {', '.join(aceitos)}.")
+        return normalizado
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def _validar_idempotency_key(cls, v: str) -> str:
+        limpo = (v or "").strip()
+        if len(limpo) < 8:
+            raise ValueError("A chave de idempotência deve ter no mínimo 8 caracteres.")
+        return limpo
+
+    @model_validator(mode="after")
+    def _validar_consistencia_metodo(self):
+        if self.metodo == PagamentoMetodoEnum.PIX.value:
+            if self.parcelas != 1:
+                raise ValueError("Pagamentos via PIX permitem apenas 1 parcela (à vista).")
+            if self.cartao is not None:
+                raise ValueError("Dados de cartão não devem ser enviados para pagamento via PIX.")
+        elif self.metodo == PagamentoMetodoEnum.CARTAO_CREDITO.value:
+            if self.cartao is None:
+                raise ValueError(
+                    "Os dados tokenizados do cartão ('cartao') são obrigatórios para pagamento com cartão de crédito."
+                )
+        return self
+
+
+class PagamentoRead(BaseModel):
+    """Representação serializada de um pagamento e seu comprovante digital."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    orcamento_id: int
+    agendamento_id: Optional[int] = None
+    cliente_id: int
+    professional_id: int
+    valor: float
+    metodo: str
+    status: str
+    parcelas: int
+    gateway_provider: str
+    gateway_txid: str
+    external_reference: str
+    pix_copia_e_cola: Optional[str] = None
+    pix_qr_code_base64: Optional[str] = None
+    pix_expira_em: Optional[datetime] = None
+    cartao_ultimos_digitos: Optional[str] = None
+    cartao_bandeira: Optional[str] = None
+    cartao_nome_titular: Optional[str] = None
+    mp_status_detail: Optional[str] = None
+    motivo_recusa: Optional[str] = None
+    pago_em: Optional[datetime] = None
+    criado_em: datetime
+    atualizado_em: Optional[datetime] = None
+
+    @computed_field
+    @property
+    def valor_parcela(self) -> float:
+        return round(self.valor / max(1, self.parcelas), 2)
+
+    _utc = field_validator(
+        "pix_expira_em", "pago_em", "criado_em", "atualizado_em", mode="after"
+    )(_garantir_utc)

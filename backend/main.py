@@ -28,6 +28,7 @@ from routes.notificacoes import (
     router as notificacoes_router,
     ws_router as notificacoes_ws_router,
 )
+from routes.pagamentos import router as pagamentos_router
 from security import seed_initial_admin
 
 logger = logging.getLogger(__name__)
@@ -96,5 +97,5 @@ app.include_router(notificacoes_router)
 app.include_router(notificacoes_ws_router)
 # Agenda de disponibilidade e agendamento de slots (issue #78).
 app.include_router(agendamentos_router)
-
-
+# Pagamentos In-App via PIX e Cartão de Crédito - Mercado Pago (issue #18).
+app.include_router(pagamentos_router)
