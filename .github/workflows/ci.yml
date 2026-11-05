@@ -1,4 +1,4 @@
-name: CI — Backend Tests
+name: CI — Backend & Frontend Tests
 
 on:
   pull_request:
@@ -31,3 +31,31 @@ jobs:
         env:
           DATABASE_URL: "sqlite:///:memory:"
         run: pytest tests/ -v
+
+  frontend:
+    name: Build & Test Frontend (Node.js 24)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./web
+        run: npm ci
+
+      - name: Run shared-search tests
+        working-directory: ./web
+        run: npm test
+
+      - name: Build Next.js
+        working-directory: ./web
+        run: npm run build
+

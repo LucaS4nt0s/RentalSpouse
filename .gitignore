@@ -1,13 +1,31 @@
 backend/venv/
+backend/.venv/
 venv/
+.venv/
 __pycache__/
 *.pyc
 .pytest_cache/
+.coverage
+htmlcov/
 node_modules/
 .next/
 .expo/
+
+# Artefatos de build do TypeScript (TypeScript incremental / Next.js)
+*.tsbuildinfo
+
+# Bancos SQLite locais de desenvolvimento e teste (o projeto usa PostgreSQL)
+*.db
+*.sqlite
+*.sqlite3
 
 # Variáveis de ambiente — nunca versionar o .env real
 .env
 *.env
 !.env.example
+uploads/
+
+# Artefatos compilados de pacotes compartilhados
+packages/shared-search/dist/
+packages/shared-search/index.js
+packages/shared-search/index.d.ts

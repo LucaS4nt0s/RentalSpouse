@@ -1,133 +1,217 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Zap, ArrowRight, Wrench, ShieldCheck, Star, Clock, User, LogOut, Briefcase } from 'lucide-react';
+import { ThemeToggle } from '../components/ui/ThemeToggle';
+import {
+  ProfessionalDocumentsLink,
+  useIsProfessional,
+} from '../components/documentos/ProfessionalDocumentsLink';
+import { NotificationBell } from '../components/notificacoes/NotificationBell';
+import { useAuth } from '../context/AuthContext';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 interface StatusResponse {
-  id: number;
   message: string;
 }
 
 export default function Home() {
-  const [data, setData] = useState<StatusResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchStatus = async () => {
-    setLoading(true);
-    setError(null);
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
-    try {
-      const res = await fetch(`${apiUrl}/api/hello`);
-      if (!res.ok) {
-        throw new Error(`Erro na requisição: ${res.status} ${res.statusText}`);
-      }
-      const result: StatusResponse = await res.json();
-      setData(result);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : `Não foi possível conectar ao backend em ${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'}`
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { user, isAuthenticated, logout, isLoading } = useAuth();
+  const isProfessional = useIsProfessional();
+  const [status, setStatus] = useState<StatusResponse | null>(null);
+  const [offline, setOffline] = useState(false);
 
   useEffect(() => {
-    fetchStatus();
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/hello`);
+        if (!res.ok) throw new Error('offline');
+        setStatus(await res.json());
+      } catch {
+        setOffline(true);
+      }
+    };
+    load();
   }, []);
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-100 to-slate-200 flex items-center justify-center p-6 text-slate-800">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200/80 p-8 flex flex-col items-center text-center transition-all duration-300">
-        {/* Header do Card */}
-        <div className="mb-6">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 tracking-wide uppercase">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            RentalSpouse
+    <main className="flex min-h-screen flex-col bg-rental-bg text-rental-ink">
+      <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6">
+        <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-90">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rental-primary text-[var(--rs-primary-text)]">
+            <Zap className="h-5 w-5" />
           </span>
-          <h1 className="text-2xl font-bold mt-3 tracking-tight text-slate-900">
-            Status do Backend
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Comunicação FastAPI + PostgreSQL + Next.js
-          </p>
-        </div>
+          <span className="text-lg font-extrabold tracking-tight">RentalSpouse</span>
+        </Link>
 
-        {/* Conteúdo Dinâmico */}
-        <div className="w-full min-h-[140px] flex items-center justify-center">
-          {loading && (
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-8 h-8 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin"></div>
-              <p className="text-sm font-medium text-slate-600 animate-pulse">
-                Carregando...
-              </p>
-            </div>
-          )}
-
-          {!loading && error && (
-            <div className="flex flex-col items-center gap-3 text-red-600">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                <svg
-                  className="w-5 h-5 text-red-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
-                </svg>
-              </div>
-              <p className="text-sm text-center font-medium">{error}</p>
-              <button
-                onClick={fetchStatus}
-                className="mt-1 px-4 py-1.5 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800 transition-colors shadow-sm"
+        <div className="flex items-center gap-3">
+          <Link
+            href="/profissionais"
+            className="rounded-xl px-3 py-1.5 text-xs font-bold text-rental-primary hover:bg-rental-primary/10 transition-colors"
+          >
+            Buscar Profissionais
+          </Link>
+          {isLoading ? (
+            <div className="h-8 w-28 animate-pulse rounded-xl bg-rental-surface2" />
+          ) : isAuthenticated && user ? (
+            <div className="flex items-center gap-3">
+              <Link
+                href={
+                  user.tipo === 'profissional' || user.role === 'professional'
+                    ? '/profissional/orcamentos'
+                    : '/cliente/orcamentos'
+                }
+                className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
+                title="Meus Orçamentos"
               >
-                Tentar novamente
+                <Briefcase className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Meus Orçamentos</span>
+              </Link>
+              <Link
+                href="/entrar"
+                className="flex items-center gap-2 text-xs font-semibold hover:opacity-85 transition-opacity"
+                title="Minha Conta"
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-rental-primary/10 text-rental-primary">
+                  <User className="h-4 w-4" />
+                </span>
+                <span className="hidden sm:inline font-bold text-rental-ink">
+                  Olá, {user.nome.split(' ')[0]}
+                </span>
+              </Link>
+              <ProfessionalDocumentsLink variant="header" />
+              <NotificationBell />
+              <button
+                type="button"
+                onClick={logout}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-muted transition-colors hover:border-[var(--rs-error)]/40 hover:text-[var(--rs-error)]"
+                title="Sair da conta"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Sair</span>
               </button>
             </div>
-          )}
-
-          {!loading && !error && data && (
-            <div className="flex flex-col items-center gap-4 transition-all duration-300">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-inner">
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xl font-semibold text-slate-800">
-                  {data.message}
-                </p>
-                <p className="text-xs text-slate-400 font-mono">
-                  Registro ID: #{data.id}
-                </p>
-              </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Link
+                href="/entrar?mode=signin"
+                className="rounded-xl px-3.5 py-1.5 text-xs font-bold text-rental-ink transition-colors hover:text-rental-primary"
+              >
+                Entrar
+              </Link>
+              <Link
+                href="/entrar?mode=signup"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-rental-primary px-3.5 py-1.5 text-xs font-bold text-[var(--rs-primary-text)] shadow-primary transition-colors hover:bg-[var(--rs-primary-hover)]"
+              >
+                Cadastre-se
+              </Link>
             </div>
           )}
+
+          <ThemeToggle />
+        </div>
+      </header>
+
+      <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center px-6 py-16 text-center">
+        <span className="inline-flex items-center gap-2 rounded-full border border-rental-border bg-rental-surface px-3 py-1 text-xs font-semibold text-rental-muted">
+          <Star className="h-3.5 w-3.5 text-rental-primary" />
+          Profissionais verificados perto de você
+        </span>
+
+        <h1 className="mt-6 text-4xl font-extrabold leading-[1.1] tracking-tight sm:text-5xl">
+          Serviços residenciais,
+          <br className="hidden sm:block" /> sem complicação.
+        </h1>
+
+        <p className="mt-5 max-w-xl text-base leading-relaxed text-rental-muted">
+          Contrate eletricistas, encanadores, montadores e pintores — ou ofereça seus serviços.
+          Tudo em um só lugar.
+        </p>
+
+        <div className="mt-9 flex flex-col sm:flex-row gap-3">
+          <Link
+            href="/profissionais"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-rental-primary px-7 text-sm font-bold text-[var(--rs-primary-text)] shadow-primary transition-colors hover:bg-[var(--rs-primary-hover)]"
+          >
+            Buscar Profissionais
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+          {isAuthenticated && user ? (
+            <>
+              <Link
+                href="/entrar"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+              >
+                <User className="h-4 w-4 text-rental-primary" />
+                Minha Conta ({user.nome.split(' ')[0]})
+              </Link>
+              {isProfessional ? (
+                <ProfessionalDocumentsLink variant="hero" />
+              ) : (
+                <Link
+                  href="/cadastro/profissional"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+                >
+                  <Wrench className="h-4 w-4 text-rental-primary" />
+                  Sou profissional
+                </Link>
+              )}
+            </>
+          ) : (
+            <>
+              <Link
+                href="/entrar?mode=signin"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+              >
+                Entrar na minha conta
+              </Link>
+              <Link
+                href="/entrar?mode=signup"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+              >
+                Criar conta
+              </Link>
+            </>
+          )}
         </div>
 
-        {/* Rodapé informativo */}
-        <div className="mt-8 pt-4 border-t border-slate-100 w-full flex items-center justify-between text-[11px] text-slate-400 font-mono">
-          <span>GET /api/hello</span>
-          <span>Port 8000</span>
+        <div className="mt-14 grid w-full max-w-2xl grid-cols-1 gap-6 sm:grid-cols-3">
+          {[
+            { icon: ShieldCheck, label: 'Pagamento protegido' },
+            { icon: Clock, label: 'Orçamento rápido' },
+            { icon: Star, label: 'Avaliações reais' },
+          ].map(({ icon: Icon, label }) => (
+            <div key={label} className="flex flex-col items-center gap-2 text-center">
+              <Icon className="h-5 w-5 text-rental-primary" />
+              <span className="text-xs font-semibold text-rental-muted">{label}</span>
+            </div>
+          ))}
         </div>
-      </div>
+      </section>
+
+      <footer className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 border-t border-rental-border px-6 py-5 text-xs text-rental-muted">
+        <div className="flex items-center gap-4">
+          <span>RentalSpouse © 2026</span>
+          <span>•</span>
+          <Link href="/admin" className="hover:text-rental-primary transition-colors">
+            Painel Admin
+          </Link>
+        </div>
+        <span className="inline-flex items-center gap-2">
+          <span
+            className={`h-2 w-2 rounded-full ${
+              offline
+                ? 'bg-[var(--rs-error)]'
+                : status
+                ? 'bg-[var(--rs-success)]'
+                : 'bg-rental-muted'
+            }`}
+          />
+          {offline ? 'Backend offline' : status ? 'API conectada' : 'Conectando...'}
+        </span>
+      </footer>
     </main>
   );
 }

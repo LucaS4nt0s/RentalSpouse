@@ -1,88 +1,177 @@
-# 🛠️ RentalSpouse — Monorepo
+<div align="center">
 
-> **RentalSpouse** é uma plataforma completa de serviços de manutenção residencial ("Marido de Aluguel"), conectando clientes e prestadores de serviços de forma ágil, segura e moderna.
+# 🛠️ RentalSpouse
+
+**Marido de Aluguel — Plataforma de Serviços de Manutenção Residencial**
+
+Conectando clientes e prestadores de serviços de forma **ágil**, **segura** e **moderna**.
+
+<br/>
+
+![Monorepo](https://img.shields.io/badge/Monorepo-121212?style=for-the-badge&logo=monorepo&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)
+![React Native](https://img.shields.io/badge/React%20Native-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+
+<br/>
+
+**Status:** 🟢 Ambiente "Olá Mundo" integrado de ponta a ponta
+
+</div>
 
 ---
 
-## 🏗️ Arquitetura do Projeto
+## 📚 Índice
 
-O repositório está estruturado como um **Monorepo** desacoplado em camadas:
+- [Sobre o Projeto](#-sobre-o-projeto)
+- [Arquitetura](#-arquitetura)
+- [Stack Tecnológica](#-stack-tecnológica)
+- [Fluxo "Olá Mundo!"](#-fluxo-olá-mundo)
+- [Como Executar](#-como-executar)
+  - [Docker (Recomendado)](#-método-1-docker-recomendado)
+  - [Manual / Desenvolvedor](#-método-2-manual--desenvolvedor)
+- [Testes Automatizados](#-testes-automatizados)
+- [API](#-api)
+- [Verificação de E-mail](#-verificação-de-e-mail)
+- [Recuperação de Senha](#-recuperação-de-senha-esqueci-minha-senha)
+- [Gestão e Cadastro de Administradores](#-gestão-e-cadastro-de-administradores)
+- [Equipe](#-equipe)
+- [Governança e Contribuição](#-governança-e-contribuição)
+
+---
+
+## 💡 Sobre o Projeto
+
+O **RentalSpouse** é um **monorepo** de uma plataforma de serviços de manutenção residencial — o famoso *"Marido de Aluguel"* — que conecta **clientes** que precisam de pequenos reparos e melhorias em casa a **prestadores de serviços** qualificados.
+
+O repositório atual traz a base funcional da arquitetura, validando a integração completa entre **banco de dados**, **API**, **frontend web** e **aplicativo mobile** com um fluxo "Olá Mundo" de demonstração.
+
+---
+
+## 🏗️ Arquitetura
+
+O projeto é estruturado como um **monorepo desacoplado em camadas**:
 
 ```text
 RentalSpouse/
-├── backend/            # API REST em Python (FastAPI + SQLAlchemy 2.x + PostgreSQL)
-│   ├── tests/          # Suíte de testes automatizados (Pytest + SQLite em memória)
-│   ├── database.py     # Conexão com banco relacional e gerenciamento de sessões
-│   ├── models.py       # Entidades ORM do banco de dados (Tabela status, etc.)
-│   ├── schemas.py      # Schemas de validação e DTOs (Pydantic v2)
-│   ├── main.py         # Ponto de entrada da API, Lifespan e CORS
-│   └── Dockerfile      # Imagem Docker do Backend (Python 3.12-slim)
-├── web/                # Frontend Web em Next.js 14+ (App Router + Tailwind CSS)
-│   └── app/page.tsx    # Tela inicial consumindo a API
-├── mobile/             # Aplicativo Mobile em React Native (Expo)
-│   └── App.js          # App Mobile com resolução dinâmica de IP
-├── docs/               # Documentação técnica e especificações da arquitetura
-│   └── ARCHITECTURE.md # Visão detalhada da arquitetura e fluxo de dados
-├── .github/            # CI/CD (GitHub Actions) e Template de Pull Requests
+├── backend/                # API REST — Python (FastAPI + SQLAlchemy 2.x + PostgreSQL)
+│   ├── routes/             # Routers modulares (admins, auth, clientes, professionals, etc.)
+│   ├── tests/              # Testes automatizados (Pytest + SQLite em memória)
+│   ├── database.py         # Conexão com o banco e sessões (SQLAlchemy)
+│   ├── models.py           # Entidades ORM (status, users, clientes, professionals)
+│   ├── schemas.py          # Schemas de validação e DTOs (Pydantic v2)
+│   ├── main.py             # Ponto de entrada da API, lifespan e CORS
+│   └── Dockerfile          # Imagem Docker (Python 3.12-slim)
+├── web/                    # Frontend Web — Next.js 14+ (App Router + Tailwind)
+│   ├── app/                # Rotas e páginas (admin, cadastro, entrar, verificar-email)
+│   └── Dockerfile          # Imagem Docker (Node 18)
+├── mobile/                 # App Mobile — React Native (Expo)
+│   ├── App.js              # Tela inicial com resolução dinâmica de IP
+│   ├── app.json
+│   └── babel.config.js
+├── docs/                   # Documentação técnica
+│   └── ARCHITECTURE.md     # Visão detalhada da arquitetura e fluxo de dados
+├── .github/                # CI/CD e templates
 │   ├── workflows/ci.yml
 │   └── PULL_REQUEST_TEMPLATE.md
-├── AI_RULES.md         # Regras estritas de governança e desenvolvimento assistido por IA
-├── .cursorrules        # Regras de contexto para o editor Cursor / IDEs
-├── docker-compose.yml  # Orquestração do PostgreSQL 15 + Backend FastAPI
-└── .env.example        # Modelo de variáveis de ambiente
+├── AI_RULES.md             # Regras de governança e desenvolvimento assistido por IA
+├── docker-compose.yml      # Orquestração: PostgreSQL 15 + Backend + Web
+└── .env.example            # Modelo de variáveis de ambiente
 ```
 
 ---
 
-## 🔄 Fluxo "Olá Mundo!" (Integração Completa)
+## 🧰 Stack Tecnológica
+
+| Camada        | Tecnologia                                        | Pasta     |
+|---------------|---------------------------------------------------|-----------|
+| **Backend**   | Python 3.12 · FastAPI · SQLAlchemy 2.x · Pydantic v2 · psycopg2 · Uvicorn | `backend/` |
+| **Web**       | Next.js 14 (App Router) · React 18 · TypeScript · Tailwind CSS | `web/`     |
+| **Mobile**    | React Native · Expo 51                           | `mobile/`  |
+| **Banco**     | PostgreSQL 15                                    | —         |
+| **Infra**     | Docker · Docker Compose                          | —         |
+
+> 🚫 Qualquer biblioteca nova fora desse escopo deve ser aprovada — consulte [`AI_RULES.md`](./AI_RULES.md).
+
+---
+
+## 🔄 Fluxo "Olá Mundo!"
 
 A aplicação demonstra a arquitetura funcionando de ponta a ponta:
 
-1. **Banco de Dados (PostgreSQL)**: Contém a tabela `status` (ID, Mensagem).
-2. **Backend (FastAPI)**: O endpoint `GET /api/hello` acessa o banco. Se a tabela estiver vazia, ele insere a mensagem `"Olá Mundo do Banco de Dados!"` e a retorna.
-3. **Frontend Web & Mobile**: Consomem a API REST e exibem os dados vindos do banco de dados na interface do usuário com tratamento de carregamento, erro e sucesso.
+```mermaid
+flowchart LR
+    A[🖥️ Web / 📱 Mobile] -->|GET /api/hello| B[⚡ Backend FastAPI]
+    B -->|consulta + insere| C[(🐘 PostgreSQL)]
+    C -->|tabela status| B
+    B -->|"Olá Mundo do Banco de Dados!" 🎉| A
+```
+
+1. 🐘 **Banco de Dados (PostgreSQL)** — contém a tabela `status` (`id`, `message`).
+2. ⚡ **Backend (FastAPI)** — o endpoint `GET /api/hello` acessa o banco; se a tabela estiver vazia, insere a mensagem *"Olá Mundo do Banco de Dados!"* e a retorna.
+3. 🖥️ **Frontend Web & Mobile** — consomem a API REST e exibem a mensagem na interface, com tratamento de **carregamento**, **erro** e **sucesso**.
 
 ---
 
-## 🚀 Guia de Setup e Execução
+## 🚀 Como Executar
 
 ### 📋 Pré-requisitos
-- **Docker & Docker Desktop** (Recomendado)
-- **Node.js** (v18+)
-- **Python** (3.11 ou 3.12)
+
+- **Docker & Docker Desktop** — método recomendado
+- **Node.js** (v18+) — para rodar *web* e *mobile* fora do Docker
+- **Python** (3.11 ou 3.12) — para rodar o *backend* manualmente
 
 ---
 
-### 🐳 Método 1: Execução com Docker (Recomendado)
+### 🐳 Método 1: Docker (Recomendado)
 
-Suba todo o ambiente (Banco PostgreSQL + Backend API) com apenas **2 comandos**:
+Suba o ambiente completo (banco + backend + web) com **3 comandos**:
 
-1. **Criar o arquivo de ambiente**:
-   ```bash
-   # Windows (PowerShell/CMD)
-   copy .env.example .env
+**1. Clone o repositório**
 
-   # Linux / macOS / Git Bash
-   cp .env.example .env
-   ```
+```bash
+git clone https://github.com/LucaS4nt0s/RentalSpouse.git
+cd RentalSpouse
+```
 
-2. **Subir os containers**:
-   ```bash
-   docker compose up --build
-   ```
+**2. Crie o arquivo de ambiente**
 
-3. **Pronto! Acessos disponíveis**:
-   - 🌐 **Backend API**: [http://localhost:8000/api/hello](http://localhost:8000/api/hello)
-   - 📄 **Documentação Swagger**: [http://localhost:8000/docs](http://localhost:8000/docs)
-   - 🐘 **Banco PostgreSQL**: `localhost:5432`
+```bash
+# Windows (PowerShell/CMD)
+copy .env.example .env
+
+# Linux / macOS / Git Bash
+cp .env.example .env
+```
+
+> ✏️ Edite o `.env` com usuário/senha fortes para o PostgreSQL, se desejar.
+
+**3. Suba os containers**
+
+```bash
+docker compose up --build
+```
+
+**🎉 Pronto! Acessos disponíveis:**
+
+| Recurso                  | Endereço                                |
+|--------------------------|-----------------------------------------|
+| 🌐 **Backend API**       | http://localhost:8000/api/hello        |
+| 📄 **Swagger UI**        | http://localhost:8000/docs             |
+| 🖥️ **Frontend Web**      | http://localhost:3000                  |
+| 🐘 **PostgreSQL**        | `localhost:5432`                       |
+
+> 💡 Para rodar em segundo plano, use `docker compose up -d --build`. Para parar: `docker compose down`.
 
 ---
 
-### 💻 Método 2: Execução Manual / Desenvolvedor
+### 💻 Método 2: Manual / Desenvolvedor
 
 #### 1. Backend (FastAPI + Pytest)
+
 ```bash
-# Entrar na pasta do backend
 cd backend
 
 # Criar e ativar o ambiente virtual (opcional)
@@ -95,42 +184,43 @@ source venv/bin/activate
 # Instalar dependências
 pip install -r requirements.txt
 
-# Executar a suíte de testes unitários (100% isolada com SQLite em memória)
+# Executar os testes unitários (isolados com SQLite em memória)
 pytest tests/ -v
 
-# Executar o servidor de desenvolvimento
+# Subir o servidor de desenvolvimento
 uvicorn main:app --reload
 ```
 
+> ⚠️ O backend precisa de um PostgreSQL acessível. Defina `DATABASE_URL` (veja `.env.example`) ou use o `docker compose up db` para subir apenas o banco.
+
 #### 2. Frontend Web (Next.js)
+
 ```bash
-# Em um novo terminal, entrar na pasta web
 cd web
 
-# Instalar dependências e iniciar
 npm install
 npm run dev
 ```
+
 Acesse no navegador: **[http://localhost:3000](http://localhost:3000)**
 
 #### 3. Frontend Mobile (Expo)
+
 ```bash
-# Em um novo terminal, entrar na pasta mobile
 cd mobile
 
-# Instalar dependências e iniciar o Expo
 npm install
 npx expo start
 ```
-Pressione `a` para abrir no **Emulador Android** ou `i` no **Simulator iOS**.
+
+Pressione `a` para abrir no **Emulador Android** ou `i` no **Simulator iOS**. Em dispositivo físico, o app resolve o IP da API automaticamente.
 
 ---
 
-## 🧪 Suíte de Testes Automatizados
+## 🧪 Testes Automatizados
 
-Os testes do backend são executados isoladamente usando banco de dados em memória (`sqlite:///:memory:`) sem depender de um banco PostgreSQL ativo.
+Os testes do backend rodam **isolados**, usando um banco em memória (`sqlite:///:memory:`), **sem depender** de um PostgreSQL ativo ou de containers Docker.
 
-Para rodar os testes:
 ```bash
 cd backend
 pytest tests/ -v
@@ -138,9 +228,174 @@ pytest tests/ -v
 
 ---
 
+## 🔌 API
+
+### `GET /api/hello`
+
+Retorna a mensagem armazenada no banco (inserindo-a automaticamente caso a tabela esteja vazia).
+
+**Resposta — `200 OK`**
+
+```json
+{
+  "id": 1,
+  "message": "Olá Mundo do Banco de Dados!"
+}
+```
+
+> 📄 A documentação interativa completa (Swagger UI) fica em `http://localhost:8000/docs`.
+
+---
+
+## 📧 Verificação de E-mail
+
+Todo cliente criado por `POST /api/clientes` nasce com `email_verificado = false` e recebe um e-mail com um link de confirmação.
+
+1. **Cadastro** → o backend gera um token aleatório de 256 bits, persiste **apenas o hash SHA-256** no banco e envia o link por e-mail.
+2. **Clique no link** → a página `/verificar-email` lê o token da URL e o submete no corpo da requisição.
+3. **Confirmação** → o e-mail é marcado como verificado e o token é descartado.
+
+| Endpoint | Corpo | Descrição |
+|---|---|---|
+| `POST /api/verificacao/confirmar` | `{"token": "..."}` | Consome o token e confirma o e-mail. `400` se inválido, já utilizado ou expirado |
+| `POST /api/verificacao/reenviar` | `{"email": "..."}` | Dispara um novo link. Sempre responde `202`, mesmo para e-mails não cadastrados |
+
+**Garantias de segurança:** o token nunca é gravado em claro; uso único; expiração padrão de 24 h; intervalo mínimo de 60 s entre reenvios; e resposta de reenvio idêntica para contas existentes ou não (evita enumeração de e-mails).
+
+### Visualizando os e-mails em desenvolvimento
+
+Por padrão (`EMAIL_BACKEND=console`) o e-mail é escrito no **log do backend** — o link de verificação aparece direto no terminal. Para uma caixa de entrada local em desenvolvimento:
+
+```bash
+docker compose up -d mailpit
+```
+
+E no `.env`:
+
+```env
+EMAIL_BACKEND=smtp
+SMTP_HOST=mailpit
+SMTP_PORT=1025
+SMTP_USE_TLS=false
+SMTP_USE_SSL=false
+```
+
+A caixa de entrada fica em `http://localhost:8025`.
+
+### 🚀 Envio Real de E-mails (Gmail, Brevo, Provedores SMTP)
+
+Para disparar e-mails para caixas de entrada reais (Gmail, Outlook, caixas postais corporativas) e validar o link de ativação:
+
+1. Configure no `.env`:
+   - **Gmail** (com Senha de App Google):
+     ```env
+     EMAIL_BACKEND=smtp
+     SMTP_HOST=smtp.gmail.com
+     SMTP_PORT=587
+     SMTP_USER=seu-email@gmail.com
+     SMTP_PASSWORD=xxxx xxxx xxxx xxxx  # Senha de App de 16 caracteres
+     SMTP_USE_TLS=true
+     SMTP_USE_SSL=false
+     ```
+     *(Suporte também a SSL direto na porta 465 com `SMTP_USE_SSL=true`).*
+   - **Brevo / Sendinblue / Resend / SES**:
+     ```env
+     EMAIL_BACKEND=smtp
+     SMTP_HOST=smtp-relay.brevo.com
+     SMTP_PORT=587
+     SMTP_USER=seu-login-smtp
+     SMTP_PASSWORD=sua-chave-smtp
+     SMTP_USE_TLS=true
+     SMTP_USE_SSL=false
+     ```
+
+2. **Testar envio imediatamente via CLI**:
+   ```bash
+   python backend/scripts/testar_envio_email.py seu-email@exemplo.com
+   ```
+
+3. **Entregabilidade e Tratamento de Spam**:
+   O sistema injeta automaticamente cabeçalhos RFC 5322 (`Date`, `Message-ID`, `Auto-Submitted`) e fallback de remetente para maximizar a entregabilidade na Caixa de Entrada. Caso o e-mail seja recebido na pasta de Spam / Lixo Eletrônico, basta clicar no link ou botão de confirmação e marcar como "Não é spam" para validar a conta com sucesso.
+
+> ⚙️ Todas as variáveis relacionadas estão documentadas em `.env.example`: `APP_BASE_URL`, `EMAIL_BACKEND`, `EMAIL_FROM_*`, `EMAIL_VERIFICACAO_*` e `SMTP_*`.
+
+---
+
+## 🔑 Recuperação de Senha (Esqueci minha senha)
+
+O fluxo atende clientes, profissionais e administradores pelo e-mail cadastrado:
+
+1. **Solicitação** → o usuário informa o e-mail em `/esqueci-senha`; o backend emite um token aleatório de 256 bits e persiste apenas o hash SHA-256.
+2. **E-mail** → o link recebido aponta para `/redefinir-senha?token=...` e expira em 60 minutos (configurável).
+3. **Redefinição** → a página lê o token da URL e o envia no corpo do POST; a senha é atualizada em todas as tabelas da conta e o token é consumido.
+
+| Endpoint | Corpo | Descrição |
+|---|---|---|
+| `POST /api/auth/esqueci-senha` | `{"email": "..."}` | Solicita o link. Sempre responde `202` com a mesma mensagem, exista ou não a conta |
+| `POST /api/auth/redefinir-senha` | `{"token": "...", "nova_senha": "...", "confirmar_nova_senha": "..."}` | Consome o token e aplica a nova senha. `400` se inválido, usado ou expirado |
+
+**Garantias de segurança:** token de uso único, sem persistência em claro; invalidação automática de links anteriores; intervalo mínimo de 60 s entre solicitações; e resposta genérica para evitar enumeração de e-mails. As variáveis `SENHA_RESET_EXPIRA_MINUTOS` e `SENHA_RESET_REENVIO_SEGUNDOS` controlam a validade e o cooldown.
+
+---
+
+## 🛡️ Gestão e Cadastro de Administradores
+
+A plataforma dispõe de um módulo dedicado para autenticação e gestão de administradores (**Issue #37**), com proteção baseada em JWT e segregação estrita de privilégios.
+
+### Endpoints da API
+
+| Método | Rota | Autenticação | Descrição |
+|---|---|---|---|
+| `POST` | `/api/auth/login` | Pública | Realiza login e gera o token de acesso JWT |
+| `GET` | `/api/auth/me` | Bearer Token | Retorna os dados do usuário/administrador autenticado |
+| `POST` | `/api/admins` | Bearer Token (`admin`) | Cadastra um novo administrador (`HTTP 201 Created` / `HTTP 409 Conflict`) |
+| `GET` | `/api/admins` | Bearer Token (`admin`) | Lista todos os administradores cadastrados |
+
+### Interface Web (Painel Administrativo)
+
+O painel de administradores pode ser acessado no frontend web em:
+- **[/admin](http://localhost:3000/admin)** (redireciona para `/cadastro/admin`)
+- **[/cadastro/admin](http://localhost:3000/cadastro/admin)**
+
+**Recursos implementados:**
+- **Autenticação obrigatória**: Apenas administradores autenticados podem cadastrar novos administradores e visualizar a lista de membros ativos.
+- **Validação de força de senha**: Medidor reativo em tempo real com validação dos 5 critérios OWASP (mínimo 8 caracteres, maiúscula, minúscula, número e caractere especial).
+- **Tratamento de sessão e erros**: Detecção automática de expiração de token (HTTP 401/403) e feedback amigável para novo login.
+- **Seed inicial de desenvolvimento**: O backend semeia automaticamente o administrador inicial na inicialização (controlado por `SEED_INITIAL_ADMIN`, veja `.env.example`).
+
+---
+
+## 👥 Equipe
+
+Projeto desenvolvido por:
+
+| Integrante                        |
+|-----------------------------------|
+| Maria Eduarda Batista             |
+| Carlos Felipe Barbosa             |
+| Luca Samuel dos Santos            |
+| João Guilherme Garcia Mangueira   |
+| João Victor Borges Carvalho       |
+| Eduardo Tenório Nunes             |
+| Gustavo Rodrigues De Souza        |
+| Kauan Felipe Simão                |
+
+---
+
 ## 📜 Governança e Contribuição
 
-Todas as contribuições devem seguir as regras estabelecidas em [`AI_RULES.md`](./AI_RULES.md):
-- **Conventional Commits**: `feat(...)`, `fix(...)`, `test(...)`, `docs(...)`, etc.
-- **Branches**: Integração via Pull Requests direcionados para a branch `dev`.
-- **Testes Obrigatórios**: Todo novo endpoint deve vir acompanhado de testes unitários.
+Toda contribuição deve seguir as regras do [`AI_RULES.md`](./AI_RULES.md):
+
+- ✍️ **Conventional Commits** — `feat(...)`, `fix(...)`, `test(...)`, `docs(...)`, etc.
+- 🌿 **Branches** — desenvolvimento na branch `dev`; *features/bugfixes* em `feature/<nome>` / `fix/<nome>`.
+- 🔀 **Integração** — via **Pull Requests** direcionados para `dev` (nunca commit direto em `main`).
+- 🧪 **Testes obrigatórios** — todo novo endpoint deve vir acompanhado de testes unitários.
+- 🔐 **Sem segredos** — senhas e chaves apenas via variáveis de ambiente (nunca versionadas).
+
+---
+
+<div align="center">
+
+Feito com 💙 — **RentalSpouse · Marido de Aluguel**
+
+</div>
