@@ -53,6 +53,7 @@ router = APIRouter(prefix="/api", tags=["Agenda"])
 URL_AGENDA_PROFISSIONAL = "/professionals/{professional_id}/agenda"
 URL_AGENDAMENTOS = "/agendamentos"
 URL_MEUS_AGENDAMENTOS = "/agendamentos/meus"
+URL_AGENDAMENTO_CANCELAR = "/agendamentos/{agendamento_id}/cancelar"
 URL_DISPONIBILIDADE = "/agendamentos/disponibilidade"
 
 # Máximo de janelas aceitas em uma única definição de grade semanal.
@@ -522,6 +523,72 @@ def listar_meus_agendamentos(
         .limit(limit)
         .all()
     )
+
+
+@router.patch(
+    URL_AGENDAMENTO_CANCELAR,
+    response_model=schemas.AgendamentoRead,
+    summary="Cancelar agendamento",
+    description=(
+        "Cancela um agendamento do cliente autenticado (issue #24). "
+        "Muda o status para 'cancelado', liberando imediatamente o slot na agenda do profissional."
+    ),
+)
+def cancelar_agendamento(
+    agendamento_id: int,
+    payload: Optional[schemas.AgendamentoCancelarRequest] = None,
+    cliente: models.Cliente = Depends(get_current_cliente),
+    db: Session = Depends(get_db),
+):
+    """
+    Cancela o agendamento pertencente ao cliente autenticado.
+
+    O cliente só tem acesso aos seus próprios agendamentos (IDOR protection).
+    A transição para 'cancelado' libera o slot no índice único parcial da agenda.
+    """
+    agendamento = (
+        db.query(models.Agendamento)
+        .filter(
+            models.Agendamento.id == agendamento_id,
+            models.Agendamento.cliente_id == cliente.id,
+        )
+        .first()
+    )
+    if agendamento is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agendamento não encontrado.",
+        )
+
+    if agendamento.status == models.AgendamentoStatus.CANCELADO.value:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Este agendamento já foi cancelado anteriormente.",
+        )
+
+    if agendamento.status == models.AgendamentoStatus.CONCLUIDO.value:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Não é possível cancelar um agendamento já concluído.",
+        )
+
+    agora = _utcnow()
+    agendamento.status = models.AgendamentoStatus.CANCELADO.value
+    agendamento.cancelado_em = agora
+    if payload and payload.motivo:
+        agendamento.motivo_cancelamento = payload.motivo.strip()
+
+    db.add(agendamento)
+    db.commit()
+    db.refresh(agendamento)
+
+    logger.info(
+        "Agendamento #%s cancelado pelo cliente #%s. Slot liberado na agenda do profissional #%s.",
+        agendamento.id,
+        cliente.id,
+        agendamento.professional_id,
+    )
+    return agendamento
 
 
 # ---------------------------------------------------------------------------
