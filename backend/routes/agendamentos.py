@@ -44,6 +44,7 @@ from client_access import get_current_cliente
 from database import get_db
 import models
 from professional_access import get_current_professional
+from routes.notificacoes import registrar_e_enviar_notificacao
 import schemas
 
 logger = logging.getLogger(__name__)
@@ -573,14 +574,70 @@ def cancelar_agendamento(
         )
 
     agora = _utcnow()
+    inicio = agendamento.data_hora_inicio
+    if inicio.tzinfo is not None:
+        inicio = inicio.astimezone(timezone.utc).replace(tzinfo=None)
+
+    if inicio <= agora:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Não é possível cancelar um agendamento que já ocorreu ou está em andamento.",
+        )
+
+    if inicio - agora < timedelta(hours=24):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Cancelamentos só são permitidos com no mínimo 24 horas de antecedência.",
+        )
+
     agendamento.status = models.AgendamentoStatus.CANCELADO.value
     agendamento.cancelado_em = agora
-    if payload and payload.motivo:
-        agendamento.motivo_cancelamento = payload.motivo.strip()
+    motivo_limpo = payload.motivo.strip() if (payload and payload.motivo) else None
+    agendamento.motivo_cancelamento = motivo_limpo or None
 
     db.add(agendamento)
     db.commit()
     db.refresh(agendamento)
+
+    # Disparo de notificação em tempo real para o profissional (Issue #24)
+    prof = (
+        agendamento.professional
+        or db.query(models.Professional)
+        .filter(models.Professional.id == agendamento.professional_id)
+        .first()
+    )
+    if prof and prof.email:
+        nome_cliente = cliente.nome if cliente and cliente.nome else "Cliente"
+        data_formatada = agendamento.data_hora_inicio.strftime("%d/%m/%Y às %H:%M")
+        mensagem_notif = (
+            f"{nome_cliente} cancelou o agendamento marcado para {data_formatada}."
+        )
+        if agendamento.motivo_cancelamento:
+            mensagem_notif += f' Motivo: "{agendamento.motivo_cancelamento}"'
+
+        try:
+            registrar_e_enviar_notificacao(
+                db=db,
+                user_email=prof.email,
+                titulo="Agendamento Cancelado",
+                mensagem=mensagem_notif,
+                tipo="agendamento_cancelado",
+                referencia_id=agendamento.id,
+                payload_extra={
+                    "agendamento_id": agendamento.id,
+                    "cliente_id": cliente.id,
+                    "cliente_nome": nome_cliente,
+                    "data_hora_inicio": agendamento.data_hora_inicio.isoformat(),
+                    "data_hora_fim": agendamento.data_hora_fim.isoformat(),
+                    "motivo": agendamento.motivo_cancelamento,
+                },
+            )
+        except Exception as e:
+            logger.warning(
+                "Falha ao enviar notificação de cancelamento para o profissional #%s: %s",
+                agendamento.professional_id,
+                e,
+            )
 
     logger.info(
         "Agendamento #%s cancelado pelo cliente #%s. Slot liberado na agenda do profissional #%s.",

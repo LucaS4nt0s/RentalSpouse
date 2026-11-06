@@ -27,6 +27,7 @@ import {
   extrairDataIso,
   extrairHoraCurta,
   formatarDataCompleta,
+  verificarPermissaoCancelamento,
 } from '../../../../services/agenda';
 
 export default function AgendarProfissionalPage() {
@@ -407,16 +408,39 @@ export default function AgendarProfissionalPage() {
                         >
                           {ag.status}
                         </span>
-                        {ag.status === 'agendado' && (
-                          <button
-                            type="button"
-                            onClick={() => setAgendamentoParaCancelar(ag)}
-                            className="rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/20 dark:text-red-400"
-                            title="Cancelar este agendamento"
-                          >
-                            Cancelar
-                          </button>
-                        )}
+                        {ag.status === 'agendado' && (() => {
+                          const permissao = verificarPermissaoCancelamento(ag.data_hora_inicio);
+                          if (permissao.podeCancelar) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setAgendamentoParaCancelar(ag)}
+                                className="rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/20 dark:text-red-400"
+                                title="Cancelar este agendamento"
+                              >
+                                Cancelar
+                              </button>
+                            );
+                          }
+                          return (
+                            <div className="flex items-center gap-1.5" title={permissao.motivo}>
+                              <button
+                                type="button"
+                                disabled
+                                className="cursor-not-allowed rounded-lg border border-rental-border bg-rental-surface2/60 px-2.5 py-1 text-xs font-semibold text-rental-muted opacity-60"
+                                title={permissao.motivo}
+                              >
+                                Cancelar
+                              </button>
+                              <span
+                                className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+                                title={permissao.motivo}
+                              >
+                                &lt;24h
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </li>
                   );

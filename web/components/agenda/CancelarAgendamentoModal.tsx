@@ -7,6 +7,7 @@ import {
   extrairDataIso,
   extrairHoraCurta,
   formatarDataCompleta,
+  verificarPermissaoCancelamento,
 } from '../../services/agenda';
 
 export interface CancelarAgendamentoModalProps {
@@ -79,10 +80,11 @@ export function CancelarAgendamentoModal({
   const dataIso = extrairDataIso(agendamento.data_hora_inicio);
   const hIni = extrairHoraCurta(agendamento.data_hora_inicio);
   const hFim = extrairHoraCurta(agendamento.data_hora_fim);
+  const permissao = verificarPermissaoCancelamento(agendamento.data_hora_inicio);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting) return;
+    if (isSubmitting || !permissao.podeCancelar) return;
 
     try {
       setIsSubmitting(true);
@@ -168,14 +170,29 @@ export function CancelarAgendamentoModal({
             </div>
           </div>
 
-          {/* Aviso de liberação de slot */}
-          <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-700 dark:text-amber-300">
-            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
-            <p className="leading-relaxed">
-              Ao confirmar o cancelamento, este horário será imediatamente liberado
-              para outros clientes na agenda do profissional.
-            </p>
-          </div>
+          {/* Aviso de liberação de slot e regra temporal */}
+          {permissao.podeCancelar ? (
+            <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              <div className="space-y-1 leading-relaxed">
+                <p>
+                  Ao confirmar o cancelamento, este horário será imediatamente liberado
+                  para outros clientes na agenda do profissional e uma notificação será enviada ao profissional.
+                </p>
+                <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                  Cancelamentos são permitidos somente com no mínimo 24 horas de antecedência.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3.5 text-xs text-red-700 dark:text-red-300">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
+              <div className="space-y-1 leading-relaxed">
+                <p className="font-semibold">Cancelamento indisponível:</p>
+                <p>{permissao.motivo}</p>
+              </div>
+            </div>
+          )}
 
           {/* Motivo do cancelamento (opcional) */}
           <div className="space-y-1.5">
@@ -228,7 +245,7 @@ export function CancelarAgendamentoModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || !permissao.podeCancelar}
               className="flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-red-700 disabled:opacity-50"
             >
               {isSubmitting ? (

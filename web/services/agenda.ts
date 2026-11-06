@@ -220,6 +220,7 @@ export async function cancelarAgendamento(
     return cancelarAgendamentoMock(agendamentoId, motivo);
   }
 
+  const motivoLimpo = motivo?.trim();
   const response = await fetch(
     `${API_BASE_URL}/api/agendamentos/${agendamentoId}/cancelar`,
     {
@@ -229,7 +230,7 @@ export async function cancelarAgendamento(
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
       },
-      body: JSON.stringify(motivo ? { motivo } : {}),
+      body: JSON.stringify(motivoLimpo ? { motivo: motivoLimpo } : {}),
     },
   );
 
@@ -247,3 +248,7 @@ export async function cancelarAgendamento(
 
   return response.json();
 }
+export {
+  verificarPermissaoCancelamento,
+  type StatusPermissaoCancelamento,
+} from './agenda-format';

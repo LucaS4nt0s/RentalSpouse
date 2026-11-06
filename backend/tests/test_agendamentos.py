@@ -1503,4 +1503,121 @@ class TestCancelamentoAgendamento:
         cols = {c["name"] for c in inspect(engine).get_columns("agendamentos")}
         assert "motivo_cancelamento" in cols
         assert "cancelado_em" in cols
+    def test_cancelar_agendamento_com_menos_de_24_horas_rejeita_com_422(
+        self, client: TestClient, db_session, monkeypatch
+    ):
+        monkeypatch.setattr(agenda_routes, "_utcnow", lambda: AGORA_FIXO)
+        prof = criar_profissional(client, db_session, "prof.24h@exemplo.com", aprovado=True)
+        criar_grade(db_session, prof.id, [(d, "08:00", "18:00", 60) for d in range(7)])
+        cliente = criar_cliente(client, db_session, "cliente.24h@exemplo.com", "811222401")
+        headers = cabecalho(cliente.email)
+
+        # Reserva para 48h à frente para passar pela validação de agendamento
+        inicio = datetime.combine(DIA_FIXO + timedelta(days=2), time(9, 0))
+        resp_reserva = client.post(
+            URL_AGENDAMENTOS,
+            json={"professional_id": prof.id, "data_hora_inicio": inicio.isoformat()},
+            headers=headers,
+        )
+        assert resp_reserva.status_code == 201
+        ag_id = resp_reserva.json()["id"]
+
+        # Avança o relógio para faltar apenas 12 horas para o início
+        agora_perto = inicio - timedelta(hours=12)
+        monkeypatch.setattr(agenda_routes, "_utcnow", lambda: agora_perto)
+
+        resp = client.patch(f"/api/agendamentos/{ag_id}/cancelar", headers=headers)
+        assert resp.status_code == 422
+        assert "24 horas" in resp.json()["detail"]
+
+    def test_cancelar_agendamento_no_passado_rejeita_com_422(
+        self, client: TestClient, db_session, monkeypatch
+    ):
+        monkeypatch.setattr(agenda_routes, "_utcnow", lambda: AGORA_FIXO)
+        prof = criar_profissional(client, db_session, "prof.passado@exemplo.com", aprovado=True)
+        criar_grade(db_session, prof.id, [(d, "08:00", "18:00", 60) for d in range(7)])
+        cliente = criar_cliente(client, db_session, "cliente.passado@exemplo.com", "811222402")
+        headers = cabecalho(cliente.email)
+
+        # Reserva para 48h à frente
+        inicio = datetime.combine(DIA_FIXO + timedelta(days=2), time(9, 0))
+        resp_reserva = client.post(
+            URL_AGENDAMENTOS,
+            json={"professional_id": prof.id, "data_hora_inicio": inicio.isoformat()},
+            headers=headers,
+        )
+        assert resp_reserva.status_code == 201
+        ag_id = resp_reserva.json()["id"]
+
+        # Avança o relógio para depois do início do agendamento
+        agora_depois = inicio + timedelta(hours=1)
+        monkeypatch.setattr(agenda_routes, "_utcnow", lambda: agora_depois)
+
+        resp = client.patch(f"/api/agendamentos/{ag_id}/cancelar", headers=headers)
+        assert resp.status_code == 422
+        assert "já ocorreu" in resp.json()["detail"]
+
+    def test_cancelar_agendamento_dispara_notificacao_para_profissional(
+        self, client: TestClient, db_session, monkeypatch
+    ):
+        monkeypatch.setattr(agenda_routes, "_utcnow", lambda: AGORA_FIXO)
+        prof = criar_profissional(client, db_session, "prof.notif@exemplo.com", aprovado=True)
+        criar_grade(db_session, prof.id, [(d, "08:00", "18:00", 60) for d in range(7)])
+        cliente = criar_cliente(client, db_session, "cliente.notif@exemplo.com", "811222403")
+        headers = cabecalho(cliente.email)
+
+        inicio = datetime.combine(DIA_FIXO + timedelta(days=2), time(9, 0))
+        resp_reserva = client.post(
+            URL_AGENDAMENTOS,
+            json={"professional_id": prof.id, "data_hora_inicio": inicio.isoformat()},
+            headers=headers,
+        )
+        ag_id = resp_reserva.json()["id"]
+
+        resp_cancelar = client.patch(
+            f"/api/agendamentos/{ag_id}/cancelar",
+            json={"motivo": "Viagem a trabalho imprevista."},
+            headers=headers,
+        )
+        assert resp_cancelar.status_code == 200
+
+        # Verifica se a notificação foi persistida para o profissional
+        notif = (
+            db_session.query(models.Notificacao)
+            .filter_by(user_email=prof.email, referencia_id=ag_id)
+            .first()
+        )
+        assert notif is not None
+        assert notif.tipo == "agendamento_cancelado"
+        assert notif.titulo == "Agendamento Cancelado"
+        assert "Viagem a trabalho imprevista." in notif.mensagem
+
+    def test_cancelar_agendamento_com_motivo_apenas_espacos_salva_none(
+        self, client: TestClient, db_session, monkeypatch
+    ):
+        monkeypatch.setattr(agenda_routes, "_utcnow", lambda: AGORA_FIXO)
+        prof = criar_profissional(client, db_session, "prof.spaces@exemplo.com", aprovado=True)
+        criar_grade(db_session, prof.id, [(d, "08:00", "18:00", 60) for d in range(7)])
+        cliente = criar_cliente(client, db_session, "cliente.spaces@exemplo.com", "811222404")
+        headers = cabecalho(cliente.email)
+
+        inicio = datetime.combine(DIA_FIXO + timedelta(days=2), time(9, 0))
+        resp_reserva = client.post(
+            URL_AGENDAMENTOS,
+            json={"professional_id": prof.id, "data_hora_inicio": inicio.isoformat()},
+            headers=headers,
+        )
+        ag_id = resp_reserva.json()["id"]
+
+        resp_cancelar = client.patch(
+            f"/api/agendamentos/{ag_id}/cancelar",
+            json={"motivo": "     "},
+            headers=headers,
+        )
+        assert resp_cancelar.status_code == 200
+        dados = resp_cancelar.json()
+        assert dados["motivo_cancelamento"] is None
+
+        ag_db = db_session.query(models.Agendamento).filter_by(id=ag_id).first()
+        assert ag_db.motivo_cancelamento is None
 
