@@ -1,6 +1,7 @@
 import { Professional } from '../types/professional';
 import { ApiError, parseErrorMessage } from './apiError';
 import {
+  cancelarAgendamentoMock,
   criarAgendamentoMock,
   gerarAgendaMock,
   listarMeusAgendamentosMock,
@@ -50,6 +51,8 @@ export interface Agendamento {
   data_hora_fim: string;
   status: AgendamentoStatus | string;
   criado_em: string;
+  motivo_cancelamento?: string | null;
+  cancelado_em?: string | null;
 }
 
 /** Busca os dados públicos do profissional para exibir no topo e no resumo. */
@@ -203,3 +206,49 @@ export async function listarMeusAgendamentos(
 
   return response.json();
 }
+
+/**
+ * Cancela um agendamento do cliente autenticado: `PATCH /api/agendamentos/{agendamento_id}/cancelar`.
+ * Libera o horário imediatamente para outros clientes agendarem.
+ */
+export async function cancelarAgendamento(
+  token: string,
+  agendamentoId: number,
+  motivo?: string,
+): Promise<Agendamento> {
+  if (IS_MOCK_ENABLED) {
+    return cancelarAgendamentoMock(agendamentoId, motivo);
+  }
+
+  const motivoLimpo = motivo?.trim();
+  const response = await fetch(
+    `${API_BASE_URL}/api/agendamentos/${agendamentoId}/cancelar`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(motivoLimpo ? { motivo: motivoLimpo } : {}),
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => null);
+    throw new ApiError(
+      response.status,
+      parseErrorMessage(
+        errorBody,
+        'Não foi possível cancelar o agendamento.',
+      ),
+      errorBody,
+    );
+  }
+
+  return response.json();
+}
+export {
+  verificarPermissaoCancelamento,
+  type StatusPermissaoCancelamento,
+} from './agenda-format';
