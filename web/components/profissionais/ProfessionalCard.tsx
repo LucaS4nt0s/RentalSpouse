@@ -2,14 +2,24 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { ShieldCheck, MapPin, MessageSquare, Calendar, Flag } from 'lucide-react';
+import { ShieldCheck, MapPin, MessageSquare, Calendar, Flag, Star } from 'lucide-react';
 import { Professional } from '../../types/professional';
+import { formatarMediaNotas } from '../../types/avaliacoes';
+
+export interface ProfessionalRatingSummary {
+  media_notas: number;
+  total_avaliacoes: number;
+}
 
 export interface ProfessionalCardProps {
   professional: Professional;
   activeSpecialty?: string;
   onSpecialtyClick?: (specialty: string) => void;
   onRequestQuote?: (professional: Professional) => void;
+  /** Abre o modal de avaliações e comentários do profissional (issue #21). */
+  onViewReviews?: (professional: Professional) => void;
+  /** Resumo de reputação já carregado para exibição imediata no card (issue #21). */
+  ratingSummary?: ProfessionalRatingSummary;
   /** Abre o fluxo de denúncia do profissional (issue #68). */
   onReportProfessional?: (professional: Professional) => void;
   /** Rota para a tela de agendamento do profissional (issue #79). */
@@ -21,6 +31,8 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
   activeSpecialty,
   onSpecialtyClick,
   onRequestQuote,
+  onViewReviews,
+  ratingSummary,
   onReportProfessional,
   scheduleHref,
 }) => {
@@ -53,6 +65,20 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
   const displayedSpecialties = specialties.slice(0, 3);
   const remainingCount = specialties.length - displayedSpecialties.length;
 
+  // Resumo de avaliações (vindo da prop cached ou do próprio objeto Professional)
+  const mediaNotas =
+    ratingSummary?.media_notas ??
+    (typeof professional.average_rating === 'number'
+      ? professional.average_rating
+      : null);
+  const totalAvaliacoes =
+    ratingSummary?.total_avaliacoes ??
+    (typeof professional.reviews_count === 'number'
+      ? professional.reviews_count
+      : null);
+  const temAvaliacoes =
+    mediaNotas !== null && totalAvaliacoes !== null && totalAvaliacoes > 0;
+
   return (
     <article className="group flex flex-col justify-between rounded-2xl glass-panel p-5 transition-all duration-300 hover:border-rental-primary/40 hover:shadow-lg animate-fadeIn">
       <div>
@@ -76,15 +102,39 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
             </div>
           </div>
 
-          {professional.approval_status === 'approved' && (
-            <div
-              className="flex items-center gap-1 rounded-full bg-rental-success/10 px-2 py-0.5 text-[11px] font-semibold text-rental-success shrink-0"
-              title="Profissional Verificado pelo RentalSpouse"
-            >
-              <ShieldCheck className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Verificado</span>
-            </div>
-          )}
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            {professional.approval_status === 'approved' && (
+              <div
+                className="flex items-center gap-1 rounded-full bg-rental-success/10 px-2 py-0.5 text-[11px] font-semibold text-rental-success"
+                title="Profissional Verificado pelo RentalSpouse"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Verificado</span>
+              </div>
+            )}
+
+            {onViewReviews && (
+              <button
+                type="button"
+                onClick={() => onViewReviews(professional)}
+                title={`Ver avaliações e comentários de ${professional.name}`}
+                aria-label={`Ver avaliações e comentários de ${professional.name}`}
+                className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-bold text-amber-600 transition-all hover:bg-amber-500/20 active:scale-[0.98]"
+              >
+                <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                {temAvaliacoes ? (
+                  <>
+                    <span>{formatarMediaNotas(mediaNotas)}</span>
+                    <span className="font-medium opacity-80">
+                      ({totalAvaliacoes})
+                    </span>
+                  </>
+                ) : (
+                  <span>Avaliações</span>
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Chips de Especialidades */}
