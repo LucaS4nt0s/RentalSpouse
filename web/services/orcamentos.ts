@@ -1,5 +1,19 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
+function extrairDetalheErro(detail: unknown, fallback: string): string {
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    return detail
+      .map((item) =>
+        typeof item === 'object' && item && 'msg' in item
+          ? String((item as { msg: unknown }).msg).replace(/^Value error,\s*/i, '')
+          : String(item)
+      )
+      .join(' ');
+  }
+  return fallback;
+}
+
 export interface OrcamentoFoto {
   id: number;
   orcamento_id: number;
@@ -80,7 +94,7 @@ export async function criarOrcamento(
     let errorDetail = 'Falha ao enviar solicitação de orçamento.';
     try {
       const errJson = await response.json();
-      errorDetail = errJson.detail || errorDetail;
+      errorDetail = extrairDetalheErro(errJson.detail, errorDetail);
     } catch {
       // Ignora erro de parse
     }
@@ -129,7 +143,7 @@ export async function obterOrcamento(
     let err = 'Falha ao buscar detalhes do orçamento.';
     try {
       const errJson = await res.json();
-      err = errJson.detail || err;
+      err = extrairDetalheErro(errJson.detail, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -163,7 +177,7 @@ export async function responderOrcamento(
     let err = 'Falha ao responder orçamento.';
     try {
       const errJson = await res.json();
-      err = errJson.detail || err;
+      err = extrairDetalheErro(errJson.detail, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -202,7 +216,7 @@ export async function aceitarOrcamento(
     let err = 'Falha ao aceitar orçamento.';
     try {
       const errJson = await res.json();
-      err = errJson.detail || err;
+      err = extrairDetalheErro(errJson.detail, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -236,7 +250,7 @@ export async function recusarOrcamento(
     let err = 'Falha ao recusar orçamento.';
     try {
       const errJson = await res.json();
-      err = errJson.detail || err;
+      err = extrairDetalheErro(errJson.detail, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -268,7 +282,7 @@ export async function obterResumoCapacidade(
     let err = 'Falha ao obter resumo de capacidade.';
     try {
       const errJson = await res.json();
-      err = errJson.detail || err;
+      err = extrairDetalheErro(errJson.detail, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -277,5 +291,3 @@ export async function obterResumoCapacidade(
 
   return res.json();
 }
-
-

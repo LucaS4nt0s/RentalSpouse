@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 Rotas de Notificações Persistidas e WebSocket em Tempo Real (Issue #34).
 
@@ -71,7 +72,7 @@ def registrar_e_enviar_notificacao(
         "mensagem": notificacao.mensagem,
         "tipo": notificacao.tipo,
         "referencia_id": notificacao.referencia_id,
-        "criada_em": notificacao.criada_em.isoformat(),
+        "criada_em": (notificacao.criada_em if notificacao.criada_em.tzinfo else notificacao.criada_em.replace(tzinfo=timezone.utc)).isoformat(),
     }
     if payload_extra:
         ws_payload.update(payload_extra)
