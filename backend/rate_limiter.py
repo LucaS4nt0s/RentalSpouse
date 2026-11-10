@@ -220,11 +220,22 @@ def reset_rate_limits() -> None:
 
 
 def check_payment_rate_limit(request: Request, cliente_id: int) -> None:
-    """Rate limit anti-carding: máx. 5 tentativas por minuto por cliente/IP (issue #18)."""
+    """
+    Rate limit anti-carding (issue #18): contadores independentes por cliente e por IP.
+
+    O limite por cliente evita que uma conta varra cartões; o limite por IP,
+    mais folgado, cobre abuso anônimo sem penalizar NAT/proxies compartilhados.
+    """
     client_ip = get_client_ip(request)
     _limiter.check(
-        key=f"payment:{cliente_id}:{client_ip}",
+        key=f"payment:cliente:{cliente_id}",
         limit=5,
         window_seconds=60,
         error_detail="Muitas tentativas de pagamento em sequência. Aguarde 1 minuto e tente novamente.",
+    )
+    _limiter.check(
+        key=f"payment:ip:{client_ip}",
+        limit=20,
+        window_seconds=60,
+        error_detail="Muitas tentativas de pagamento originadas deste endereço IP. Aguarde 1 minuto.",
     )

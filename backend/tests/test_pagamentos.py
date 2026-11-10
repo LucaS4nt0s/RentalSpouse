@@ -9,15 +9,23 @@ Cobre os cenários BDD do PRD:
 5. Bloqueio de pagamento duplicado (409 Conflict), Idempotência e Anti-IDOR (403 Forbidden).
 """
 
-from datetime import date
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, timedelta, timezone
+import threading
 import time
 import uuid
 
+from fastapi import HTTPException
 import pytest
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker
+from starlette.requests import Request
 
+from database import Base, get_db
+from main import app
 import models
 import payment_gateway
-from rate_limiter import reset_rate_limits
+from rate_limiter import check_payment_rate_limit, reset_rate_limits
 from security import create_access_token
 
 
@@ -241,6 +249,12 @@ def test_cenario_2_cartao_tokenizado_parcelado_e_recusado(client, db_session):
     assert dados_ok["cartao_bandeira"] == "master"
     assert dados_ok["pago_em"] is not None
 
+    # 2c. O payload enviado ao MP leva o nome do titular e o device fingerprint.
+    payload_mp = payment_gateway._MOCK_PAYMENTS[dados_ok["gateway_txid"]]
+    assert payload_mp["payer"]["first_name"] == "MARIANA"
+    assert payload_mp["payer"]["last_name"] == "FERREIRA"
+    assert payload_mp["device_session_id"] == "mp_device_session_abc123"
+
 
 def test_cenario_3_bloqueio_pci_dss_pan_cvv_e_anti_tampering_valor(client, db_session):
     """Cenário 3: Rejeita imediatamente com 422 qualquer envio de numero_cartao, cvv ou valor."""
@@ -266,6 +280,12 @@ def test_cenario_3_bloqueio_pci_dss_pan_cvv_e_anti_tampering_valor(client, db_se
         },
     )
     assert resp_pci.status_code == 422
+    corpo_erro = resp_pci.json()
+    assert "4111111111111234" not in resp_pci.text
+    assert '"input"' not in resp_pci.text
+    for erro in corpo_erro["detail"]:
+        assert "input" not in erro
+        assert "ctx" not in erro
 
     # Tentativa de manipular o valor no payload raiz (Anti-Tampering)
     resp_tamper = client.post(
@@ -393,10 +413,10 @@ def test_cenario_5_bloqueio_pagamento_duplicado_e_anti_idor(client, db_session):
 
 
 
-def test_substituicao_pix_pendente_bloqueio_simulacao_prod_e_divergencia_webhook(
+def test_reaproveita_pix_pendente_bloqueio_simulacao_prod_e_divergencia_webhook(
     client, db_session, monkeypatch
 ):
-    """Garante cancelamento de PIX pendente anterior, bloqueio de simulação em produção e proteção contra valor divergente no webhook."""
+    """Reaproveita PIX pendente válido, bloqueia simulação em produção e protege contra valor divergente."""
     ctx = _seed_cenario_pagamento(db_session, valor_estimado=200.0, status_orc="respondido")
 
     # 1. Cria primeiro PIX pendente
@@ -412,7 +432,7 @@ def test_substituicao_pix_pendente_bloqueio_simulacao_prod_e_divergencia_webhook
     assert r1.status_code == 201
     pag1_id = r1.json()["id"]
 
-    # 2. Cria segundo PIX para o mesmo orçamento -> substitui/cancela o anterior
+    # 2. Segundo PIX para o mesmo orçamento -> reaproveita o pendente válido
     r2 = client.post(
         "/api/pagamentos",
         headers=ctx["headers_cli1"],
@@ -425,7 +445,10 @@ def test_substituicao_pix_pendente_bloqueio_simulacao_prod_e_divergencia_webhook
     assert r2.status_code == 201
     pag2_id = r2.json()["id"]
     txid2 = r2.json()["gateway_txid"]
-    assert client.get(f"/api/pagamentos/{pag1_id}", headers=ctx["headers_cli1"]).json()["status"] == "cancelado"
+    assert pag2_id == pag1_id
+    assert r2.json()["gateway_txid"] == r1.json()["gateway_txid"]
+    assert client.get(f"/api/pagamentos/{pag1_id}", headers=ctx["headers_cli1"]).json()["status"] == "pendente"
+    assert db_session.query(models.Pagamento).count() == 1
 
     # 3. Webhook reportando valor menor no Mercado Pago (tentativa de pagamento parcial) -> 422
     payment_gateway.simular_status_mp(txid2, novo_status="approved", transaction_amount=1.00)
@@ -444,3 +467,324 @@ def test_substituicao_pix_pendente_bloqueio_simulacao_prod_e_divergencia_webhook
         headers=ctx["headers_cli1"],
     )
     assert r_sim_prod.status_code == 403
+
+
+def test_concorrencia_pix_e_cartao_nao_gera_cobranca_orfa(client, tmp_path):
+    """Duas intenções concorrentes com chaves diferentes: no máximo uma cobrança externa."""
+    # Banco em arquivo com conexões independentes: o SQLite em memória do
+    # restante da suíte usa uma única conexão e não representa concorrência real.
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'concorrencia.db'}",
+        connect_args={"check_same_thread": False},
+    )
+
+    @event.listens_for(engine, "connect")
+    def _configurar_sqlite(dbapi_conn, _):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    def override_get_db():
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    sessao_seed = SessionLocal()
+    try:
+        ctx = _seed_cenario_pagamento(sessao_seed, valor_estimado=180.0)
+    finally:
+        sessao_seed.close()
+
+    barreira = threading.Barrier(2)
+
+    payloads = [
+        {
+            "orcamento_id": ctx["orcamento"].id,
+            "metodo": "pix",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        {
+            "orcamento_id": ctx["orcamento"].id,
+            "metodo": "cartao_credito",
+            "parcelas": 1,
+            "idempotency_key": str(uuid.uuid4()),
+            "cartao": {
+                "card_token": "tok_concorrente_aprovado_5555",
+                "payment_method_id": "visa",
+                "nome_titular": "MARIANA FERREIRA",
+                "cpf_titular": "52998224725",
+            },
+        },
+    ]
+
+    def enviar(payload):
+        barreira.wait(timeout=10)
+        return client.post("/api/pagamentos", headers=ctx["headers_cli1"], json=payload)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        respostas = list(executor.map(enviar, payloads))
+
+    codigos = sorted(resposta.status_code for resposta in respostas)
+    assert codigos == [201, 409], [r.text for r in respostas]
+
+    sessao_verificacao = SessionLocal()
+    try:
+        pagamentos = sessao_verificacao.query(models.Pagamento).all()
+        assert len(pagamentos) == 1
+        assert sum(1 for p in pagamentos if p.status == "aprovado") <= 1
+
+        # Toda cobrança criada no simulador do MP precisa ter registro local (sem órfãs).
+        txids_locais = {p.gateway_txid for p in pagamentos}
+        assert set(payment_gateway._MOCK_PAYMENTS.keys()) == txids_locais
+    finally:
+        sessao_verificacao.close()
+
+
+def test_falha_cancelamento_pix_anterior_nao_cria_nova_cobranca(
+    client, db_session, monkeypatch
+):
+    """Se o MP não confirmar o cancelamento do PIX vencido, nenhuma nova cobrança é criada."""
+    ctx = _seed_cenario_pagamento(db_session, valor_estimado=120.0)
+
+    r1 = client.post(
+        "/api/pagamentos",
+        headers=ctx["headers_cli1"],
+        json={
+            "orcamento_id": ctx["orcamento"].id,
+            "metodo": "pix",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+    )
+    assert r1.status_code == 201
+    txid_anterior = r1.json()["gateway_txid"]
+
+    pagamento = db_session.query(models.Pagamento).filter_by(gateway_txid=txid_anterior).first()
+    pagamento.pix_expira_em = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=5)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        payment_gateway.MercadoPagoProvider,
+        "cancelar_pagamento",
+        lambda self, gateway_txid: None,
+    )
+
+    r2 = client.post(
+        "/api/pagamentos",
+        headers=ctx["headers_cli1"],
+        json={
+            "orcamento_id": ctx["orcamento"].id,
+            "metodo": "pix",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+    )
+    assert r2.status_code == 502
+    assert db_session.query(models.Pagamento).count() == 1
+    assert set(payment_gateway._MOCK_PAYMENTS.keys()) == {txid_anterior}
+
+
+def test_webhook_duplicado_e_fora_de_ordem(client, db_session):
+    """Webhook duplicado não duplica notificações; transição fora de ordem vira evento e 200."""
+    ctx = _seed_cenario_pagamento(db_session, valor_estimado=90.0)
+    r = client.post(
+        "/api/pagamentos",
+        headers=ctx["headers_cli1"],
+        json={
+            "orcamento_id": ctx["orcamento"].id,
+            "metodo": "pix",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+    )
+    txid = r.json()["gateway_txid"]
+    pagamento_id = r.json()["id"]
+    payment_gateway.simular_status_mp(txid, novo_status="approved", status_detail="accredited")
+    sig, _ = payment_gateway.gerar_assinatura_webhook(data_id=txid, x_request_id="req-dup")
+
+    primeira = client.post(
+        "/api/pagamentos/webhook",
+        headers={"x-signature": sig, "x-request-id": "req-dup"},
+        json={"data": {"id": txid}},
+    )
+    assert primeira.status_code == 200
+    notificacoes_apos_primeira = db_session.query(models.Notificacao).count()
+
+    duplicada = client.post(
+        "/api/pagamentos/webhook",
+        headers={"x-signature": sig, "x-request-id": "req-dup"},
+        json={"data": {"id": txid}},
+    )
+    assert duplicada.status_code == 200
+    assert duplicada.json()["status"] == "duplicate"
+    assert db_session.query(models.Notificacao).count() == notificacoes_apos_primeira
+
+    # Fora de ordem: aprovado não pode regredir para recusado.
+    payment_gateway.simular_status_mp(txid, novo_status="rejected", status_detail="cc_rejected_other_reason")
+    sig2, _ = payment_gateway.gerar_assinatura_webhook(data_id=txid, x_request_id="req-ooo")
+    fora_de_ordem = client.post(
+        "/api/pagamentos/webhook",
+        headers={"x-signature": sig2, "x-request-id": "req-ooo"},
+        json={"data": {"id": txid}},
+    )
+    assert fora_de_ordem.status_code == 200
+    assert fora_de_ordem.json()["status"] == "ignored"
+
+    db_session.expire_all()
+    pagamento = db_session.get(models.Pagamento, pagamento_id)
+    assert pagamento.status == "aprovado"
+    evento = (
+        db_session.query(models.PagamentoEvento)
+        .filter_by(pagamento_id=pagamento_id, tipo="transicao_invalida")
+        .first()
+    )
+    assert evento is not None
+
+
+def test_webhook_violacao_indice_parcial_registra_estorno(client, db_session):
+    """Duas aprovações para o mesmo orçamento: rollback, estorno e 200 para o MP."""
+    ctx = _seed_cenario_pagamento(db_session, valor_estimado=110.0)
+
+    primeira = client.post(
+        "/api/pagamentos",
+        headers=ctx["headers_cli1"],
+        json={
+            "orcamento_id": ctx["orcamento"].id,
+            "metodo": "pix",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+    )
+    txid1 = primeira.json()["gateway_txid"]
+    payment_gateway.simular_status_mp(txid1, novo_status="approved")
+    sig1, _ = payment_gateway.gerar_assinatura_webhook(data_id=txid1, x_request_id="req-index-1")
+    assert client.post(
+        "/api/pagamentos/webhook",
+        headers={"x-signature": sig1, "x-request-id": "req-index-1"},
+        json={"data": {"id": txid1}},
+    ).status_code == 200
+
+    # Segunda cobrança real no MP, inserida localmente como pendente.
+    provider = payment_gateway.MercadoPagoProvider()
+    external_ref = f"rs-orc-{ctx['orcamento'].id}-pag-{uuid.uuid4().hex[:8]}"
+    mp_resp = provider.criar_pagamento_pix(
+        valor=110.0,
+        descricao="RentalSpouse - Orcamento extra",
+        external_reference=external_ref,
+        idempotency_key=str(uuid.uuid4()),
+        payer_email=ctx["cli1"].email,
+        payer_nome=ctx["cli1"].nome,
+        payer_cpf=ctx["cli1"].cpf,
+    )
+    txid2 = str(mp_resp["id"])
+    pagamento2 = models.Pagamento(
+        orcamento_id=ctx["orcamento"].id,
+        cliente_id=ctx["cli1"].id,
+        professional_id=ctx["prof"].id,
+        valor=110.0,
+        metodo="pix",
+        status="pendente",
+        parcelas=1,
+        gateway_provider="sandbox_mock",
+        gateway_txid=txid2,
+        external_reference=external_ref,
+        idempotency_key=str(uuid.uuid4()),
+        pix_expira_em=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=30),
+    )
+    db_session.add(pagamento2)
+    db_session.commit()
+    pagamento2_id = pagamento2.id
+
+    payment_gateway.simular_status_mp(txid2, novo_status="approved", transaction_amount=110.0)
+    sig2, _ = payment_gateway.gerar_assinatura_webhook(data_id=txid2, x_request_id="req-index-2")
+    resposta = client.post(
+        "/api/pagamentos/webhook",
+        headers={"x-signature": sig2, "x-request-id": "req-index-2"},
+        json={"data": {"id": txid2}},
+    )
+    assert resposta.status_code == 200
+    assert resposta.json()["status"] == "ignored"
+
+    db_session.expire_all()
+    assert db_session.get(models.Pagamento, pagamento2_id).status == "pendente"
+    assert db_session.query(models.Pagamento).filter_by(
+        orcamento_id=ctx["orcamento"].id, status="aprovado"
+    ).count() == 1
+    evento = (
+        db_session.query(models.PagamentoEvento)
+        .filter_by(pagamento_id=pagamento2_id)
+        .filter(models.PagamentoEvento.tipo.in_(("estorno_executado", "estorno_pendente")))
+        .first()
+    )
+    assert evento is not None
+
+
+def test_configuracao_pagamentos_fail_closed(client, monkeypatch):
+    """Provider inválido e simulador em produção falham; sem segredo, webhook é rejeitado."""
+    monkeypatch.delenv("PAYMENT_PROVIDER", raising=False)
+    assert payment_gateway.obter_provider_mode() == "mercadopago"
+
+    monkeypatch.setenv("PAYMENT_PROVIDER", "provedor_invalido")
+    with pytest.raises(RuntimeError):
+        payment_gateway.obter_provider_mode()
+
+    monkeypatch.setenv("PAYMENT_PROVIDER", "sandbox_mock")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with pytest.raises(RuntimeError):
+        payment_gateway.obter_provider_mode()
+
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.delenv("MP_WEBHOOK_SECRET", raising=False)
+    assinatura = f"ts={int(time.time())},v1=qualquer"
+    assert payment_gateway.validar_assinatura_webhook(
+        x_signature=assinatura,
+        x_request_id="req-sem-segredo",
+        data_id="123",
+    ) is False
+
+    resposta = client.post(
+        "/api/pagamentos/webhook",
+        headers={"x-signature": assinatura, "x-request-id": "req-sem-segredo"},
+        json={"data": {"id": "123"}},
+    )
+    assert resposta.status_code == 401
+
+
+def _request_com_ip(ip: str) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/pagamentos",
+            "headers": [],
+            "query_string": b"",
+            "client": (ip, 12345),
+        }
+    )
+
+
+def test_rate_limit_pagamento_separa_cliente_e_ip():
+    """Os contadores por cliente e por IP são independentes."""
+    reset_rate_limits()
+    ip_compartilhado = "203.0.113.10"
+
+    for _ in range(5):
+        check_payment_rate_limit(_request_com_ip(ip_compartilhado), cliente_id=1)
+    with pytest.raises(HTTPException) as erro_cliente:
+        check_payment_rate_limit(_request_com_ip(ip_compartilhado), cliente_id=1)
+    assert erro_cliente.value.status_code == 429
+
+    # Outro cliente no mesmo IP ainda pode tentar (contador por cliente separado).
+    for _ in range(5):
+        check_payment_rate_limit(_request_com_ip(ip_compartilhado), cliente_id=2)
+
+    reset_rate_limits()
+    for cliente_id in range(1, 21):
+        check_payment_rate_limit(_request_com_ip(ip_compartilhado), cliente_id=cliente_id)
+    with pytest.raises(HTTPException) as erro_ip:
+        check_payment_rate_limit(_request_com_ip(ip_compartilhado), cliente_id=21)
+    assert erro_ip.value.status_code == 429

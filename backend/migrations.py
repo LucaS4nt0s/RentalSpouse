@@ -135,6 +135,32 @@ def migrate_agenda_tables(engine: Engine) -> None:
     models.Base.metadata.create_all(bind=engine, tables=tabelas)
 
 
+def migrate_pagamentos_table(engine: Engine) -> None:
+    """
+    Garante as tabelas de pagamentos e de auditoria de webhooks (issue #18).
+
+    Usa o DDL declarado em `models.py` para não divergir do modelo e preserva
+    volumes existentes (create_all com checkfirst).
+    """
+    inspector = inspect(engine)
+    tabelas = [
+        models.Pagamento.__table__,
+        models.PagamentoEvento.__table__,
+    ]
+    ausentes = [tabela.name for tabela in tabelas if not inspector.has_table(tabela.name)]
+    if not ausentes:
+        return
+
+    logger.info(
+        "Migração RentalSpouse: criando tabela(s) de pagamentos %s...",
+        ", ".join(ausentes),
+    )
+    models.Base.metadata.create_all(
+        bind=engine,
+        tables=[tabela for tabela in tabelas if tabela.name in ausentes],
+    )
+
+
 def backfill_normalized_fields(session_factory: Callable[[], Session], batch_size: int = 200) -> int:
     """
     Percorre profissionais que possuem campos normalizados como NULL em lotes
@@ -170,17 +196,5 @@ def run_all_migrations(engine: Engine, session_factory: Callable[[], Session]) -
     """Executa a verificação/adição de colunas, índices, tabelas novas e o backfill de dados."""
     migrate_columns_and_indexes(engine)
     migrate_agenda_tables(engine)
+    migrate_pagamentos_table(engine)
     backfill_normalized_fields(session_factory)
-
-
-
-_orig_migrate_agenda_tables = migrate_agenda_tables
-
-
-def migrate_agenda_tables(engine: Engine) -> None:
-    """Garante as tabelas da agenda (#78) e de pagamentos (#18)."""
-    _orig_migrate_agenda_tables(engine)
-    inspector = inspect(engine)
-    if not inspector.has_table(models.Pagamento.__table__.name):
-        logger.info("Migração RentalSpouse: criando tabela 'pagamentos'...")
-        models.Base.metadata.create_all(bind=engine, tables=[models.Pagamento.__table__])

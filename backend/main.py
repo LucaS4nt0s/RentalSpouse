@@ -1,11 +1,14 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 import env_loader  # noqa: F401
 import database
+import payment_gateway
 from migrations import run_all_migrations
 from routes.admin_moderation import router as admin_moderation_router
 from routes.admins import router as admins_router
@@ -37,6 +40,8 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Cria todas as tabelas no banco de dados, executa migrações defensivas e semeia o admin inicial."""
+    # Fail-closed: provider inválido ou sandbox_mock em produção impede o startup.
+    payment_gateway.validar_configuracao_pagamentos()
     database.Base.metadata.create_all(bind=database.engine)
     try:
         run_all_migrations(database.engine, database.SessionLocal)
@@ -60,6 +65,40 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+# Campos que nunca podem voltar no eco de erros 422 (PCI-DSS / LGPD).
+_CAMPOS_SENSIVEIS_VALIDACAO = {
+    "numero_cartao",
+    "pan",
+    "cvv",
+    "validade",
+    "card_token",
+    "cpf_titular",
+}
+
+
+@app.exception_handler(RequestValidationError)
+async def tratar_erro_validacao(request: Request, exc: RequestValidationError):
+    """
+    Remove o eco de valores sensíveis no corpo do erro 422.
+
+    O handler padrão do FastAPI inclui `input`/`ctx` em cada item, o que fazia
+    PAN e CVV voltarem para o cliente. Em rotas de pagamento removemos o eco
+    de todos os campos; nas demais, apenas dos campos sensíveis.
+    """
+    rota_pagamento = request.url.path.startswith("/api/pagamentos")
+    erros = []
+    for erro in exc.errors():
+        item = dict(erro)
+        loc = [str(parte) for parte in item.get("loc", [])]
+        # `ctx` carrega a exceção original (ValueError) e não é serializável.
+        item.pop("ctx", None)
+        if rota_pagamento or any(campo in loc for campo in _CAMPOS_SENSIVEIS_VALIDACAO):
+            item.pop("input", None)
+        erros.append(item)
+    return JSONResponse(status_code=422, content={"detail": erros})
+
 
 # Origens explícitas: "*" é inválido com allow_credentials=True (spec CORS).
 # Adicione aqui as origens de staging/produção conforme necessário.

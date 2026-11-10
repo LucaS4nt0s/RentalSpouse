@@ -83,9 +83,9 @@ export function detectarBandeiraCartao(numero: string): string {
 
 /**
  * Tokeniza os dados do cartão diretamente no cliente (PCI-DSS SAQ-A / EP).
- * Se `NEXT_PUBLIC_MP_PUBLIC_KEY` estiver configurada, chama `POST https://api.mercadopago.com/v1/card_tokens`.
- * Em modo de desenvolvimento/avaliação sem chave pública configurada, gera um token descartável local
- * preservando apenas os 4 últimos dígitos para o simulador `sandbox_mock`.
+ *
+ * Sem `NEXT_PUBLIC_MP_PUBLIC_KEY` a operação falha de forma explícita: nunca
+ * geramos um token falso nem simulamos aprovação em produção.
  */
 export async function tokenizarCartaoMercadoPago(dados: {
   numeroCartao: string;
@@ -95,45 +95,40 @@ export async function tokenizarCartaoMercadoPago(dados: {
   anoValidade: string;
   cvv: string;
 }): Promise<{ card_token: string; payment_method_id: string }> {
+  if (!MP_PUBLIC_KEY || MP_PUBLIC_KEY.startsWith('TEST_MOCK')) {
+    throw new Error(
+      'Pagamento com cartão indisponível: NEXT_PUBLIC_MP_PUBLIC_KEY não está configurada. Use PIX ou contate o suporte.'
+    );
+  }
+
   const numeroLimpo = dados.numeroCartao.replace(/\D/g, '');
   const cpfLimpo = dados.cpfTitular.replace(/\D/g, '');
   const payment_method_id = detectarBandeiraCartao(numeroLimpo);
+  const anoCompleto =
+    dados.anoValidade.length === 2 ? Number(`20${dados.anoValidade}`) : Number(dados.anoValidade);
 
-  if (MP_PUBLIC_KEY && !MP_PUBLIC_KEY.startsWith('TEST_MOCK')) {
-    const anoCompleto =
-      dados.anoValidade.length === 2 ? Number(`20${dados.anoValidade}`) : Number(dados.anoValidade);
-    const res = await fetch(
-      `${MP_API_BASE_URL}/v1/card_tokens?public_key=${encodeURIComponent(MP_PUBLIC_KEY)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          card_number: numeroLimpo,
-          security_code: dados.cvv.trim(),
-          expiration_month: Number(dados.mesValidade),
-          expiration_year: anoCompleto,
-          cardholder: {
-            name: dados.nomeTitular.trim(),
-            identification: { type: 'CPF', number: cpfLimpo },
-          },
-        }),
-      }
-    );
-    if (!res.ok) {
-      throw new Error('Não foi possível tokenizar o cartão no Mercado Pago. Verifique os dados informados.');
+  const res = await fetch(
+    `${MP_API_BASE_URL}/v1/card_tokens?public_key=${encodeURIComponent(MP_PUBLIC_KEY)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        card_number: numeroLimpo,
+        security_code: dados.cvv.trim(),
+        expiration_month: Number(dados.mesValidade),
+        expiration_year: anoCompleto,
+        cardholder: {
+          name: dados.nomeTitular.trim(),
+          identification: { type: 'CPF', number: cpfLimpo },
+        },
+      }),
     }
-    const json = await res.json();
-    return { card_token: String(json.id), payment_method_id };
+  );
+  if (!res.ok) {
+    throw new Error('Não foi possível tokenizar o cartão no Mercado Pago. Verifique os dados informados.');
   }
-
-  const ultimos4 = numeroLimpo.slice(-4) || '4242';
-  const randomHex = Array.from({ length: 16 }, () =>
-    Math.floor(Math.random() * 16).toString(16)
-  ).join('');
-  return {
-    card_token: `mp_tok_${randomHex}_${ultimos4}`,
-    payment_method_id,
-  };
+  const json = await res.json();
+  return { card_token: String(json.id), payment_method_id };
 }
 
 export async function criarPagamento(

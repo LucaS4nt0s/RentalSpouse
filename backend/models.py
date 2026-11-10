@@ -623,3 +623,30 @@ class Pagamento(Base):
     agendamento = relationship("Agendamento")
     cliente = relationship("Cliente")
     professional = relationship("Professional")
+
+
+class PagamentoEvento(Base):
+    """
+    Trilha de auditoria dos webhooks de pagamento (issue #18).
+
+    Registra transições ignoradas e, principalmente, cobranças que precisam de
+    estorno porque não puderam ser aplicadas localmente (webhook duplicado,
+    fora de ordem ou violação do índice único parcial de pagamento aprovado).
+    """
+
+    __tablename__ = "pagamento_eventos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    pagamento_id = Column(
+        Integer,
+        ForeignKey("pagamentos.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    gateway_txid = Column(String(120), nullable=False, index=True)
+    tipo = Column(String(50), nullable=False, index=True)
+    detalhe = Column(Text, nullable=True)
+    payload = Column(Text, nullable=True)
+    criado_em = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )

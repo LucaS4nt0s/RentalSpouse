@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   Check,
@@ -64,6 +64,19 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
   const [cvv, setCvv] = useState<string>('');
   const [parcelas, setParcelas] = useState<number>(1);
 
+  // Uma chave por intenção de pagamento: reenvios da mesma tentativa são
+  // idempotentes e não geram cobranças duplicadas. Só renovamos depois que o
+  // backend confirma a criação do pagamento (ex.: cartão recusado -> nova tentativa).
+  const idempotencyKeyRef = useRef<string>(gerarIdempotencyKey());
+  const renovarIdempotencyKey = () => {
+    idempotencyKeyRef.current = gerarIdempotencyKey();
+  };
+
+  const obterDeviceSessionId = (): string | undefined => {
+    if (typeof window === 'undefined') return undefined;
+    return (window as unknown as { MP_DEVICE_SESSION_ID?: string }).MP_DEVICE_SESSION_ID;
+  };
+
   // Carrega pagamento já existente (aprovado ou pendente) para este orçamento
   useEffect(() => {
     if (!token) return;
@@ -113,7 +126,7 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
   }, [token, pagamento, notificacoes, onPaid]);
 
   const handleGerarPix = async () => {
-    if (!token) return;
+    if (!token || isLoading) return;
     setIsLoading(true);
     setError(null);
     try {
@@ -122,11 +135,12 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
           orcamento_id: orcamento.id,
           metodo: 'pix',
           parcelas: 1,
-          idempotency_key: gerarIdempotencyKey(),
+          idempotency_key: idempotencyKeyRef.current,
         },
         token
       );
       setPagamento(novo);
+      renovarIdempotencyKey();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao gerar cobrança PIX.');
     } finally {
@@ -136,7 +150,7 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
 
   const handlePagarCartao = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) return;
+    if (!token || isLoading) return;
 
     const partesValidade = validade.replace(/\s/g, '').split('/');
     if (partesValidade.length !== 2 || partesValidade[0].length < 1 || partesValidade[1].length < 2) {
@@ -166,17 +180,20 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
           orcamento_id: orcamento.id,
           metodo: 'cartao_credito',
           parcelas,
-          idempotency_key: gerarIdempotencyKey(),
+          idempotency_key: idempotencyKeyRef.current,
           cartao: {
             card_token,
             payment_method_id,
             nome_titular: nomeTitular.trim().toUpperCase(),
             cpf_titular: cpfTitular.replace(/\D/g, ''),
+            device_session_id: obterDeviceSessionId(),
           },
         },
         token
       );
       setPagamento(novo);
+      // A resposta foi confirmada: a próxima tentativa é uma nova intenção.
+      renovarIdempotencyKey();
       if (novo.status === 'aprovado' && onPaid) {
         onPaid(novo);
       }

@@ -70,15 +70,61 @@ def limpar_mock_pagamentos() -> None:
     _MOCK_IDEMPOTENCY.clear()
 
 
+def _ambiente_atual() -> str:
+    """Ambiente da aplicação, aceitando tanto ENVIRONMENT quanto ENV."""
+    return (
+        os.getenv("ENVIRONMENT")
+        or os.getenv("ENV")
+        or "development"
+    ).strip().lower()
+
+
 def obter_provider_mode() -> str:
-    """Retorna 'mercadopago' ou 'sandbox_mock' conforme configuração de ambiente."""
-    raw = os.getenv("PAYMENT_PROVIDER", "sandbox_mock").strip().lower()
-    return "mercadopago" if raw == "mercadopago" else "sandbox_mock"
+    """
+    Retorna 'mercadopago' ou 'sandbox_mock' conforme configuração de ambiente.
+
+    O padrão é a API real do Mercado Pago. O simulador só pode ser habilitado
+    explicitamente e nunca em produção (fail-closed).
+    """
+    raw = (os.getenv("PAYMENT_PROVIDER") or "mercadopago").strip().lower()
+    if raw not in ("mercadopago", "sandbox_mock"):
+        raise RuntimeError(
+            f"PAYMENT_PROVIDER inválido: '{raw}'. Valores aceitos: 'mercadopago' ou 'sandbox_mock'."
+        )
+    if raw == "sandbox_mock" and _ambiente_atual() == "production":
+        raise RuntimeError(
+            "PAYMENT_PROVIDER=sandbox_mock é proibido quando ENVIRONMENT/ENV=production."
+        )
+    return raw
 
 
 def obter_webhook_secret() -> str:
-    """Retorna o segredo HMAC configurado para validação do header x-signature."""
-    return os.getenv("MP_WEBHOOK_SECRET", "dev_mp_webhook_secret_change_in_production").strip()
+    """
+    Retorna o segredo HMAC configurado para validação do header x-signature.
+
+    Não existe valor padrão público: sem MP_WEBHOOK_SECRET todos os webhooks
+    são rejeitados (fail-closed).
+    """
+    return (os.getenv("MP_WEBHOOK_SECRET") or "").strip()
+
+
+def validar_configuracao_pagamentos() -> None:
+    """
+    Valida a configuração de pagamentos no startup.
+
+    Falha fechada para provider inválido ou simulador em produção. A ausência
+    do segredo de webhook e do access token é registrada e mantém o sistema
+    fail-closed (webhooks rejeitados / chamadas reais recusadas).
+    """
+    modo = obter_provider_mode()
+    if modo == "mercadopago" and not (os.getenv("MP_ACCESS_TOKEN") or "").strip():
+        logger.warning(
+            "MP_ACCESS_TOKEN ausente: pagamentos reais serão recusados até a configuração."
+        )
+    if not obter_webhook_secret():
+        logger.warning(
+            "MP_WEBHOOK_SECRET ausente: todos os webhooks do Mercado Pago serão rejeitados."
+        )
 
 
 def mapear_status_mp(mp_status: Optional[str]) -> str:
@@ -129,6 +175,14 @@ def simular_status_mp(
     return registro
 
 
+def _novo_txid_mock() -> str:
+    """Gera um identificador único mesmo quando o simulador é reiniciado."""
+    while True:
+        candidato = str(time.time_ns())
+        if candidato not in _MOCK_PAYMENTS:
+            return candidato
+
+
 def _mock_handler(request: httpx.Request) -> httpx.Response:
     """Handler HTTP determinístico que simula o contrato JSON de `/v1/payments` do Mercado Pago."""
     path = request.url.path
@@ -141,7 +195,7 @@ def _mock_handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=_MOCK_PAYMENTS[existing_id])
 
         body = json.loads(request.content.decode("utf-8"))
-        txid = str(10000000000 + len(_MOCK_PAYMENTS) + 1)
+        txid = _novo_txid_mock()
         now_utc = datetime.now(timezone.utc)
         exp_min = int(os.getenv("MP_PIX_EXPIRATION_MINUTES", "30") or "30")
         exp_utc = now_utc + timedelta(minutes=exp_min)
@@ -159,6 +213,8 @@ def _mock_handler(request: httpx.Request) -> httpx.Response:
                 "transaction_amount": amount,
                 "installments": 1,
                 "external_reference": ext_ref,
+                "payer": body.get("payer") or {},
+                "device_session_id": request.headers.get("x-meli-session-id"),
                 "date_created": now_utc.isoformat(),
                 "date_of_expiration": exp_utc.isoformat(),
                 "date_approved": None,
@@ -196,6 +252,8 @@ def _mock_handler(request: httpx.Request) -> httpx.Response:
                 "transaction_amount": amount,
                 "installments": int(body.get("installments", 1)),
                 "external_reference": ext_ref,
+                "payer": body.get("payer") or {},
+                "device_session_id": request.headers.get("x-meli-session-id"),
                 "date_created": now_utc.isoformat(),
                 "date_approved": None if is_rejected else now_utc.isoformat(),
                 "card": {
@@ -210,6 +268,17 @@ def _mock_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(201, json=mp_payload)
 
     if path.startswith("/v1/payments/"):
+        partes = [p for p in path.split("/") if p]
+        # POST /v1/payments/{id}/refunds
+        if method == "POST" and len(partes) >= 4 and partes[-1] == "refunds":
+            txid = partes[-2]
+            registro = _MOCK_PAYMENTS.get(txid)
+            if not registro:
+                return httpx.Response(404, json={"message": "Payment not found", "status": 404})
+            registro["status"] = "refunded"
+            registro["status_detail"] = "refunded"
+            return httpx.Response(201, json={"id": int(time.time_ns()), "status": "approved"})
+
         txid = path.rsplit("/", 1)[-1]
         registro = _MOCK_PAYMENTS.get(txid)
         if not registro:
@@ -220,6 +289,7 @@ def _mock_handler(request: httpx.Request) -> httpx.Response:
             body = json.loads(request.content.decode("utf-8"))
             if "status" in body:
                 registro["status"] = body["status"]
+                registro["status_detail"] = body["status"]
             return httpx.Response(200, json=registro)
 
     return httpx.Response(404, json={"message": "Not found"})
@@ -244,7 +314,14 @@ class MercadoPagoProvider:
         idempotency_key: Optional[str] = None,
         device_session_id: Optional[str] = None,
     ) -> Dict[str, str]:
-        token = self.access_token or "TEST-SANDBOX-MOCK-TOKEN"
+        if not self.access_token:
+            if self.mode != "sandbox_mock":
+                raise RuntimeError(
+                    "MP_ACCESS_TOKEN não configurado: pagamentos reais estão desabilitados (fail-closed)."
+                )
+            token = "TEST-SANDBOX-MOCK-TOKEN"
+        else:
+            token = self.access_token
         headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -322,6 +399,15 @@ class MercadoPagoProvider:
         cpf_titular: str,
         device_session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        partes_nome = (nome_titular or "").strip().split(" ", 1)
+        payer: Dict[str, Any] = {
+            "email": payer_email,
+            "identification": {"type": "CPF", "number": cpf_titular},
+        }
+        if partes_nome and partes_nome[0]:
+            payer["first_name"] = partes_nome[0]
+            payer["last_name"] = partes_nome[1] if len(partes_nome) > 1 else partes_nome[0]
+
         payload: Dict[str, Any] = {
             "transaction_amount": round(float(valor), 2),
             "token": card_token,
@@ -331,10 +417,7 @@ class MercadoPagoProvider:
             "capture": True,
             "binary_mode": True,
             "external_reference": external_reference,
-            "payer": {
-                "email": payer_email,
-                "identification": {"type": "CPF", "number": cpf_titular},
-            },
+            "payer": payer,
         }
         if issuer_id:
             payload["issuer_id"] = issuer_id
@@ -376,6 +459,28 @@ class MercadoPagoProvider:
         except Exception as exc:
             logger.warning("Não foi possível cancelar pagamento pendente %s no MP: %s", gateway_txid, exc)
         return None
+
+    def estornar_pagamento(self, gateway_txid: str) -> bool:
+        """Estorna integralmente uma cobrança já aprovada quando o commit local falha."""
+        try:
+            with self._client() as client:
+                resp = client.post(
+                    f"/v1/payments/{gateway_txid}/refunds",
+                    headers=self._headers(
+                        idempotency_key=f"refund-{gateway_txid}-{uuid.uuid4().hex[:8]}"
+                    ),
+                    json={},
+                )
+                if resp.status_code < 400:
+                    return True
+                logger.error(
+                    "Mercado Pago recusou estorno de %s (HTTP %s).",
+                    gateway_txid,
+                    resp.status_code,
+                )
+        except Exception as exc:
+            logger.error("Falha ao estornar pagamento %s no MP: %s", gateway_txid, exc)
+        return False
 
 
 def gerar_assinatura_webhook(

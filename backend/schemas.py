@@ -1336,6 +1336,13 @@ from models import (
 )
 
 
+def _garantir_utc_pagamento(v: Optional[datetime]) -> Optional[datetime]:
+    """Normaliza timestamps naive do SQLite para UTC nos schemas de pagamento."""
+    if isinstance(v, datetime) and v.tzinfo is None:
+        return v.replace(tzinfo=timezone.utc)
+    return v
+
+
 class CartaoTokenizadoInput(BaseModel):
     """
     Dados tokenizados do cartão de crédito enviados pelo cliente (PCI-DSS SAQ-A / EP).
@@ -1507,4 +1514,4 @@ class PagamentoRead(BaseModel):
 
     _utc = field_validator(
         "pix_expira_em", "pago_em", "criado_em", "atualizado_em", mode="after"
-    )(_garantir_utc)
+    )(_garantir_utc_pagamento)
