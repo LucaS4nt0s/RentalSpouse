@@ -15,6 +15,8 @@ export interface Professional {
   state?: string | null;
   is_active: boolean;
   approval_status?: string;
+  average_rating?: number | null;
+  reviews_count?: number | null;
   created_at?: string;
   updated_at?: string;
 }
