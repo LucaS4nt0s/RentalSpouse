@@ -174,6 +174,20 @@ def migrate_pagamentos_table(engine: Engine) -> None:
     )
 
 
+def migrate_avaliacoes_tables(engine: Engine) -> None:
+    """
+    Garante a criação idempotente da tabela `avaliacoes` (issues #19 e #21) em
+    bancos de dados já inicializados.
+    """
+    inspector = inspect(engine)
+    tabela = models.Avaliacao.__table__
+    if inspector.has_table(tabela.name):
+        return
+
+    logger.info("Migração RentalSpouse: criando tabela '%s'...", tabela.name)
+    models.Base.metadata.create_all(bind=engine, tables=[tabela])
+
+
 def backfill_normalized_fields(session_factory: Callable[[], Session], batch_size: int = 200) -> int:
     """
     Percorre profissionais que possuem campos normalizados como NULL em lotes
@@ -210,4 +224,5 @@ def run_all_migrations(engine: Engine, session_factory: Callable[[], Session]) -
     migrate_columns_and_indexes(engine)
     migrate_agenda_tables(engine)
     migrate_pagamentos_table(engine)
+    migrate_avaliacoes_tables(engine)
     backfill_normalized_fields(session_factory)

@@ -13,6 +13,7 @@ from migrations import run_all_migrations
 from routes.admin_moderation import router as admin_moderation_router
 from routes.admins import router as admins_router
 from routes.agendamentos import router as agendamentos_router
+from routes.avaliacoes import router as avaliacoes_router
 from routes.auth import router as auth_router
 from routes.clientes import router as clientes_router
 from routes.denuncias import router as denuncias_router
@@ -138,3 +139,6 @@ app.include_router(notificacoes_ws_router)
 app.include_router(agendamentos_router)
 # Pagamentos In-App via PIX e Cartão de Crédito - Mercado Pago (issue #18).
 app.include_router(pagamentos_router)
+# Avaliações e comentários de profissionais (issues #19 e #21).
+app.include_router(avaliacoes_router)
+

@@ -526,7 +526,6 @@ class Agendamento(Base):
     orcamento = relationship("Orcamento")
 
 
-
 class PagamentoMetodo(str, enum.Enum):
     """Meios de pagamento aceitos via Mercado Pago (issue #18)."""
 
@@ -652,3 +651,68 @@ class PagamentoEvento(Base):
     criado_em = Column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
+
+
+class Avaliacao(Base):
+    """
+    Avaliação de 1 a 5 estrelas e comentário deixados por um cliente após o
+    serviço prestado por um profissional (issues #19 e #21).
+
+    O autor (`cliente_id`) é sempre derivado do token de autenticação do cliente.
+    Pode ser vinculada opcionalmente a um `agendamento_id` (garantindo no máximo
+    uma avaliação por agendamento via constraint única) ou a um `orcamento_id`.
+    """
+
+    __tablename__ = "avaliacoes"
+    __table_args__ = (
+        CheckConstraint(
+            "nota >= 1 AND nota <= 5",
+            name="ck_avaliacoes_nota_valida",
+        ),
+        UniqueConstraint(
+            "agendamento_id",
+            name="uq_avaliacoes_agendamento",
+        ),
+        Index("ix_avaliacoes_professional_created", "professional_id", "created_at"),
+        Index("ix_avaliacoes_cliente_profissional", "cliente_id", "professional_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    cliente_id = Column(
+        Integer,
+        ForeignKey("clientes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    professional_id = Column(
+        Integer,
+        ForeignKey("professionals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    agendamento_id = Column(
+        Integer,
+        ForeignKey("agendamentos.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    orcamento_id = Column(
+        Integer,
+        ForeignKey("orcamentos.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    nota = Column(Integer, nullable=False, index=True)
+    comentario = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    cliente = relationship("Cliente")
+    professional = relationship("Professional")
+    agendamento = relationship("Agendamento")
+    orcamento = relationship("Orcamento")

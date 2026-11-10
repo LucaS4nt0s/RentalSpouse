@@ -1525,3 +1525,109 @@ class PagamentoRead(BaseModel):
     _utc = field_validator(
         "pix_expira_em", "pago_em", "criado_em", "atualizado_em", mode="after"
     )(_garantir_utc_pagamento)
+
+
+# ---------------------------------------------------------------------------
+# Schemas de Avaliações e Comentários de Profissionais (issues #19 e #21)
+# ---------------------------------------------------------------------------
+
+AVALIACAO_COMENTARIO_MIN_CARACTERES = 3
+AVALIACAO_COMENTARIO_MAX_CARACTERES = 1000
+
+
+class AvaliacaoCreate(BaseModel):
+    """Payload enviado pelo cliente autenticado para avaliar um profissional."""
+
+    professional_id: int = Field(
+        ...,
+        gt=0,
+        description="ID do profissional avaliado (deve existir, estar ativo e aprovado).",
+    )
+    nota: int = Field(
+        ...,
+        ge=1,
+        le=5,
+        description="Nota atribuída ao serviço prestado, de 1 a 5 estrelas.",
+    )
+    comentario: Optional[str] = Field(
+        None,
+        max_length=AVALIACAO_COMENTARIO_MAX_CARACTERES,
+        description="Comentário opcional sobre a experiência com o profissional.",
+    )
+    agendamento_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="ID do agendamento vinculado ao atendimento (opcional).",
+    )
+    orcamento_id: Optional[int] = Field(
+        None,
+        gt=0,
+        description="ID da solicitação de orçamento vinculada ao atendimento (opcional).",
+    )
+
+    @field_validator("comentario")
+    @classmethod
+    def validar_comentario(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        texto = v.strip()
+        if not texto:
+            return None
+        if len(texto) < AVALIACAO_COMENTARIO_MIN_CARACTERES:
+            raise ValueError(
+                f"O comentário, quando informado, deve ter pelo menos {AVALIACAO_COMENTARIO_MIN_CARACTERES} caracteres."
+            )
+        if "<script" in texto.lower() or "</script>" in texto.lower():
+            raise ValueError("O comentário contém tags ou scripts não permitidos.")
+        return texto
+
+
+class AvaliacaoRead(BaseModel):
+    """Avaliação serializada para o cliente autor."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    cliente_id: int = Field(..., description="Autor da avaliação (derivado do token).")
+    cliente_nome: str
+    professional_id: int
+    professional_name: Optional[str] = None
+    agendamento_id: Optional[int] = None
+    orcamento_id: Optional[int] = None
+    nota: int
+    comentario: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AvaliacaoPublicRead(BaseModel):
+    """Avaliação serializada para exibição pública no perfil do profissional."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    professional_id: int
+    cliente_nome: str = Field(..., description="Nome abreviado do cliente (ex.: 'João S.').")
+    nota: int
+    comentario: Optional[str] = None
+    created_at: datetime
+
+
+class AvaliacaoDistribuicaoRead(BaseModel):
+    """Contagem de avaliações por quantidade de estrelas (1 a 5)."""
+
+    estrelas_1: int = 0
+    estrelas_2: int = 0
+    estrelas_3: int = 0
+    estrelas_4: int = 0
+    estrelas_5: int = 0
+
+
+class ProfissionalAvaliacoesResumoRead(BaseModel):
+    """Resumo consolidado de reputação e lista de avaliações de um profissional (issue #21)."""
+
+    professional_id: int
+    media_notas: float = Field(0.0, ge=0.0, le=5.0)
+    total_avaliacoes: int = Field(0, ge=0)
+    distribuicao: AvaliacaoDistribuicaoRead
+    items: List[AvaliacaoPublicRead] = Field(default_factory=list)
