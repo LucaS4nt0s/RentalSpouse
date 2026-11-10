@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Calendar,
@@ -20,6 +20,7 @@ import {
   obterContagemPorEstrela,
 } from '../../types/avaliacoes';
 import { useAvaliacoesProfissional } from '../../hooks/useAvaliacoesProfissional';
+import { AvaliarProfissionalModal } from './AvaliarProfissionalModal';
 
 export interface AvaliacoesProfissionalModalProps {
   professional: Professional | null;
@@ -110,6 +111,8 @@ export function AvaliacoesProfissionalModal({
     pageSize: 10,
     onResumoCarregado,
   });
+
+  const [isAvaliarOpen, setIsAvaliarOpen] = useState<boolean>(false);
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -564,6 +567,15 @@ export function AvaliacoesProfissionalModal({
             Fechar
           </button>
 
+          <button
+            type="button"
+            onClick={() => setIsAvaliarOpen(true)}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs font-bold text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
+          >
+            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />
+            <span>Avaliar Profissional</span>
+          </button>
+
           {onRequestQuote && (
             <button
               type="button"
@@ -580,6 +592,19 @@ export function AvaliacoesProfissionalModal({
           )}
         </div>
       </div>
+
+      {/* Modal Interativo para Avaliação (issue #19) */}
+      {isAvaliarOpen && (
+        <AvaliarProfissionalModal
+          isOpen={isAvaliarOpen}
+          onClose={() => setIsAvaliarOpen(false)}
+          professionalId={professional.id}
+          professionalName={professional.name}
+          onSuccess={() => {
+            retry();
+          }}
+        />
+      )}
     </div>
   );
 }

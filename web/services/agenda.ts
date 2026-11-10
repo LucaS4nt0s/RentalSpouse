@@ -208,6 +208,7 @@ export async function listarMeusAgendamentos(
 }
 
 /**
+/**
  * Cancela um agendamento do cliente autenticado: `PATCH /api/agendamentos/{agendamento_id}/cancelar`.
  * Libera o horário imediatamente para outros clientes agendarem.
  */
@@ -248,6 +249,40 @@ export async function cancelarAgendamento(
 
   return response.json();
 }
+
+/**
+ * Conclui explicitamente um agendamento de atendimento (issues #19 e #21).
+ */
+export async function concluirAgendamento(
+  token: string,
+  agendamentoId: number,
+): Promise<Agendamento> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/agendamentos/${agendamentoId}/concluir`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => null);
+    throw new ApiError(
+      response.status,
+      parseErrorMessage(
+        errorBody,
+        'Não foi possível concluir o agendamento.',
+      ),
+      errorBody,
+    );
+  }
+
+  return response.json();
+}
+
 export {
   verificarPermissaoCancelamento,
   type StatusPermissaoCancelamento,
