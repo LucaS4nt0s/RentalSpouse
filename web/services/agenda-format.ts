@@ -45,3 +45,52 @@ export function formatarDataCompleta(dataIso: string): string {
     year: 'numeric',
   });
 }
+
+export interface StatusPermissaoCancelamento {
+  podeCancelar: boolean;
+  motivo?: string;
+  horasRestantes: number;
+}
+
+/**
+ * Valida a regra de cancelamento (Issue #24):
+ * Permite cancelamento apenas se faltar no mínimo 24 horas para o início do agendamento
+ * e o horário não tiver ocorrido.
+ */
+export function verificarPermissaoCancelamento(
+  dataHoraInicioIso: string,
+  agora: Date = new Date(),
+): StatusPermissaoCancelamento {
+  const tInicio = Date.parse(dataHoraInicioIso);
+  if (!Number.isFinite(tInicio)) {
+    return {
+      podeCancelar: false,
+      motivo: 'Data de início inválida.',
+      horasRestantes: 0,
+    };
+  }
+
+  const diffMs = tInicio - agora.getTime();
+  const horasRestantes = diffMs / (1000 * 60 * 60);
+
+  if (horasRestantes <= 0) {
+    return {
+      podeCancelar: false,
+      motivo: 'Não é possível cancelar um agendamento que já ocorreu ou está em andamento.',
+      horasRestantes,
+    };
+  }
+
+  if (horasRestantes < 24) {
+    return {
+      podeCancelar: false,
+      motivo: 'Cancelamentos só são permitidos com no mínimo 24 horas de antecedência.',
+      horasRestantes,
+    };
+  }
+
+  return {
+    podeCancelar: true,
+    horasRestantes,
+  };
+}

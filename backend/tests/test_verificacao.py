@@ -476,6 +476,7 @@ class TestConfiguracaoEmail:
 
     def test_backend_padrao_e_console(self, monkeypatch):
         monkeypatch.delenv("EMAIL_BACKEND", raising=False)
+        monkeypatch.delenv("SMTP_HOST", raising=False)
 
         assert email_service.backend_configurado() == "console"
         assert isinstance(email_service.obter_transporte(), email_service.TransporteConsole)

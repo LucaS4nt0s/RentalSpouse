@@ -44,7 +44,9 @@ from client_access import get_current_cliente
 from database import get_db
 import models
 from professional_access import get_current_professional
+from routes.notificacoes import registrar_e_enviar_notificacao
 import schemas
+from security import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,8 @@ router = APIRouter(prefix="/api", tags=["Agenda"])
 URL_AGENDA_PROFISSIONAL = "/professionals/{professional_id}/agenda"
 URL_AGENDAMENTOS = "/agendamentos"
 URL_MEUS_AGENDAMENTOS = "/agendamentos/meus"
+URL_CONCLUIR_AGENDAMENTO = "/agendamentos/{agendamento_id}/concluir"
+URL_AGENDAMENTO_CANCELAR = "/agendamentos/{agendamento_id}/cancelar"
 URL_DISPONIBILIDADE = "/agendamentos/disponibilidade"
 
 # Máximo de janelas aceitas em uma única definição de grade semanal.
@@ -522,6 +526,196 @@ def listar_meus_agendamentos(
         .limit(limit)
         .all()
     )
+
+
+@router.patch(
+    URL_AGENDAMENTO_CANCELAR,
+    response_model=schemas.AgendamentoRead,
+    summary="Cancelar agendamento",
+    description=(
+        "Cancela um agendamento do cliente autenticado (issue #24). "
+        "Muda o status para 'cancelado', liberando imediatamente o slot na agenda do profissional."
+    ),
+)
+def cancelar_agendamento(
+    agendamento_id: int,
+    payload: Optional[schemas.AgendamentoCancelarRequest] = None,
+    cliente: models.Cliente = Depends(get_current_cliente),
+    db: Session = Depends(get_db),
+):
+    """
+    Cancela o agendamento pertencente ao cliente autenticado.
+
+    O cliente só tem acesso aos seus próprios agendamentos (IDOR protection).
+    A transição para 'cancelado' libera o slot no índice único parcial da agenda.
+    """
+    agendamento = (
+        db.query(models.Agendamento)
+        .filter(
+            models.Agendamento.id == agendamento_id,
+            models.Agendamento.cliente_id == cliente.id,
+        )
+        .first()
+    )
+    if agendamento is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agendamento não encontrado.",
+        )
+
+    if agendamento.status == models.AgendamentoStatus.CANCELADO.value:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Este agendamento já foi cancelado anteriormente.",
+        )
+
+    if agendamento.status == models.AgendamentoStatus.CONCLUIDO.value:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Não é possível cancelar um agendamento já concluído.",
+        )
+
+    agora = _utcnow()
+    inicio = agendamento.data_hora_inicio
+    if inicio.tzinfo is not None:
+        inicio = inicio.astimezone(timezone.utc).replace(tzinfo=None)
+
+    if inicio <= agora:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Não é possível cancelar um agendamento que já ocorreu ou está em andamento.",
+        )
+
+    if inicio - agora < timedelta(hours=24):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Cancelamentos só são permitidos com no mínimo 24 horas de antecedência.",
+        )
+
+    agendamento.status = models.AgendamentoStatus.CANCELADO.value
+    agendamento.cancelado_em = agora
+    motivo_limpo = payload.motivo.strip() if (payload and payload.motivo) else None
+    agendamento.motivo_cancelamento = motivo_limpo or None
+
+    db.add(agendamento)
+    db.commit()
+    db.refresh(agendamento)
+
+    # Disparo de notificação em tempo real para o profissional (Issue #24)
+    prof = (
+        agendamento.professional
+        or db.query(models.Professional)
+        .filter(models.Professional.id == agendamento.professional_id)
+        .first()
+    )
+    if prof and prof.email:
+        nome_cliente = cliente.nome if cliente and cliente.nome else "Cliente"
+        data_formatada = agendamento.data_hora_inicio.strftime("%d/%m/%Y às %H:%M")
+        mensagem_notif = (
+            f"{nome_cliente} cancelou o agendamento marcado para {data_formatada}."
+        )
+        if agendamento.motivo_cancelamento:
+            mensagem_notif += f' Motivo: "{agendamento.motivo_cancelamento}"'
+
+        try:
+            registrar_e_enviar_notificacao(
+                db=db,
+                user_email=prof.email,
+                titulo="Agendamento Cancelado",
+                mensagem=mensagem_notif,
+                tipo="agendamento_cancelado",
+                referencia_id=agendamento.id,
+                payload_extra={
+                    "agendamento_id": agendamento.id,
+                    "cliente_id": cliente.id,
+                    "cliente_nome": nome_cliente,
+                    "data_hora_inicio": agendamento.data_hora_inicio.isoformat(),
+                    "data_hora_fim": agendamento.data_hora_fim.isoformat(),
+                    "motivo": agendamento.motivo_cancelamento,
+                },
+            )
+        except Exception as e:
+            logger.warning(
+                "Falha ao enviar notificação de cancelamento para o profissional #%s: %s",
+                agendamento.professional_id,
+                e,
+            )
+
+    logger.info(
+        "Agendamento #%s cancelado pelo cliente #%s. Slot liberado na agenda do profissional #%s.",
+        agendamento.id,
+        cliente.id,
+        agendamento.professional_id,
+    )
+    return agendamento
+
+
+@router.patch(
+    URL_CONCLUIR_AGENDAMENTO,
+    response_model=schemas.AgendamentoRead,
+    summary="Concluir agendamento de atendimento",
+    description=(
+        "Conclui explicitamente um agendamento de atendimento (issues #19 e #21). "
+        "Pode ser acionado pelo cliente titular, profissional titular ou administrador. "
+        "Retorna 401 sem autenticação, 404 se não encontrado, 403 para usuário não autorizado "
+        "e 409 caso o agendamento esteja cancelado."
+    ),
+)
+def concluir_agendamento(
+    agendamento_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    agendamento = (
+        db.query(models.Agendamento)
+        .filter(models.Agendamento.id == agendamento_id)
+        .first()
+    )
+    if agendamento is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agendamento não encontrado.",
+        )
+
+    is_autorizado = False
+    if current_user.role == models.UserRole.ADMIN.value:
+        is_autorizado = True
+    elif current_user.role == models.UserRole.CLIENT.value:
+        cliente = (
+            db.query(models.Cliente)
+            .filter(models.Cliente.email == current_user.email)
+            .first()
+        )
+        if cliente and cliente.id == agendamento.cliente_id:
+            is_autorizado = True
+    elif current_user.role == models.UserRole.PROFESSIONAL.value:
+        prof = (
+            db.query(models.Professional)
+            .filter(models.Professional.email == current_user.email)
+            .first()
+        )
+        if prof and prof.id == agendamento.professional_id:
+            is_autorizado = True
+
+    if not is_autorizado:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Você não possui permissão para concluir este agendamento.",
+        )
+
+    if agendamento.status == models.AgendamentoStatus.CANCELADO.value:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Não é possível concluir um agendamento cancelado.",
+        )
+
+    if agendamento.status != models.AgendamentoStatus.CONCLUIDO.value:
+        agendamento.status = models.AgendamentoStatus.CONCLUIDO.value
+        db.commit()
+        db.refresh(agendamento)
+
+    return agendamento
+    return agendamento
 
 
 # ---------------------------------------------------------------------------

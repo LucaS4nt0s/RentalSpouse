@@ -126,13 +126,66 @@ def migrate_agenda_tables(engine: Engine) -> None:
         models.Agendamento.__table__,
     ]
     ausentes = [tabela.name for tabela in tabelas if not inspector.has_table(tabela.name)]
+    if ausentes:
+        logger.info(
+            "Migração RentalSpouse: criando tabela(s) da agenda %s...", ", ".join(ausentes)
+        )
+        models.Base.metadata.create_all(bind=engine, tables=tabelas)
+
+    if inspector.has_table("agendamentos"):
+        existing_agendamento_cols = {col["name"] for col in inspector.get_columns("agendamentos")}
+        agendamento_cols_to_add = [
+            ("motivo_cancelamento", "VARCHAR(500)"),
+            ("cancelado_em", "TIMESTAMP" if engine.dialect.name == "postgresql" else "DATETIME"),
+        ]
+        with engine.begin() as conn:
+            for col_name, col_type in agendamento_cols_to_add:
+                if col_name not in existing_agendamento_cols:
+                    logger.info(
+                        "Migração RentalSpouse: adicionando coluna '%s' na tabela 'agendamentos'...",
+                        col_name,
+                    )
+                    conn.execute(text(f"ALTER TABLE agendamentos ADD COLUMN {col_name} {col_type}"))
+
+
+def migrate_pagamentos_table(engine: Engine) -> None:
+    """
+    Garante as tabelas de pagamentos e de auditoria de webhooks (issue #18).
+
+    Usa o DDL declarado em `models.py` para não divergir do modelo e preserva
+    volumes existentes (create_all com checkfirst).
+    """
+    inspector = inspect(engine)
+    tabelas = [
+        models.Pagamento.__table__,
+        models.PagamentoEvento.__table__,
+    ]
+    ausentes = [tabela.name for tabela in tabelas if not inspector.has_table(tabela.name)]
     if not ausentes:
         return
 
     logger.info(
-        "Migração RentalSpouse: criando tabela(s) da agenda %s...", ", ".join(ausentes)
+        "Migração RentalSpouse: criando tabela(s) de pagamentos %s...",
+        ", ".join(ausentes),
     )
-    models.Base.metadata.create_all(bind=engine, tables=tabelas)
+    models.Base.metadata.create_all(
+        bind=engine,
+        tables=[tabela for tabela in tabelas if tabela.name in ausentes],
+    )
+
+
+def migrate_avaliacoes_tables(engine: Engine) -> None:
+    """
+    Garante a criação idempotente da tabela `avaliacoes` (issues #19 e #21) em
+    bancos de dados já inicializados.
+    """
+    inspector = inspect(engine)
+    tabela = models.Avaliacao.__table__
+    if inspector.has_table(tabela.name):
+        return
+
+    logger.info("Migração RentalSpouse: criando tabela '%s'...", tabela.name)
+    models.Base.metadata.create_all(bind=engine, tables=[tabela])
 
 
 def backfill_normalized_fields(session_factory: Callable[[], Session], batch_size: int = 200) -> int:
@@ -170,4 +223,6 @@ def run_all_migrations(engine: Engine, session_factory: Callable[[], Session]) -
     """Executa a verificação/adição de colunas, índices, tabelas novas e o backfill de dados."""
     migrate_columns_and_indexes(engine)
     migrate_agenda_tables(engine)
+    migrate_pagamentos_table(engine)
+    migrate_avaliacoes_tables(engine)
     backfill_normalized_fields(session_factory)

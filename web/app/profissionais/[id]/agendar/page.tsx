@@ -20,11 +20,14 @@ import { NotificationBell } from '../../../../components/notificacoes/Notificati
 import { Calendario } from '../../../../components/agenda/Calendario';
 import { GradeHorarios } from '../../../../components/agenda/GradeHorarios';
 import { ConfirmacaoAgendamento } from '../../../../components/agenda/ConfirmacaoAgendamento';
+import { CancelarAgendamentoModal } from '../../../../components/agenda/CancelarAgendamentoModal';
 import { useAgenda } from '../../../../hooks/useAgenda';
 import {
+  Agendamento,
   extrairDataIso,
   extrairHoraCurta,
   formatarDataCompleta,
+  verificarPermissaoCancelamento,
 } from '../../../../services/agenda';
 
 export default function AgendarProfissionalPage() {
@@ -57,11 +60,14 @@ export default function AgendarProfissionalPage() {
     selecionarSlot,
     recarregarAgenda,
     confirmarAgendamento,
+    cancelarAgendamento,
     carregarMeusAgendamentos,
     iniciarNovoAgendamento,
   } = useAgenda(professionalId);
 
   const [exibirMeus, setExibirMeus] = useState<boolean>(false);
+  const [agendamentoParaCancelar, setAgendamentoParaCancelar] =
+    useState<Agendamento | null>(null);
 
   const handleVerMeusAgendamentos = () => {
     setExibirMeus(true);
@@ -383,11 +389,59 @@ export default function AgendarProfissionalPage() {
                               `Profissional #${ag.professional_id}`}{' '}
                             • Reserva #{ag.id}
                           </p>
+                          {ag.status === 'cancelado' && ag.motivo_cancelamento && (
+                            <p className="mt-0.5 text-[11px] italic text-rental-muted">
+                              Motivo: {ag.motivo_cancelamento}
+                            </p>
+                          )}
                         </div>
                       </div>
-                      <span className="self-start rounded-full bg-rental-success/15 px-2.5 py-0.5 text-[11px] font-bold uppercase text-rental-success sm:self-auto">
-                        {ag.status}
-                      </span>
+                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase ${
+                            ag.status === 'cancelado'
+                              ? 'bg-red-500/15 text-red-600 dark:text-red-400'
+                              : ag.status === 'concluido'
+                              ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+                              : 'bg-rental-success/15 text-rental-success'
+                          }`}
+                        >
+                          {ag.status}
+                        </span>
+                        {ag.status === 'agendado' && (() => {
+                          const permissao = verificarPermissaoCancelamento(ag.data_hora_inicio);
+                          if (permissao.podeCancelar) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setAgendamentoParaCancelar(ag)}
+                                className="rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/20 dark:text-red-400"
+                                title="Cancelar este agendamento"
+                              >
+                                Cancelar
+                              </button>
+                            );
+                          }
+                          return (
+                            <div className="flex items-center gap-1.5" title={permissao.motivo}>
+                              <button
+                                type="button"
+                                disabled
+                                className="cursor-not-allowed rounded-lg border border-rental-border bg-rental-surface2/60 px-2.5 py-1 text-xs font-semibold text-rental-muted opacity-60"
+                                title={permissao.motivo}
+                              >
+                                Cancelar
+                              </button>
+                              <span
+                                className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+                                title={permissao.motivo}
+                              >
+                                &lt;24h
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </li>
                   );
                 })}
@@ -396,6 +450,21 @@ export default function AgendarProfissionalPage() {
           </section>
         )}
       </main>
+
+      <CancelarAgendamentoModal
+        isOpen={agendamentoParaCancelar !== null}
+        onClose={() => setAgendamentoParaCancelar(null)}
+        agendamento={agendamentoParaCancelar}
+        nomeProfissional={
+          agendamentoParaCancelar
+            ? (nomesProfissionais[agendamentoParaCancelar.professional_id] ??
+              (agendamentoParaCancelar.professional_id === profissional?.id
+                ? profissional?.name
+                : undefined))
+            : undefined
+        }
+        onConfirmar={cancelarAgendamento}
+      />
     </div>
   );
 }
