@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Star,
   User,
   Wrench,
   X,
@@ -35,6 +36,7 @@ import { ThemeToggle } from '../../../components/ui/ThemeToggle';
 import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
 import { useNotifications } from '../../../context/NotificationContext';
 import { QuoteDetailModal } from '../../../components/orcamentos/QuoteDetailModal';
+import { AvaliarProfissionalModal } from '../../../components/avaliacoes/AvaliarProfissionalModal';
 
 type FilterTab = 'todos' | 'respondido' | 'aceito' | 'pendente' | 'recusado';
 
@@ -49,6 +51,9 @@ export default function ClienteOrcamentosPage() {
 
   // Modal de Detalhes
   const [selectedOrcamentoId, setSelectedOrcamentoId] = useState<number | null>(null);
+
+  // Modal de Avaliação de Serviço (issue #19)
+  const [avaliarOrcamento, setAvaliarOrcamento] = useState<Orcamento | null>(null);
 
   // Lightbox de foto
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
@@ -597,14 +602,27 @@ export default function ClienteOrcamentosPage() {
                         ? 'Tente solicitar para outro profissional.'
                         : 'Aguardando avaliação técnica.'}
                     </span>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setSelectedOrcamentoId(orcamento.id)}
-                      className="font-bold text-xs"
-                    >
-                      Ver Detalhes Completos
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {isAceito && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          leftIcon={<Star className="h-3.5 w-3.5 fill-amber-300 text-amber-300" />}
+                          onClick={() => setAvaliarOrcamento(orcamento)}
+                          className="font-bold text-xs bg-amber-500 hover:bg-amber-600 text-white border-none shadow-sm"
+                        >
+                          Avaliar Serviço
+                        </Button>
+                      )}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setSelectedOrcamentoId(orcamento.id)}
+                        className="font-bold text-xs"
+                      >
+                        Ver Detalhes Completos
+                      </Button>
+                    </div>
                   </div>
                 </article>
               );
@@ -619,6 +637,20 @@ export default function ClienteOrcamentosPage() {
           orcamentoId={selectedOrcamentoId}
           onClose={() => setSelectedOrcamentoId(null)}
           onResponded={carregarOrcamentos}
+        />
+      )}
+
+      {/* Modal de Avaliação de Serviço (issue #19) */}
+      {avaliarOrcamento && (
+        <AvaliarProfissionalModal
+          isOpen={Boolean(avaliarOrcamento)}
+          onClose={() => setAvaliarOrcamento(null)}
+          professionalId={avaliarOrcamento.professional_id}
+          professionalName={avaliarOrcamento.professional_name || 'Profissional'}
+          orcamentoId={avaliarOrcamento.id}
+          onSuccess={() => {
+            carregarOrcamentos();
+          }}
         />
       )}
 
