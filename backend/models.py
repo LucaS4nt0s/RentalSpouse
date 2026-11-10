@@ -526,6 +526,133 @@ class Agendamento(Base):
     orcamento = relationship("Orcamento")
 
 
+class PagamentoMetodo(str, enum.Enum):
+    """Meios de pagamento aceitos via Mercado Pago (issue #18)."""
+
+    PIX = "pix"
+    CARTAO_CREDITO = "cartao_credito"
+
+
+class PagamentoStatus(str, enum.Enum):
+    """Ciclo de vida de uma transação de pagamento (issue #18)."""
+
+    PENDENTE = "pendente"
+    APROVADO = "aprovado"
+    RECUSADO = "recusado"
+    EXPIRADO = "expirado"
+    CANCELADO = "cancelado"
+    ESTORNADO = "estornado"
+
+
+class Pagamento(Base):
+    """Transação de pagamento de orçamento/agendamento via Mercado Pago (issue #18)."""
+
+    __tablename__ = "pagamentos"
+    __table_args__ = (
+        CheckConstraint("valor > 0", name="ck_pagamentos_valor_positivo"),
+        CheckConstraint(
+            "parcelas >= 1 AND parcelas <= 12",
+            name="ck_pagamentos_parcelas_validas",
+        ),
+        Index(
+            "uq_pagamentos_orcamento_aprovado",
+            "orcamento_id",
+            unique=True,
+            postgresql_where=text("status = 'aprovado'"),
+            sqlite_where=text("status = 'aprovado'"),
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    orcamento_id = Column(
+        Integer,
+        ForeignKey("orcamentos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    agendamento_id = Column(
+        Integer,
+        ForeignKey("agendamentos.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    cliente_id = Column(
+        Integer,
+        ForeignKey("clientes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    professional_id = Column(
+        Integer,
+        ForeignKey("professionals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    valor = Column(Float, nullable=False)
+    metodo = Column(String(30), nullable=False, index=True)
+    status = Column(
+        String(30),
+        default=PagamentoStatus.PENDENTE.value,
+        nullable=False,
+        index=True,
+    )
+    parcelas = Column(Integer, default=1, nullable=False)
+    gateway_provider = Column(String(50), default="mercadopago", nullable=False)
+    gateway_txid = Column(String(120), unique=True, index=True, nullable=False)
+    external_reference = Column(String(100), index=True, nullable=False)
+    idempotency_key = Column(String(64), unique=True, index=True, nullable=False)
+    pix_copia_e_cola = Column(Text, nullable=True)
+    pix_qr_code_base64 = Column(Text, nullable=True)
+    pix_expira_em = Column(DateTime, nullable=True)
+    cartao_ultimos_digitos = Column(String(4), nullable=True)
+    cartao_bandeira = Column(String(30), nullable=True)
+    cartao_nome_titular = Column(String(100), nullable=True)
+    mp_status_detail = Column(String(100), nullable=True)
+    motivo_recusa = Column(String(255), nullable=True)
+    pago_em = Column(DateTime, nullable=True)
+    criado_em = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    atualizado_em = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    orcamento = relationship("Orcamento")
+    agendamento = relationship("Agendamento")
+    cliente = relationship("Cliente")
+    professional = relationship("Professional")
+
+
+class PagamentoEvento(Base):
+    """
+    Trilha de auditoria dos webhooks de pagamento (issue #18).
+
+    Registra transições ignoradas e, principalmente, cobranças que precisam de
+    estorno porque não puderam ser aplicadas localmente (webhook duplicado,
+    fora de ordem ou violação do índice único parcial de pagamento aprovado).
+    """
+
+    __tablename__ = "pagamento_eventos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    pagamento_id = Column(
+        Integer,
+        ForeignKey("pagamentos.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    gateway_txid = Column(String(120), nullable=False, index=True)
+    tipo = Column(String(50), nullable=False, index=True)
+    detalhe = Column(Text, nullable=True)
+    payload = Column(Text, nullable=True)
+    criado_em = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
 class Avaliacao(Base):
     """
     Avaliação de 1 a 5 estrelas e comentário deixados por um cliente após o

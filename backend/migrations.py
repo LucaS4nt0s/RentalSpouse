@@ -148,6 +148,32 @@ def migrate_agenda_tables(engine: Engine) -> None:
                     conn.execute(text(f"ALTER TABLE agendamentos ADD COLUMN {col_name} {col_type}"))
 
 
+def migrate_pagamentos_table(engine: Engine) -> None:
+    """
+    Garante as tabelas de pagamentos e de auditoria de webhooks (issue #18).
+
+    Usa o DDL declarado em `models.py` para não divergir do modelo e preserva
+    volumes existentes (create_all com checkfirst).
+    """
+    inspector = inspect(engine)
+    tabelas = [
+        models.Pagamento.__table__,
+        models.PagamentoEvento.__table__,
+    ]
+    ausentes = [tabela.name for tabela in tabelas if not inspector.has_table(tabela.name)]
+    if not ausentes:
+        return
+
+    logger.info(
+        "Migração RentalSpouse: criando tabela(s) de pagamentos %s...",
+        ", ".join(ausentes),
+    )
+    models.Base.metadata.create_all(
+        bind=engine,
+        tables=[tabela for tabela in tabelas if tabela.name in ausentes],
+    )
+
+
 def migrate_avaliacoes_tables(engine: Engine) -> None:
     """
     Garante a criação idempotente da tabela `avaliacoes` (issues #19 e #21) em
@@ -197,5 +223,6 @@ def run_all_migrations(engine: Engine, session_factory: Callable[[], Session]) -
     """Executa a verificação/adição de colunas, índices, tabelas novas e o backfill de dados."""
     migrate_columns_and_indexes(engine)
     migrate_agenda_tables(engine)
+    migrate_pagamentos_table(engine)
     migrate_avaliacoes_tables(engine)
     backfill_normalized_fields(session_factory)

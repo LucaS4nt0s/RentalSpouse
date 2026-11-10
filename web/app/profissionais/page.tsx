@@ -18,14 +18,19 @@ import { useProfessionalsSearch } from '../../hooks/useProfessionalsSearch';
 import { SearchHeader } from '../../components/profissionais/SearchHeader';
 import { CategoryChipsBar } from '../../components/profissionais/CategoryChipsBar';
 import { FilterActionBar } from '../../components/profissionais/FilterActionBar';
-import { ProfessionalCard } from '../../components/profissionais/ProfessionalCard';
+import {
+  ProfessionalCard,
+  ProfessionalRatingSummary,
+} from '../../components/profissionais/ProfessionalCard';
 import { ProfessionalCardSkeleton } from '../../components/profissionais/ProfessionalCardSkeleton';
 import { SearchEmptyState } from '../../components/profissionais/SearchEmptyState';
 import { SearchErrorState } from '../../components/profissionais/SearchErrorState';
 import { QuoteModal } from '../../components/profissionais/QuoteModal';
 import { DenunciaModal } from '../../components/denuncias/DenunciaModal';
+import { AvaliacoesProfissionalModal } from '../../components/avaliacoes/AvaliacoesProfissionalModal';
 import { NotificationBell } from '../../components/notificacoes/NotificationBell';
 import { Professional } from '../../types/professional';
+import { ProfissionalAvaliacoesResumo } from '../../types/avaliacoes';
 
 function ProfissionaisSearchContent() {
   const { user, isAuthenticated, logout } = useAuth();
@@ -51,6 +56,10 @@ function ProfissionaisSearchContent() {
 
   // Modal de Denúncia do Profissional (issue #68)
   const [reportTarget, setReportTarget] = useState<Professional | null>(null);
+
+  // Modal de Avaliações e Comentários do Profissional (issue #21)
+  const [reviewsTarget, setReviewsTarget] = useState<Professional | null>(null);
+  const [ratingsCache, setRatingsCache] = useState<Record<number, ProfessionalRatingSummary>>({});
 
   // Sincroniza estado de digitação do input com a URL e busca apenas quando houver alteração
   useEffect(() => {
@@ -109,6 +118,27 @@ function ProfissionaisSearchContent() {
   const handleCloseReportModal = useCallback(() => {
     setReportTarget(null);
   }, []);
+
+  const handleOpenReviewsModal = useCallback((prof: Professional) => {
+    setReviewsTarget(prof);
+  }, []);
+
+  const handleCloseReviewsModal = useCallback(() => {
+    setReviewsTarget(null);
+  }, []);
+
+  const handleResumoAvaliacoesCarregado = useCallback(
+    (resumo: ProfissionalAvaliacoesResumo) => {
+      setRatingsCache((prev) => ({
+        ...prev,
+        [resumo.professional_id]: {
+          media_notas: resumo.media_notas,
+          total_avaliacoes: resumo.total_avaliacoes,
+        },
+      }));
+    },
+    [],
+  );
 
   return (
     <div className="flex min-h-screen flex-col bg-rental-bg text-rental-ink">
@@ -263,6 +293,8 @@ function ProfissionaisSearchContent() {
                     activeSpecialty={specialty}
                     onSpecialtyClick={setSpecialty}
                     onRequestQuote={handleOpenQuoteModal}
+                    onViewReviews={handleOpenReviewsModal}
+                    ratingSummary={ratingsCache[prof.id]}
                     onReportProfessional={handleOpenReportModal}
                     scheduleHref={`/profissionais/${prof.id}/agendar`}
                   />
@@ -295,6 +327,14 @@ function ProfissionaisSearchContent() {
       <DenunciaModal
         professional={reportTarget}
         onClose={handleCloseReportModal}
+      />
+
+      {/* Modal de Avaliações e Comentários do Profissional (issue #21) */}
+      <AvaliacoesProfissionalModal
+        professional={reviewsTarget}
+        onClose={handleCloseReviewsModal}
+        onResumoCarregado={handleResumoAvaliacoesCarregado}
+        onRequestQuote={handleOpenQuoteModal}
       />
 
       {/* Footer */}
