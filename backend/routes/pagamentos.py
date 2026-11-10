@@ -850,6 +850,7 @@ def webhook_mercadopago(
             "pagamento_status": status_anterior,
         }
 
+    pagamento.gateway_txid = txid_mp
     pagamento.mp_status_detail = status_detail
     pagamento.status = novo_status
     if novo_status == models.PagamentoStatus.RECUSADO.value:

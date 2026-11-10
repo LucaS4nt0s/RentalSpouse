@@ -149,3 +149,53 @@ export function listarMeusAgendamentosMock(
     ? lista.filter((ag) => ag.status === statusFiltro)
     : lista;
 }
+
+export function cancelarAgendamentoMock(
+  agendamentoId: number,
+  motivo?: string,
+): Agendamento {
+  const atuais = carregarAgendamentosMock();
+  const index = atuais.findIndex((ag) => ag.id === agendamentoId);
+  if (index === -1) {
+    throw new ApiError(404, 'Agendamento não encontrado.');
+  }
+
+  const ag = atuais[index];
+  if (ag.status === 'cancelado') {
+    throw new ApiError(422, 'Este agendamento já foi cancelado anteriormente.');
+  }
+  if (ag.status === 'concluido') {
+    throw new ApiError(422, 'Não é possível cancelar um agendamento já concluído.');
+  }
+
+  const agora = new Date();
+  const inicio = new Date(ag.data_hora_inicio);
+  const diffMs = inicio.getTime() - agora.getTime();
+  const horasRestantes = diffMs / (1000 * 60 * 60);
+
+  if (horasRestantes <= 0) {
+    throw new ApiError(
+      422,
+      'Não é possível cancelar um agendamento que já ocorreu ou está em andamento.',
+    );
+  }
+
+  if (horasRestantes < 24) {
+    throw new ApiError(
+      422,
+      'Cancelamentos só são permitidos com no mínimo 24 horas de antecedência.',
+    );
+  }
+
+  const atualizado: Agendamento = {
+    ...ag,
+    status: 'cancelado',
+    motivo_cancelamento: motivo?.trim() || null,
+    cancelado_em: new Date().toISOString(),
+  };
+
+  const novaLista = [...atuais];
+  novaLista[index] = atualizado;
+  salvarAgendamentosMock(novaLista);
+  return atualizado;
+}

@@ -1321,9 +1321,19 @@ class AgendamentoRead(BaseModel):
         ...,
         description=f"Situação do agendamento: {', '.join(s.value for s in AgendamentoStatusEnum)}.",
     )
+    motivo_cancelamento: Optional[str] = None
+    cancelado_em: Optional[datetime] = None
     criado_em: datetime
 
 
+class AgendamentoCancelarRequest(BaseModel):
+    """Payload opcional para cancelamento de agendamento (issue #24)."""
+
+    motivo: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="Motivo ou justificativa do cancelamento (opcional).",
+    )
 
 
 # ---------------------------------------------------------------------------
