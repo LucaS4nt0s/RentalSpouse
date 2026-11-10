@@ -1281,6 +1281,136 @@ class TestPersistenciaAgenda:
         assert inspect(engine).has_table("agendamentos")
 
 
+# ---------------------------------------------------------------------------
+# PATCH /api/agendamentos/{id}/concluir
+# ---------------------------------------------------------------------------
+
+
+class TestConcluirAgendamento:
+    """Valida o ciclo de conclusão explícita de agendamentos (issues #19 e #21)."""
+
+    def test_concluir_sem_token_retorna_401(self, client: TestClient):
+        resposta = client.patch("/api/agendamentos/1/concluir")
+        assert resposta.status_code == 401
+
+    def test_concluir_agendamento_inexistente_retorna_404(
+        self, client: TestClient, db_session
+    ):
+        cliente = criar_cliente(client, db_session, "cli.404.concl@exemplo.com", "111222333")
+        resposta = client.patch(
+            "/api/agendamentos/99999/concluir",
+            headers=cabecalho(cliente.email, models.UserRole.CLIENT.value),
+        )
+        assert resposta.status_code == 404
+
+    def test_concluir_agendamento_outro_usuario_retorna_403(
+        self, client: TestClient, db_session
+    ):
+        prof = criar_profissional(client, db_session, "prof.concluir.403@exemplo.com", aprovado=True)
+        c1 = criar_cliente(client, db_session, "c1.concluir.403@exemplo.com", "222333444")
+        c2 = criar_cliente(client, db_session, "c2.concluir.403@exemplo.com", "333444555")
+        ag = criar_agendamento_direto(
+            db_session,
+            prof.id,
+            c1.id,
+            datetime.combine(amanha(), time(10, 0)),
+        )
+
+        resposta = client.patch(
+            f"/api/agendamentos/{ag.id}/concluir",
+            headers=cabecalho(c2.email, models.UserRole.CLIENT.value),
+        )
+        assert resposta.status_code == 403
+
+    def test_concluir_agendamento_cancelado_retorna_409(
+        self, client: TestClient, db_session
+    ):
+        prof = criar_profissional(client, db_session, "prof.concluir.409@exemplo.com", aprovado=True)
+        cli = criar_cliente(client, db_session, "cli.concluir.409@exemplo.com", "444555666")
+        ag = criar_agendamento_direto(
+            db_session,
+            prof.id,
+            cli.id,
+            datetime.combine(amanha(), time(10, 0)),
+            status=models.AgendamentoStatus.CANCELADO.value,
+        )
+
+        resposta = client.patch(
+            f"/api/agendamentos/{ag.id}/concluir",
+            headers=cabecalho(cli.email, models.UserRole.CLIENT.value),
+        )
+        assert resposta.status_code == 409
+        assert "cancelado" in resposta.json()["detail"].lower()
+
+    def test_concluir_agendamento_com_sucesso_pelo_cliente(
+        self, client: TestClient, db_session
+    ):
+        prof = criar_profissional(client, db_session, "prof.concluir.cli@exemplo.com", aprovado=True)
+        cli = criar_cliente(client, db_session, "cli.concluir.cli@exemplo.com", "555666777")
+        ag = criar_agendamento_direto(
+            db_session,
+            prof.id,
+            cli.id,
+            datetime.combine(amanha(), time(10, 0)),
+        )
+
+        resposta = client.patch(
+            f"/api/agendamentos/{ag.id}/concluir",
+            headers=cabecalho(cli.email, models.UserRole.CLIENT.value),
+        )
+        assert resposta.status_code == 200
+        dados = resposta.json()
+        assert dados["id"] == ag.id
+        assert dados["status"] == models.AgendamentoStatus.CONCLUIDO.value
+
+        db_session.refresh(ag)
+        assert ag.status == models.AgendamentoStatus.CONCLUIDO.value
+
+    def test_concluir_agendamento_com_sucesso_pelo_profissional(
+        self, client: TestClient, db_session
+    ):
+        prof = criar_profissional(client, db_session, "prof.concluir.prof@exemplo.com", aprovado=True)
+        cli = criar_cliente(client, db_session, "cli.concluir.prof@exemplo.com", "666777888")
+        ag = criar_agendamento_direto(
+            db_session,
+            prof.id,
+            cli.id,
+            datetime.combine(amanha(), time(10, 0)),
+        )
+
+        resposta = client.patch(
+            f"/api/agendamentos/{ag.id}/concluir",
+            headers=cabecalho(prof.email, models.UserRole.PROFESSIONAL.value),
+        )
+        assert resposta.status_code == 200
+        assert resposta.json()["status"] == models.AgendamentoStatus.CONCLUIDO.value
+
+    def test_concluir_agendamento_ja_concluido_e_idempotente(
+        self, client: TestClient, db_session
+    ):
+        prof = criar_profissional(client, db_session, "prof.concluir.idem@exemplo.com", aprovado=True)
+        cli = criar_cliente(client, db_session, "cli.concluir.idem@exemplo.com", "777888999")
+        ag = criar_agendamento_direto(
+            db_session,
+            prof.id,
+            cli.id,
+            datetime.combine(amanha(), time(10, 0)),
+            status=models.AgendamentoStatus.CONCLUIDO.value,
+        )
+
+        resposta = client.patch(
+            f"/api/agendamentos/{ag.id}/concluir",
+            headers=cabecalho(cli.email, models.UserRole.CLIENT.value),
+        )
+        assert resposta.status_code == 200
+        assert resposta.json()["status"] == models.AgendamentoStatus.CONCLUIDO.value
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/agendamentos/{id}/cancelar
+# ---------------------------------------------------------------------------
+
+
 class TestCancelamentoAgendamento:
     """Testes da rota PATCH /api/agendamentos/{id}/cancelar (Issue #24)."""
 

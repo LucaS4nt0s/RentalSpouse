@@ -46,6 +46,7 @@ import models
 from professional_access import get_current_professional
 from routes.notificacoes import registrar_e_enviar_notificacao
 import schemas
+from security import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ router = APIRouter(prefix="/api", tags=["Agenda"])
 URL_AGENDA_PROFISSIONAL = "/professionals/{professional_id}/agenda"
 URL_AGENDAMENTOS = "/agendamentos"
 URL_MEUS_AGENDAMENTOS = "/agendamentos/meus"
+URL_CONCLUIR_AGENDAMENTO = "/agendamentos/{agendamento_id}/concluir"
 URL_AGENDAMENTO_CANCELAR = "/agendamentos/{agendamento_id}/cancelar"
 URL_DISPONIBILIDADE = "/agendamentos/disponibilidade"
 
@@ -645,6 +647,74 @@ def cancelar_agendamento(
         cliente.id,
         agendamento.professional_id,
     )
+    return agendamento
+
+
+@router.patch(
+    URL_CONCLUIR_AGENDAMENTO,
+    response_model=schemas.AgendamentoRead,
+    summary="Concluir agendamento de atendimento",
+    description=(
+        "Conclui explicitamente um agendamento de atendimento (issues #19 e #21). "
+        "Pode ser acionado pelo cliente titular, profissional titular ou administrador. "
+        "Retorna 401 sem autenticação, 404 se não encontrado, 403 para usuário não autorizado "
+        "e 409 caso o agendamento esteja cancelado."
+    ),
+)
+def concluir_agendamento(
+    agendamento_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    agendamento = (
+        db.query(models.Agendamento)
+        .filter(models.Agendamento.id == agendamento_id)
+        .first()
+    )
+    if agendamento is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agendamento não encontrado.",
+        )
+
+    is_autorizado = False
+    if current_user.role == models.UserRole.ADMIN.value:
+        is_autorizado = True
+    elif current_user.role == models.UserRole.CLIENT.value:
+        cliente = (
+            db.query(models.Cliente)
+            .filter(models.Cliente.email == current_user.email)
+            .first()
+        )
+        if cliente and cliente.id == agendamento.cliente_id:
+            is_autorizado = True
+    elif current_user.role == models.UserRole.PROFESSIONAL.value:
+        prof = (
+            db.query(models.Professional)
+            .filter(models.Professional.email == current_user.email)
+            .first()
+        )
+        if prof and prof.id == agendamento.professional_id:
+            is_autorizado = True
+
+    if not is_autorizado:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Você não possui permissão para concluir este agendamento.",
+        )
+
+    if agendamento.status == models.AgendamentoStatus.CANCELADO.value:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Não é possível concluir um agendamento cancelado.",
+        )
+
+    if agendamento.status != models.AgendamentoStatus.CONCLUIDO.value:
+        agendamento.status = models.AgendamentoStatus.CONCLUIDO.value
+        db.commit()
+        db.refresh(agendamento)
+
+    return agendamento
     return agendamento
 
 

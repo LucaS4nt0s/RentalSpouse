@@ -566,3 +566,112 @@ class TestUpdateAndRemoveProfessional:
         assert "E-mail já cadastrado" in response.json()["detail"]
 
 
+class TestProfessionalReputationAndSorting:
+    """Valida a exposição de nota média, contagem de avaliações e ordenação por reputação na vitrine (issues #19 e #21)."""
+
+    def _criar_prof(self, db_session, email: str, name: str, specialties=None) -> models.Professional:
+        prof = models.Professional(
+            name=name,
+            email=email,
+            phone="(11) 99999-0000",
+            bio=f"Profissional qualificado para reparos residenciais e serviços gerais - {name}.",
+            service_radius_km=15.0,
+            specialties=specialties or ["Reparos Gerais", "Pintura"],
+            city="São Paulo",
+            state="SP",
+            approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+            is_active=True,
+        )
+        db_session.add(prof)
+        db_session.commit()
+        db_session.refresh(prof)
+        return prof
+
+    def _criar_cliente(self, db_session, email: str, cpf: str) -> models.Cliente:
+        cliente = models.Cliente(
+            nome="Cliente Avaliador",
+            email=email,
+            cpf=cpf,
+            data_nascimento=models.datetime(1990, 1, 1).date(),
+            senha_hash="hash_teste",
+            cep="01001000",
+            logradouro="Rua Teste",
+            numero="10",
+            bairro="Centro",
+            cidade="São Paulo",
+            estado="SP",
+            email_verificado=True,
+        )
+        db_session.add(cliente)
+        db_session.commit()
+        db_session.refresh(cliente)
+        return cliente
+
+    def test_get_professional_by_id_includes_reputation(self, client: TestClient, db_session):
+        prof = self._criar_prof(db_session, "prof.rep.id@teste.com", "Marcos Reparo")
+        c1 = self._criar_cliente(db_session, "cli.rep1@teste.com", "11122233301")
+        c2 = self._criar_cliente(db_session, "cli.rep2@teste.com", "11122233302")
+
+        db_session.add(models.Avaliacao(cliente_id=c1.id, professional_id=prof.id, nota=5, comentario="Ótimo"))
+        db_session.add(models.Avaliacao(cliente_id=c2.id, professional_id=prof.id, nota=4, comentario="Muito bom"))
+        db_session.commit()
+
+        resp = client.get(f"/api/professionals/{prof.id}")
+        assert resp.status_code == 200
+        dados = resp.json()
+        assert dados["id"] == prof.id
+        assert dados["reviews_count"] == 2
+        assert dados["average_rating"] == 4.5
+
+    def test_get_professional_by_id_without_reviews(self, client: TestClient, db_session):
+        prof = self._criar_prof(db_session, "prof.sem.rep@teste.com", "Lucia Reformas")
+        resp = client.get(f"/api/professionals/{prof.id}")
+        assert resp.status_code == 200
+        dados = resp.json()
+        assert dados["reviews_count"] == 0
+        assert dados["average_rating"] is None
+
+    def test_list_professionals_order_by_rating(self, client: TestClient, db_session):
+        prof_top = self._criar_prof(db_session, "prof.top@teste.com", "Top 5 Estrelas")
+        prof_mid = self._criar_prof(db_session, "prof.mid@teste.com", "Mid 3 Estrelas")
+        prof_zero = self._criar_prof(db_session, "prof.zero@teste.com", "Sem Avaliacao")
+
+        c1 = self._criar_cliente(db_session, "c.top1@teste.com", "22233344401")
+        c2 = self._criar_cliente(db_session, "c.top2@teste.com", "22233344402")
+        c3 = self._criar_cliente(db_session, "c.mid1@teste.com", "22233344403")
+
+        db_session.add(models.Avaliacao(cliente_id=c1.id, professional_id=prof_top.id, nota=5))
+        db_session.add(models.Avaliacao(cliente_id=c2.id, professional_id=prof_top.id, nota=5))
+        db_session.add(models.Avaliacao(cliente_id=c3.id, professional_id=prof_mid.id, nota=3))
+        db_session.commit()
+
+        resp = client.get("/api/professionals?order_by=avaliacao")
+        assert resp.status_code == 200
+        items = resp.json()
+        ids = [item["id"] for item in items]
+
+        idx_top = ids.index(prof_top.id)
+        idx_mid = ids.index(prof_mid.id)
+        idx_zero = ids.index(prof_zero.id)
+
+        assert idx_top < idx_mid < idx_zero
+
+    def test_search_professionals_order_by_rating_alias(self, client: TestClient, db_session):
+        prof_top = self._criar_prof(db_session, "prof.top.alias@teste.com", "Top Alias")
+        prof_mid = self._criar_prof(db_session, "prof.mid.alias@teste.com", "Mid Alias")
+
+        c1 = self._criar_cliente(db_session, "c.al1@teste.com", "33344455501")
+        c2 = self._criar_cliente(db_session, "c.al2@teste.com", "33344455502")
+
+        db_session.add(models.Avaliacao(cliente_id=c1.id, professional_id=prof_top.id, nota=5))
+        db_session.add(models.Avaliacao(cliente_id=c2.id, professional_id=prof_mid.id, nota=2))
+        db_session.commit()
+
+        resp = client.get("/api/professionals/search?sort=rating")
+        assert resp.status_code == 200
+        dados = resp.json()
+        ids = [item["id"] for item in dados["items"]]
+        assert ids.index(prof_top.id) < ids.index(prof_mid.id)
+
+
+

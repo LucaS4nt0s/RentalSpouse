@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
+import logging
 import os
 import re
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from fastapi import (
     APIRouter,
@@ -46,6 +47,7 @@ from security import get_optional_current_user, hash_senha
 
 router = APIRouter(prefix="/api/professionals", tags=["Profissionais"])
 profissionais_router = APIRouter(prefix="/api/profissionais", tags=["Profissionais"])
+logger = logging.getLogger("rentalspouse.professionals")
 
 def _parse_max_search_candidates() -> int:
     try:
@@ -343,6 +345,54 @@ def get_specialties_catalog(
     return categories_result
 
 
+def _populate_professionals_reputation(
+    db: Session,
+    professionals: Sequence[models.Professional],
+) -> None:
+    """
+    Carrega em lote as estatísticas de reputação (total de avaliações e nota média)
+    para a lista de profissionais fornecida, evitando consultas N+1.
+    """
+    if not professionals:
+        return
+
+    prof_ids = [p.id for p in professionals if p and getattr(p, "id", None)]
+    if not prof_ids:
+        return
+
+    try:
+        stats = (
+            db.query(
+                models.Avaliacao.professional_id,
+                func.count(models.Avaliacao.id).label("total"),
+                func.avg(models.Avaliacao.nota).label("media"),
+            )
+            .filter(models.Avaliacao.professional_id.in_(prof_ids))
+            .group_by(models.Avaliacao.professional_id)
+            .all()
+        )
+    except Exception as exc:
+        logger.warning("Falha ao consultar reputação agregada dos profissionais: %s", exc)
+        return
+
+    stats_map: Dict[int, Tuple[int, Optional[float]]] = {
+        row[0]: (
+            int(row[1]),
+            round(float(row[2]), 1) if row[2] is not None else None,
+        )
+        for row in stats
+    }
+
+    for p in professionals:
+        if p and getattr(p, "id", None) in stats_map:
+            total, media = stats_map[p.id]
+            p.reviews_count = total
+            p.average_rating = media
+        elif p:
+            p.reviews_count = 0
+            p.average_rating = None
+
+
 def _execute_professionals_search(
     request: Request,
     response: Response,
@@ -354,6 +404,7 @@ def _execute_professionals_search(
     skip: int,
     limit: int,
     db: Session,
+    order_by: Optional[str] = None,
 ) -> PaginatedResponse[ProfessionalPublicRead]:
     """
     Executa a busca de profissionais (com pré-filtro SQL + ranqueamento inteligente em memória),
@@ -372,6 +423,22 @@ def _execute_professionals_search(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Estado '{state}' inválido. Deve ser uma sigla de UF brasileira válida.",
             )
+
+    ordenar_por_avaliacao = False
+    if order_by:
+        normalizado = order_by.strip().lower()
+        if normalizado in (
+            "avaliacao",
+            "rating",
+            "melhor_avaliados",
+            "melhores_avaliados",
+            "-avaliacao",
+            "-rating",
+            "rating_desc",
+            "nota",
+            "nota_desc",
+        ):
+            ordenar_por_avaliacao = True
 
     has_query = bool(q and q.strip())
     clean_q = search.clean_text(q) if has_query else ""
@@ -483,6 +550,16 @@ def _execute_professionals_search(
             specialty=specialty or "",
             city=city or "",
         )
+        if ordenar_por_avaliacao and ranked:
+            _populate_professionals_reputation(db, ranked)
+            ranked.sort(
+                key=lambda p: (
+                    p.average_rating if p.average_rating is not None else -1.0,
+                    p.reviews_count,
+                    -p.id,
+                ),
+                reverse=True,
+            )
 
         total = (
             len(ranked) + max(0, filtered_query.count() - MAX_SEARCH_CANDIDATES)
@@ -495,16 +572,52 @@ def _execute_professionals_search(
             paged_items = list(ranked[skip : skip + limit])
             missing = limit - len(paged_items)
             if missing > 0 and hit_candidate_cap:
+                fallback_ordered = filtered_query
+                if ordenar_por_avaliacao:
+                    avg_sub = (
+                        db.query(func.coalesce(func.avg(models.Avaliacao.nota), -1.0))
+                        .filter(models.Avaliacao.professional_id == models.Professional.id)
+                        .scalar_subquery()
+                    )
+                    cnt_sub = (
+                        db.query(func.count(models.Avaliacao.id))
+                        .filter(models.Avaliacao.professional_id == models.Professional.id)
+                        .scalar_subquery()
+                    )
+                    fallback_ordered = fallback_ordered.order_by(
+                        avg_sub.desc(), cnt_sub.desc(), models.Professional.id.asc()
+                    )
+                else:
+                    fallback_ordered = fallback_ordered.order_by(models.Professional.id.asc())
+
                 paged_items.extend(
-                    filtered_query.order_by(models.Professional.id.asc())
+                    fallback_ordered
                     .offset(MAX_SEARCH_CANDIDATES)
                     .limit(missing)
                     .all()
                 )
         elif hit_candidate_cap:
             tail_offset = MAX_SEARCH_CANDIDATES + (skip - len(ranked))
+            fallback_ordered = filtered_query
+            if ordenar_por_avaliacao:
+                avg_sub = (
+                    db.query(func.coalesce(func.avg(models.Avaliacao.nota), -1.0))
+                    .filter(models.Avaliacao.professional_id == models.Professional.id)
+                    .scalar_subquery()
+                )
+                cnt_sub = (
+                    db.query(func.count(models.Avaliacao.id))
+                    .filter(models.Avaliacao.professional_id == models.Professional.id)
+                    .scalar_subquery()
+                )
+                fallback_ordered = fallback_ordered.order_by(
+                    avg_sub.desc(), cnt_sub.desc(), models.Professional.id.asc()
+                )
+            else:
+                fallback_ordered = fallback_ordered.order_by(models.Professional.id.asc())
+
             paged_items = (
-                filtered_query.order_by(models.Professional.id.asc())
+                fallback_ordered
                 .offset(tail_offset)
                 .limit(limit)
                 .all()
@@ -516,9 +629,28 @@ def _execute_professionals_search(
         total = query.count()
         page = (skip // limit) + 1 if limit > 0 else 1
         pages = (total + limit - 1) // limit if total > 0 else 0
+
+        if ordenar_por_avaliacao:
+            avg_subquery = (
+                db.query(func.coalesce(func.avg(models.Avaliacao.nota), -1.0))
+                .filter(models.Avaliacao.professional_id == models.Professional.id)
+                .scalar_subquery()
+            )
+            count_subquery = (
+                db.query(func.count(models.Avaliacao.id))
+                .filter(models.Avaliacao.professional_id == models.Professional.id)
+                .scalar_subquery()
+            )
+            ordered_query = query.order_by(
+                avg_subquery.desc(),
+                count_subquery.desc(),
+                models.Professional.id.asc(),
+            )
+        else:
+            ordered_query = query.order_by(models.Professional.id.asc())
+
         paged_items = (
-            query.order_by(models.Professional.id.asc())
-            .offset(skip)
+            ordered_query.offset(skip)
             .limit(limit)
             .all()
         )
@@ -533,6 +665,7 @@ def _execute_professionals_search(
     if detected_suggestion:
         response.headers["X-Search-Suggestion"] = normalize_text(detected_suggestion).title()
 
+    _populate_professionals_reputation(db, paged_items)
     serialized_items = [ProfessionalPublicRead.model_validate(p) for p in paged_items]
 
     return PaginatedResponse[ProfessionalPublicRead](
@@ -579,6 +712,20 @@ def list_professionals(
     ),
     skip: int = Query(0, ge=0, description="Número de registros a pular"),
     limit: int = Query(20, ge=1, le=50, description="Limite máximo de registros"),
+    order_by: Optional[str] = Query(
+        None,
+        description="Critério de ordenação: use 'avaliacao' ou 'rating' para ordenar por melhor nota.",
+    ),
+    sort: Optional[str] = Query(
+        None,
+        include_in_schema=False,
+        description="Alias para order_by.",
+    ),
+    sort_by: Optional[str] = Query(
+        None,
+        include_in_schema=False,
+        description="Alias para order_by.",
+    ),
     envelope: bool = Query(
         False,
         deprecated=True,
@@ -588,7 +735,7 @@ def list_professionals(
 ):
     """
     Lista profissionais cadastrados ativos com suporte a busca inteligente (Tiered Two-Stage Search),
-    filtros por especialidade, cidade, UF, paginação, mascaramento seguro LGPD e cabeçalhos de metadados.
+    filtros por especialidade, cidade, UF, ordenação por reputação, paginação, mascaramento seguro LGPD e cabeçalhos de metadados.
     """
     paginated = _execute_professionals_search(
         request=request,
@@ -601,6 +748,7 @@ def list_professionals(
         skip=skip,
         limit=limit,
         db=db,
+        order_by=order_by or sort or sort_by,
     )
     if envelope:
         return JSONResponse(
@@ -630,6 +778,20 @@ def search_professionals_enveloped(
     approval_status: Optional[str] = Query(models.ProfessionalApprovalStatus.APPROVED.value),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
+    order_by: Optional[str] = Query(
+        None,
+        description="Critério de ordenação ('avaliacao', 'rating', 'melhor_avaliados').",
+    ),
+    sort: Optional[str] = Query(
+        None,
+        include_in_schema=False,
+        description="Alias para order_by.",
+    ),
+    sort_by: Optional[str] = Query(
+        None,
+        include_in_schema=False,
+        description="Alias para order_by.",
+    ),
     db: Session = Depends(get_db),
 ):
     return _execute_professionals_search(
@@ -643,6 +805,7 @@ def search_professionals_enveloped(
         skip=skip,
         limit=limit,
         db=db,
+        order_by=order_by or sort or sort_by,
     )
 
 
@@ -739,6 +902,7 @@ def get_professional_by_id(
             detail="Profissional não encontrado.",
         )
 
+    _populate_professionals_reputation(db, [professional])
     return professional
 
 
