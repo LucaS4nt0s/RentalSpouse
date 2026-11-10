@@ -8,6 +8,7 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
+  CreditCard,
   DollarSign,
   FileCheck2,
   Filter,
@@ -35,6 +36,7 @@ import { ThemeToggle } from '../../../components/ui/ThemeToggle';
 import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
 import { useNotifications } from '../../../context/NotificationContext';
 import { QuoteDetailModal } from '../../../components/orcamentos/QuoteDetailModal';
+import { PaymentCheckoutModal } from '../../../components/pagamentos/PaymentCheckoutModal';
 
 type FilterTab = 'todos' | 'respondido' | 'aceito' | 'pendente' | 'recusado';
 
@@ -47,8 +49,9 @@ export default function ClienteOrcamentosPage() {
   const [activeTab, setActiveTab] = useState<FilterTab>('todos');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Modal de Detalhes
+  // Modal de Detalhes e Checkout
   const [selectedOrcamentoId, setSelectedOrcamentoId] = useState<number | null>(null);
+  const [checkoutOrcamento, setCheckoutOrcamento] = useState<Orcamento | null>(null);
 
   // Lightbox de foto
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
@@ -597,14 +600,27 @@ export default function ClienteOrcamentosPage() {
                         ? 'Tente solicitar para outro profissional.'
                         : 'Aguardando avaliação técnica.'}
                     </span>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setSelectedOrcamentoId(orcamento.id)}
-                      className="font-bold text-xs"
-                    >
-                      Ver Detalhes Completos
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {(isRespondido || isAceito) && (orcamento.valor_estimado ?? 0) > 0 && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => setCheckoutOrcamento(orcamento)}
+                          leftIcon={<CreditCard className="h-3.5 w-3.5" />}
+                          className="font-bold text-xs"
+                        >
+                          Pagar com Mercado Pago
+                        </Button>
+                      )}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setSelectedOrcamentoId(orcamento.id)}
+                        className="font-bold text-xs"
+                      >
+                        Ver Detalhes Completos
+                      </Button>
+                    </div>
                   </div>
                 </article>
               );
@@ -619,6 +635,15 @@ export default function ClienteOrcamentosPage() {
           orcamentoId={selectedOrcamentoId}
           onClose={() => setSelectedOrcamentoId(null)}
           onResponded={carregarOrcamentos}
+        />
+      )}
+
+      {/* Modal de Checkout PIX e Cartão via Mercado Pago (Issue #18) */}
+      {checkoutOrcamento !== null && (
+        <PaymentCheckoutModal
+          orcamento={checkoutOrcamento}
+          onClose={() => setCheckoutOrcamento(null)}
+          onPaid={() => carregarOrcamentos()}
         />
       )}
 
