@@ -1,5 +1,6 @@
 import enum
 from datetime import datetime, timezone
+from typing import Optional
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -200,6 +201,25 @@ class Professional(Base):
         specs = " ".join(normalize_text(s) for s in (self.specialties or []) if isinstance(s, str))
         self.normalized_specialties = specs
         self.normalized_search = f"{normalize_text(self.name)} {normalize_text(self.bio)} {self.normalized_city} {specs}".strip()
+
+    @property
+    def average_rating(self) -> Optional[float]:
+        """Nota média das avaliações do profissional (1.0 a 5.0) ou None se não avaliado."""
+        return getattr(self, "_average_rating", None)
+
+    @average_rating.setter
+    def average_rating(self, val: Optional[float]):
+        self._average_rating = val
+
+    @property
+    def reviews_count(self) -> int:
+        """Quantidade total de avaliações recebidas pelo profissional."""
+        return getattr(self, "_reviews_count", 0)
+
+    @reviews_count.setter
+    def reviews_count(self, val: int):
+        self._reviews_count = val
+
 
 
 @event.listens_for(Professional, "before_insert")

@@ -580,6 +580,8 @@ class ProfessionalRead(ProfessionalBase):
     approval_status: str = ProfessionalApprovalStatusEnum.PENDING.value
     approval_notes: Optional[str] = None
     approved_at: Optional[datetime] = None
+    average_rating: Optional[float] = Field(None, description="Nota média de avaliações (1.0 a 5.0) ou None se não avaliado")
+    reviews_count: int = Field(0, description="Total de avaliações recebidas")
     created_at: datetime
     updated_at: datetime
 
@@ -607,6 +609,8 @@ class ProfessionalPublicRead(BaseModel):
     state: Optional[str] = None
     is_active: bool
     approval_status: str
+    average_rating: Optional[float] = Field(None, description="Nota média de avaliações (1.0 a 5.0) ou None se não avaliado")
+    reviews_count: int = Field(0, description="Total de avaliações recebidas")
     created_at: datetime
     updated_at: datetime
 
