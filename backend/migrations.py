@@ -126,13 +126,26 @@ def migrate_agenda_tables(engine: Engine) -> None:
         models.Agendamento.__table__,
     ]
     ausentes = [tabela.name for tabela in tabelas if not inspector.has_table(tabela.name)]
-    if not ausentes:
-        return
+    if ausentes:
+        logger.info(
+            "Migração RentalSpouse: criando tabela(s) da agenda %s...", ", ".join(ausentes)
+        )
+        models.Base.metadata.create_all(bind=engine, tables=tabelas)
 
-    logger.info(
-        "Migração RentalSpouse: criando tabela(s) da agenda %s...", ", ".join(ausentes)
-    )
-    models.Base.metadata.create_all(bind=engine, tables=tabelas)
+    if inspector.has_table("agendamentos"):
+        existing_agendamento_cols = {col["name"] for col in inspector.get_columns("agendamentos")}
+        agendamento_cols_to_add = [
+            ("motivo_cancelamento", "VARCHAR(500)"),
+            ("cancelado_em", "TIMESTAMP" if engine.dialect.name == "postgresql" else "DATETIME"),
+        ]
+        with engine.begin() as conn:
+            for col_name, col_type in agendamento_cols_to_add:
+                if col_name not in existing_agendamento_cols:
+                    logger.info(
+                        "Migração RentalSpouse: adicionando coluna '%s' na tabela 'agendamentos'...",
+                        col_name,
+                    )
+                    conn.execute(text(f"ALTER TABLE agendamentos ADD COLUMN {col_name} {col_type}"))
 
 
 def migrate_avaliacoes_tables(engine: Engine) -> None:

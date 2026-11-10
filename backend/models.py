@@ -517,6 +517,8 @@ class Agendamento(Base):
         nullable=False,
         index=True,
     )
+    motivo_cancelamento = Column(String(500), nullable=True)
+    cancelado_em = Column(DateTime, nullable=True)
     criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     professional = relationship("Professional")
