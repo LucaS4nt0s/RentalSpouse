@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { mensagemErro } from '../services/apiError';
 import {
   AgendaDia,
   AgendaSlot,
@@ -112,9 +113,7 @@ export function useAgenda(professionalId: number) {
         });
       } catch (err: unknown) {
         const msg =
-          err instanceof Error
-            ? err.message
-            : 'Não foi possível carregar a agenda do profissional.';
+          mensagemErro(err, 'Não foi possível carregar a agenda do profissional.');
         setError(msg);
       } finally {
         setIsLoading(false);
@@ -195,9 +194,7 @@ export function useAgenda(professionalId: number) {
       }
 
       setSubmitError(
-        err instanceof Error
-          ? err.message
-          : 'Não foi possível confirmar o agendamento. Tente novamente.',
+        mensagemErro(err, 'Não foi possível confirmar o agendamento. Tente novamente.'),
       );
       return false;
     } finally {
@@ -245,9 +242,7 @@ export function useAgenda(professionalId: number) {
       });
     } catch (err: unknown) {
       setErroMeus(
-        err instanceof Error
-          ? err.message
-          : 'Não foi possível carregar seus agendamentos.',
+        mensagemErro(err, 'Não foi possível carregar seus agendamentos.'),
       );
     } finally {
       setLoadingMeus(false);

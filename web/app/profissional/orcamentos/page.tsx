@@ -29,6 +29,7 @@ import {
   obterFotoUrl,
   obterResumoCapacidade,
 } from '../../../services/orcamentos';
+import { mensagemErro } from '../../../services/apiError';
 import { Button } from '../../../components/ui/Button';
 import { ThemeToggle } from '../../../components/ui/ThemeToggle';
 import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
@@ -66,7 +67,7 @@ export default function ProfissionalOrcamentosPage() {
       if (resumoData) setResumo(resumoData);
       setOrcamentos(orcamentosData);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao carregar orçamentos.';
+      const msg = mensagemErro(err, 'Falha ao carregar orçamentos.');
       setError(msg);
     } finally {
       setIsLoading(false);

@@ -32,6 +32,7 @@ import {
   listarMeusOrcamentos,
   obterFotoUrl,
 } from '../../../services/orcamentos';
+import { mensagemErro } from '../../../services/apiError';
 import { Button } from '../../../components/ui/Button';
 import { ThemeToggle } from '../../../components/ui/ThemeToggle';
 import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
@@ -71,7 +72,7 @@ export default function ClienteOrcamentosPage() {
       const data = await listarMeusOrcamentos(token);
       setOrcamentos(data);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao carregar orçamentos.';
+      const msg = mensagemErro(err, 'Falha ao carregar orçamentos.');
       setError(msg);
     } finally {
       setIsLoading(false);

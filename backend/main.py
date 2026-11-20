@@ -1,10 +1,13 @@
 import logging
+import re
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import env_loader  # noqa: F401
 import database
@@ -78,15 +81,167 @@ _CAMPOS_SENSIVEIS_VALIDACAO = {
     "cpf_titular",
 }
 
+# ---------------------------------------------------------------------------
+# Localização pt-BR das mensagens de erro da API (issue #100)
+#
+# O Pydantic v2 e o Starlette respondem em inglês por padrão. Traduzimos apenas
+# as mensagens genéricas do framework: detalhes de domínio levantados pelas
+# rotas (HTTPException com texto próprio) e validadores customizados já são
+# escritos em português e passam intactos.
+# ---------------------------------------------------------------------------
+
+_MENSAGEM_VALIDACAO_GENERICA = "Dados inválidos para este campo."
+
+# Mensagens padrão do Starlette/FastAPI que nunca devem chegar ao usuário.
+_TRADUCOES_HTTP_PADRAO = {
+    "Not Found": "Recurso não encontrado.",
+    "Method Not Allowed": "Método HTTP não permitido para este recurso.",
+    "Not authenticated": "Você precisa estar autenticado para acessar este recurso.",
+    "Unauthorized": "Você precisa estar autenticado para acessar este recurso.",
+    "Could not validate credentials": (
+        "Não foi possível validar suas credenciais. Faça login novamente."
+    ),
+    "Forbidden": "Você não tem permissão para acessar este recurso.",
+    "Bad Request": "Requisição inválida.",
+    "Conflict": "A operação não pôde ser concluída: o recurso já existe ou está em uso.",
+    "Unprocessable Entity": "Não foi possível processar os dados enviados.",
+    "Too Many Requests": "Muitas tentativas em pouco tempo. Aguarde e tente novamente.",
+    "Internal Server Error": "Erro interno no servidor. Tente novamente mais tarde.",
+    "Service Unavailable": "Serviço temporariamente indisponível. Tente novamente mais tarde.",
+}
+
+# Templates por `type` do Pydantic v2; os placeholders vêm de `ctx`.
+_TRADUCOES_ERRO_VALIDACAO = {
+    "missing": "Este campo é obrigatório.",
+    "string_type": "Informe um texto válido.",
+    "string_too_short": "O texto deve ter pelo menos {min_length} caracteres.",
+    "string_too_long": "O texto deve ter no máximo {max_length} caracteres.",
+    "string_pattern_mismatch": "O texto não está em um formato válido.",
+    "string_unicode": "Informe um texto válido.",
+    "too_short": "Informe pelo menos {min_length} item(ns).",
+    "too_long": "Informe no máximo {max_length} item(ns).",
+    "greater_than": "O valor deve ser maior que {gt}.",
+    "greater_than_equal": "O valor deve ser maior ou igual a {ge}.",
+    "less_than": "O valor deve ser menor que {lt}.",
+    "less_than_equal": "O valor deve ser menor ou igual a {le}.",
+    "int_parsing": "Informe um número inteiro válido.",
+    "int_type": "Informe um número inteiro válido.",
+    "int_from_float": "Informe um número inteiro válido.",
+    "float_parsing": "Informe um valor numérico válido.",
+    "float_type": "Informe um valor numérico válido.",
+    "decimal_parsing": "Informe um valor numérico válido.",
+    "decimal_type": "Informe um valor numérico válido.",
+    "bool_parsing": "Informe um valor booleano válido (verdadeiro ou falso).",
+    "bool_type": "Informe um valor booleano válido (verdadeiro ou falso).",
+    "date_parsing": "Informe uma data válida (formato AAAA-MM-DD).",
+    "date_from_datetime_parsing": "Informe uma data válida (formato AAAA-MM-DD).",
+    "date_type": "Informe uma data válida (formato AAAA-MM-DD).",
+    "datetime_parsing": "Informe uma data e hora válidas.",
+    "datetime_from_date_parsing": "Informe uma data e hora válidas.",
+    "datetime_type": "Informe uma data e hora válidas.",
+    "time_parsing": "Informe um horário válido.",
+    "time_type": "Informe um horário válido.",
+    "json_invalid": "O corpo da requisição não é um JSON válido.",
+    "json_type": "O corpo da requisição não é um JSON válido.",
+    "model_type": "Envie um objeto JSON válido.",
+    "model_attributes_type": "Envie um objeto JSON válido.",
+    "dict_type": "Envie um objeto JSON válido.",
+    "list_type": "Envie uma lista válida.",
+    "tuple_type": "Envie uma lista válida.",
+    "set_type": "Envie uma lista válida.",
+    "url_parsing": "Informe uma URL válida.",
+    "url_scheme": "A URL deve começar com http:// ou https://.",
+    "url_type": "Informe uma URL válida.",
+}
+
+_PADRAO_EMAIL_EM_INGLES = re.compile(
+    r"valid email address|email address must have an @|@-sign", re.IGNORECASE
+)
+
+# Rede de segurança para tipos não catalogados acima que ainda venham em inglês.
+_PADROES_INGLES_VALIDACAO: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^field required$", re.IGNORECASE), "Este campo é obrigatório."),
+    (re.compile(r"^input should be a valid string$", re.IGNORECASE), "Informe um texto válido."),
+    (
+        re.compile(r"^string should have at least (\d+) characters?", re.IGNORECASE),
+        r"O texto deve ter pelo menos \1 caracteres.",
+    ),
+    (
+        re.compile(r"^string should have at most (\d+) characters?", re.IGNORECASE),
+        r"O texto deve ter no máximo \1 caracteres.",
+    ),
+    (
+        re.compile(r"^input should be greater than or equal to (\S+)$", re.IGNORECASE),
+        r"O valor deve ser maior ou igual a \1.",
+    ),
+    (
+        re.compile(r"^input should be less than or equal to (\S+)$", re.IGNORECASE),
+        r"O valor deve ser menor ou igual a \1.",
+    ),
+    (re.compile(r"valid integer", re.IGNORECASE), "Informe um número inteiro válido."),
+    (re.compile(r"valid number", re.IGNORECASE), "Informe um valor numérico válido."),
+    (re.compile(r"valid boolean", re.IGNORECASE), "Informe um valor booleano válido."),
+    (re.compile(r"valid date", re.IGNORECASE), "Informe uma data válida."),
+    (re.compile(r"json decode error", re.IGNORECASE), "O corpo da requisição não é um JSON válido."),
+)
+
+
+def _traduzir_detalhe_http(detail: Any) -> Any:
+    """Traduz as mensagens padrão do framework; detalhes de domínio seguem intactos."""
+    if isinstance(detail, str):
+        return _TRADUCOES_HTTP_PADRAO.get(detail.strip(), detail)
+    return detail
+
+
+def _traduzir_mensagem_por_padrao(mensagem: str) -> str | None:
+    """Tenta traduzir mensagens em inglês por padrão textual (fallback)."""
+    for padrao, traducao in _PADROES_INGLES_VALIDACAO:
+        if padrao.search(mensagem):
+            return padrao.sub(traducao, mensagem)
+    return None
+
+
+def _traduzir_erro_validacao(erro: dict[str, Any]) -> str:
+    """Converte uma entrada de `RequestValidationError.errors()` para pt-BR."""
+    tipo = str(erro.get("type") or "")
+    mensagem = str(erro.get("msg") or "")
+    ctx = erro.get("ctx") or {}
+
+    if tipo in {"value_error", "assertion_error"}:
+        # Validadores customizados já escrevem em português: apenas removemos
+        # o prefixo que o Pydantic adiciona ("Value error, ", "Assertion failed, ").
+        limpa = re.sub(r"^(Value error|Assertion failed),\s*", "", mensagem).strip()
+        if _PADRAO_EMAIL_EM_INGLES.search(limpa):
+            return "Informe um endereço de e-mail válido."
+        return limpa or _MENSAGEM_VALIDACAO_GENERICA
+
+    if tipo == "enum":
+        esperado = ctx.get("expected")
+        if isinstance(esperado, (list, tuple, set)):
+            opcoes = ", ".join(str(item) for item in esperado)
+            return f"Valor inválido. Opções permitidas: {opcoes}."
+        return "Valor inválido para este campo."
+
+    template = _TRADUCOES_ERRO_VALIDACAO.get(tipo)
+    if template is not None:
+        try:
+            return template.format(**ctx)
+        except (KeyError, IndexError, ValueError):
+            return _MENSAGEM_VALIDACAO_GENERICA
+
+    traduzida = _traduzir_mensagem_por_padrao(mensagem)
+    return traduzida or _MENSAGEM_VALIDACAO_GENERICA
+
 
 @app.exception_handler(RequestValidationError)
 async def tratar_erro_validacao(request: Request, exc: RequestValidationError):
     """
-    Remove o eco de valores sensíveis no corpo do erro 422.
+    Remove o eco de valores sensíveis e traduz o erro 422 para pt-BR.
 
     O handler padrão do FastAPI inclui `input`/`ctx` em cada item, o que fazia
     PAN e CVV voltarem para o cliente. Em rotas de pagamento removemos o eco
-    de todos os campos; nas demais, apenas dos campos sensíveis.
+    de todos os campos; nas demais, apenas dos campos sensíveis. As mensagens
+    padrão em inglês do Pydantic v2 são traduzidas antes de devolver o JSON.
     """
     rota_pagamento = request.url.path.startswith("/api/pagamentos")
     erros = []
@@ -97,8 +252,31 @@ async def tratar_erro_validacao(request: Request, exc: RequestValidationError):
         item.pop("ctx", None)
         if rota_pagamento or any(campo in loc for campo in _CAMPOS_SENSIVEIS_VALIDACAO):
             item.pop("input", None)
+        item["msg"] = _traduzir_erro_validacao(erro)
         erros.append(item)
     return JSONResponse(status_code=422, content={"detail": erros})
+
+
+@app.exception_handler(StarletteHTTPException)
+async def tratar_erro_http(request: Request, exc: StarletteHTTPException):
+    """Traduz as respostas HTTP padrão (404, 405, 500, ...) para pt-BR."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": _traduzir_detalhe_http(exc.detail)},
+        headers=getattr(exc, "headers", None),
+    )
+
+
+@app.exception_handler(Exception)
+async def tratar_erro_inesperado(request: Request, exc: Exception):
+    """Garante que falhas internas não vazem stack trace nem texto em inglês."""
+    logger.exception(
+        "Erro não tratado em %s %s", request.method, request.url.path
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Erro interno no servidor. Tente novamente mais tarde."},
+    )
 
 
 # Origens explícitas: "*" é inválido com allow_credentials=True (spec CORS).
