@@ -9,6 +9,7 @@ import {
   formatarDataCompleta,
   verificarPermissaoCancelamento,
 } from '../../services/agenda';
+import { mensagemErro } from '../../services/apiError';
 
 export interface CancelarAgendamentoModalProps {
   isOpen: boolean;
@@ -98,9 +99,7 @@ export function CancelarAgendamentoModal({
       }
     } catch (err: unknown) {
       const msg =
-        err instanceof Error
-          ? err.message
-          : 'Não foi possível cancelar o agendamento. Tente novamente.';
+        mensagemErro(err, 'Não foi possível cancelar o agendamento. Tente novamente.');
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);

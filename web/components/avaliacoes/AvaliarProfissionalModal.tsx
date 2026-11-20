@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { createAvaliacao } from '../../services/avaliacoes';
+import { mensagemErro } from '../../services/apiError';
 import {
   AVALIACAO_COMENTARIO_MAX_CARACTERES,
   AVALIACAO_COMENTARIO_MIN_CARACTERES,
@@ -172,7 +173,7 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
       const status = typeof err === 'object' && err !== null && 'status' in err
         ? (err as { status: number }).status
         : 0;
-      const message = err instanceof Error ? err.message : 'Falha ao enviar avaliação.';
+      const message = mensagemErro(err, 'Falha ao enviar avaliação.');
 
       if (status === 409 || message.toLowerCase().includes('já foi avaliado') || message.toLowerCase().includes('já registrou')) {
         setIsConflictError(true);

@@ -17,6 +17,7 @@ import {
 import { Professional } from '../../types/professional';
 import { useAuth } from '../../context/AuthContext';
 import { criarOrcamento } from '../../services/orcamentos';
+import { mensagemErro } from '../../services/apiError';
 
 interface QuoteModalProps {
   professional: Professional | null;
@@ -225,7 +226,7 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
         setPhotoPreviews([]);
       }, 3500);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao solicitar orçamento.';
+      const msg = mensagemErro(err, 'Falha ao solicitar orçamento.');
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
