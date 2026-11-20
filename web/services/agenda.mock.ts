@@ -199,3 +199,66 @@ export function cancelarAgendamentoMock(
   salvarAgendamentosMock(novaLista);
   return atualizado;
 }
+
+const MOCK_DISPONIBILIDADE_KEY = 'rentalspouse_mock_disponibilidade';
+
+export interface MockDisponibilidadeJanela {
+  id: number;
+  professional_id: number;
+  dia_semana: number;
+  hora_inicio: string;
+  hora_fim: string;
+  duracao_slot_min: number;
+}
+
+export function consultarMinhaDisponibilidadeMock(): MockDisponibilidadeJanela[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(MOCK_DISPONIBILIDADE_KEY);
+    return raw ? (JSON.parse(raw) as MockDisponibilidadeJanela[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function definirMinhaDisponibilidadeMock(
+  grade: Array<{
+    dia_semana: number;
+    hora_inicio: string;
+    hora_fim: string;
+    duracao_slot_min: number;
+  }>,
+): MockDisponibilidadeJanela[] {
+  const ordenadas = [...grade]
+    .sort((a, b) =>
+      a.dia_semana !== b.dia_semana
+        ? a.dia_semana - b.dia_semana
+        : a.hora_inicio.localeCompare(b.hora_inicio),
+    )
+    .map((janela, idx) => ({
+      id: idx + 1,
+      professional_id: 1,
+      dia_semana: janela.dia_semana,
+      hora_inicio:
+        janela.hora_inicio.length === 5
+          ? `${janela.hora_inicio}:00`
+          : janela.hora_inicio,
+      hora_fim:
+        janela.hora_fim.length === 5
+          ? `${janela.hora_fim}:00`
+          : janela.hora_fim,
+      duracao_slot_min: janela.duracao_slot_min,
+    }));
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(
+        MOCK_DISPONIBILIDADE_KEY,
+        JSON.stringify(ordenadas),
+      );
+    } catch {
+      // ignora erro de armazenamento
+    }
+  }
+  return ordenadas;
+}
