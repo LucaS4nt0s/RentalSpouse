@@ -21,6 +21,7 @@ import {
 } from '../../types/avaliacoes';
 import { useAvaliacoesProfissional } from '../../hooks/useAvaliacoesProfissional';
 import { AvaliarProfissionalModal } from './AvaliarProfissionalModal';
+import { acquireBodyScrollLock } from '../../lib/scrollLock';
 
 export interface AvaliacoesProfissionalModalProps {
   professional: Professional | null;
@@ -113,6 +114,17 @@ export function AvaliacoesProfissionalModal({
   });
 
   const [isAvaliarOpen, setIsAvaliarOpen] = useState<boolean>(false);
+  const isAvaliarOpenRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    isAvaliarOpenRef.current = isAvaliarOpen;
+  }, [isAvaliarOpen]);
+
+  useEffect(() => {
+    if (!professional) {
+      setIsAvaliarOpen(false);
+    }
+  }, [professional]);
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -134,10 +146,12 @@ export function AvaliacoesProfissionalModal({
       closeButtonRef.current?.focus();
     }, 50);
 
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const releaseScrollLock = acquireBodyScrollLock();
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Se o modal interno de avaliação estiver aberto, deixa ele tratar Escape/Tab
+      if (isAvaliarOpenRef.current) return;
+
       if (e.key === 'Escape') {
         e.preventDefault();
         onCloseRef.current();
@@ -174,7 +188,7 @@ export function AvaliacoesProfissionalModal({
 
     return () => {
       clearTimeout(focusTimeout);
-      document.body.style.overflow = originalOverflow;
+      releaseScrollLock();
       window.removeEventListener('keydown', handleKeyDown);
 
       if (previouslyFocusedElementRef.current) {

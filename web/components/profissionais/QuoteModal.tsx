@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Professional } from '../../types/professional';
 import { useAuth } from '../../context/AuthContext';
+import { acquireBodyScrollLock } from '../../lib/scrollLock';
 import { criarOrcamento } from '../../services/orcamentos';
 
 interface QuoteModalProps {
@@ -90,8 +91,7 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
       textareaRef.current?.focus();
     }, 50);
 
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const releaseScrollLock = acquireBodyScrollLock();
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -131,7 +131,7 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
 
     return () => {
       clearTimeout(focusTimeout);
-      document.body.style.overflow = originalOverflow;
+      releaseScrollLock();
       window.removeEventListener('keydown', handleKeyDown);
 
       if (previouslyFocusedElementRef.current) {

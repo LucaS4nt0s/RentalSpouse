@@ -674,4 +674,113 @@ class TestProfessionalReputationAndSorting:
         assert ids.index(prof_top.id) < ids.index(prof_mid.id)
 
 
+class TestProfessionalRadiusAndCombinedFilters:
+    """Valida filtros de raio/distância e combinação com busca textual, cidade e ordenação (issue #96)."""
+
+    def _criar_prof(
+        self,
+        db_session,
+        email: str,
+        name: str,
+        radius_km: float,
+        city: str = "São Paulo",
+        state: str = "SP",
+        specialties=None,
+        bio: str = "Profissional qualificado para serviços residenciais completos.",
+    ) -> models.Professional:
+        prof = models.Professional(
+            name=name,
+            email=email,
+            phone="(11) 99999-0000",
+            bio=bio,
+            service_radius_km=radius_km,
+            specialties=specialties or ["Elétrica"],
+            city=city,
+            state=state,
+            approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+            is_active=True,
+        )
+        db_session.add(prof)
+        db_session.commit()
+        db_session.refresh(prof)
+        return prof
+
+    def test_filter_by_min_and_max_radius_km(self, client: TestClient, db_session):
+        p_local = self._criar_prof(db_session, "raio.local@teste.com", "Local 8km", 8.0)
+        p_medio = self._criar_prof(db_session, "raio.medio@teste.com", "Medio 25km", 25.0)
+        p_amplo = self._criar_prof(db_session, "raio.amplo@teste.com", "Amplo 60km", 60.0)
+
+        resp_ate_10 = client.get("/api/professionals?max_radius_km=10")
+        assert resp_ate_10.status_code == 200
+        ids_ate_10 = [item["id"] for item in resp_ate_10.json()]
+        assert p_local.id in ids_ate_10
+        assert p_medio.id not in ids_ate_10
+        assert p_amplo.id not in ids_ate_10
+
+        resp_25_mais = client.get("/api/professionals?min_radius_km=25")
+        assert resp_25_mais.status_code == 200
+        ids_25_mais = [item["id"] for item in resp_25_mais.json()]
+        assert p_local.id not in ids_25_mais
+        assert p_medio.id in ids_25_mais
+        assert p_amplo.id in ids_25_mais
+
+        resp_alias = client.get("/api/professionals/search?radius_km=50")
+        assert resp_alias.status_code == 200
+        ids_alias = [item["id"] for item in resp_alias.json()["items"]]
+        assert ids_alias == [p_amplo.id]
+
+    def test_combined_filters_q_city_specialty_radius_and_order_by(self, client: TestClient, db_session):
+        p_match = self._criar_prof(
+            db_session,
+            "combo.match@teste.com",
+            "Carlos Eletricista Campinas",
+            30.0,
+            city="Campinas",
+            specialties=["Elétrica", "Reparos Gerais"],
+            bio="Especialista em instalação de quadro elétrico residencial e tomadas.",
+        )
+        self._criar_prof(
+            db_session,
+            "combo.curto@teste.com",
+            "Carlos Raio Curto",
+            5.0,
+            city="Campinas",
+            specialties=["Elétrica"],
+            bio="Especialista em instalação de quadro elétrico residencial.",
+        )
+        self._criar_prof(
+            db_session,
+            "combo.outra@teste.com",
+            "Carlos Outra Cidade",
+            40.0,
+            city="Curitiba",
+            state="PR",
+            specialties=["Elétrica"],
+            bio="Especialista em instalação de quadro elétrico residencial.",
+        )
+
+        resp = client.get(
+            "/api/professionals",
+            params={
+                "q": "quadro eletrico",
+                "city": "Campinas",
+                "specialty": "Elétrica",
+                "min_radius_km": 25,
+                "order_by": "avaliacao",
+            },
+        )
+        assert resp.status_code == 200
+        items = resp.json()
+        assert [item["id"] for item in items] == [p_match.id]
+
+    def test_invalid_radius_range_returns_422(self, client: TestClient, db_session):
+        resp_inverted = client.get("/api/professionals?min_radius_km=50&max_radius_km=10")
+        assert resp_inverted.status_code == 422
+        assert "raio mínimo" in resp_inverted.json()["detail"].lower()
+
+        resp_zero = client.get("/api/professionals?min_radius_km=0")
+        assert resp_zero.status_code == 422
+
+
+
 

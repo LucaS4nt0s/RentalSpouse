@@ -16,6 +16,8 @@ export interface ProfessionalCardProps {
   activeSpecialty?: string;
   onSpecialtyClick?: (specialty: string) => void;
   onRequestQuote?: (professional: Professional) => void;
+  /** Abre o modal de perfil detalhado do profissional (issue #96). */
+  onViewProfile?: (professional: Professional) => void;
   /** Abre o modal de avaliações e comentários do profissional (issue #21). */
   onViewReviews?: (professional: Professional) => void;
   /** Resumo de reputação já carregado para exibição imediata no card (issue #21). */
@@ -31,6 +33,7 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
   activeSpecialty,
   onSpecialtyClick,
   onRequestQuote,
+  onViewProfile,
   onViewReviews,
   ratingSummary,
   onReportProfessional,
@@ -79,12 +82,34 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
   const temAvaliacoes =
     mediaNotas !== null && totalAvaliacoes !== null && totalAvaliacoes > 0;
 
+  const handleOpenProfile = () => {
+    if (onViewProfile) {
+      onViewProfile(professional);
+    }
+  };
+
+  const handleProfileKeyDown = (e: React.KeyboardEvent) => {
+    if (!onViewProfile) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onViewProfile(professional);
+    }
+  };
+
   return (
     <article className="group flex flex-col justify-between rounded-2xl glass-panel p-5 transition-all duration-300 hover:border-rental-primary/40 hover:shadow-lg animate-fadeIn">
       <div>
         {/* Cabeçalho do Card: Avatar, Nome e Selo de Verificado */}
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleOpenProfile}
+            disabled={!onViewProfile}
+            aria-label={`Ver perfil completo de ${professional.name}`}
+            className={`flex items-center gap-3 min-w-0 flex-1 text-left rounded-xl -m-1.5 p-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-rental-primary/50 ${
+              onViewProfile ? 'cursor-pointer hover:bg-rental-surface2/60' : 'cursor-default'
+            }`}
+          >
             <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rental-primary/10 text-rental-primary font-bold text-base transition-transform duration-300 group-hover:scale-105">
               <span>{initials}</span>
             </div>
@@ -100,7 +125,7 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
                 </div>
               )}
             </div>
-          </div>
+          </button>
 
           <div className="flex flex-col items-end gap-1.5 shrink-0">
             {professional.approval_status === 'approved' && (
@@ -160,19 +185,40 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
             );
           })}
           {remainingCount > 0 && (
-            <span
-              className="rounded-lg bg-rental-surface2 px-2 py-1 text-[11px] font-medium text-rental-muted border border-rental-border"
-              title={`${remainingCount} outras especialidades`}
+            <button
+              type="button"
+              onClick={handleOpenProfile}
+              disabled={!onViewProfile}
+              className={`rounded-lg bg-rental-surface2 px-2 py-1 text-[11px] font-medium text-rental-muted border border-rental-border transition-colors ${
+                onViewProfile ? 'cursor-pointer hover:border-rental-primary/40 hover:text-rental-primary' : ''
+              }`}
+              title={`Ver mais ${remainingCount} especialidade(s) no perfil`}
             >
               +{remainingCount}
-            </span>
+            </button>
           )}
         </div>
 
-        {/* Biografia Resumida (line-clamp-3) */}
-        <p className="mt-3 text-xs text-rental-muted leading-relaxed line-clamp-3">
-          {professional.bio || 'Profissional qualificado disponível para serviços residenciais.'}
-        </p>
+        {/* Biografia Resumida clicável (abre perfil completo) */}
+        <div
+          role={onViewProfile ? 'button' : undefined}
+          tabIndex={onViewProfile ? 0 : undefined}
+          onClick={onViewProfile ? handleOpenProfile : undefined}
+          onKeyDown={onViewProfile ? handleProfileKeyDown : undefined}
+          aria-label={onViewProfile ? `Abrir perfil completo de ${professional.name}` : undefined}
+          className={`mt-3 rounded-xl -mx-1.5 px-1.5 py-1 transition-colors focus:outline-none focus:ring-2 focus:ring-rental-primary/50 ${
+            onViewProfile ? 'cursor-pointer hover:bg-rental-surface2/50' : ''
+          }`}
+        >
+          <p className="text-xs text-rental-muted leading-relaxed line-clamp-3">
+            {professional.bio || 'Profissional qualificado disponível para serviços residenciais.'}
+          </p>
+          {onViewProfile && (
+            <span className="mt-1.5 inline-block text-[11px] font-semibold text-rental-primary group-hover:underline">
+              Ver perfil completo →
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Ações do Card */}
