@@ -546,6 +546,48 @@ class Agendamento(Base):
     orcamento = relationship("Orcamento")
 
 
+class BloqueioAgendaProfissional(Base):
+    """
+    Bloqueio pontual de dia inteiro ou faixa de horário na agenda do profissional (issue #16).
+
+    Permite ao prestador sinalizar folgas, feriados, compromissos médicos ou
+    indisponibilidades específicas sem precisar alterar toda a grade semanal.
+    Os horários seguem o padrão naive-UTC do projeto.
+    """
+
+    __tablename__ = "bloqueios_agenda_profissional"
+    __table_args__ = (
+        Index(
+            "ix_bloqueios_agenda_prof_intervalo",
+            "professional_id",
+            "data_hora_inicio",
+            "data_hora_fim",
+        ),
+        CheckConstraint(
+            "data_hora_fim > data_hora_inicio",
+            name="ck_bloqueio_agenda_intervalo_valido",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    professional_id = Column(
+        Integer,
+        ForeignKey("professionals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    data_hora_inicio = Column(DateTime, nullable=False)
+    data_hora_fim = Column(DateTime, nullable=False)
+    motivo = Column(String(255), nullable=True)
+    created_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        nullable=False,
+    )
+
+    professional = relationship("Professional")
+
+
 class PagamentoMetodo(str, enum.Enum):
     """Meios de pagamento aceitos via Mercado Pago (issue #18)."""
 
