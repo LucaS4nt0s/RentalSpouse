@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Sparkles,
   Briefcase,
+  Calendar,
 } from 'lucide-react';
 import { ThemeToggle } from '../../components/ui/ThemeToggle';
 import { useAuth } from '../../context/AuthContext';
@@ -161,18 +162,30 @@ function ProfissionaisSearchContent() {
             </Link>
 
             {isAuthenticated && user && (
-              <Link
-                href={
-                  user.tipo === 'profissional' || user.role === 'professional'
-                    ? '/profissional/orcamentos'
-                    : '/cliente/orcamentos'
-                }
-                className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
-                title="Meus Orçamentos"
-              >
-                <Briefcase className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Meus Orçamentos</span>
-              </Link>
+              <>
+                <Link
+                  href={
+                    user.tipo === 'profissional' || user.role === 'professional'
+                      ? '/profissional/orcamentos'
+                      : '/cliente/orcamentos'
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
+                  title="Meus Orçamentos"
+                >
+                  <Briefcase className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Meus Orçamentos</span>
+                </Link>
+                {(user.tipo === 'profissional' || user.role === 'professional') && (
+                  <Link
+                    href="/profissional/agenda"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
+                    title="Minha Agenda"
+                  >
+                    <Calendar className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Minha Agenda</span>
+                  </Link>
+                )}
+              </>
             )}
 
             {isAuthenticated && user ? (

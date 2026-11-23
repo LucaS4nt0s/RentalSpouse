@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   AlertTriangle,
   ArrowLeft,
+  Calendar,
   CheckCircle2,
   FileCheck2,
   Lock,
@@ -196,6 +197,13 @@ export default function ProfessionalDocumentsPage() {
           </div>
 
           <div className="flex items-center gap-3 self-end sm:self-auto">
+            <Link
+              href="/profissional/agenda"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Minha Agenda</span>
+            </Link>
             <NotificationBell />
             <Button
               variant="secondary"
