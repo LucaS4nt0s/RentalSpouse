@@ -124,6 +124,7 @@ def migrate_agenda_tables(engine: Engine) -> None:
     tabelas = [
         models.DisponibilidadeProfissional.__table__,
         models.Agendamento.__table__,
+        models.BloqueioAgendaProfissional.__table__,
     ]
     ausentes = [tabela.name for tabela in tabelas if not inspector.has_table(tabela.name)]
     if ausentes:

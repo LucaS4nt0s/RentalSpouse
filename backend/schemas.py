@@ -1273,6 +1273,57 @@ class DisponibilidadeRead(BaseModel):
     duracao_slot_min: int
 
 
+class BloqueioAgendaCreate(BaseModel):
+    """Payload para bloquear um dia inteiro ou faixa de horário específica na agenda (issue #16)."""
+
+    data_hora_inicio: datetime = Field(
+        ...,
+        description="Início do bloqueio (ISO 8601; datas sem fuso são interpretadas como UTC).",
+    )
+    data_hora_fim: datetime = Field(
+        ...,
+        description="Fim do bloqueio (ISO 8601; deve ser posterior a data_hora_inicio).",
+    )
+    motivo: Optional[str] = Field(
+        None,
+        max_length=255,
+        description="Motivo opcional da folga/indisponibilidade (ex.: Feriado, Consulta médica).",
+    )
+
+    @field_validator("data_hora_inicio", "data_hora_fim")
+    @classmethod
+    def normalizar_datas_utc(cls, v: datetime) -> datetime:
+        """Converte datas aware/naive para o padrão naive-UTC da agenda."""
+        return normalizar_datetime_utc(v)
+
+    @field_validator("motivo")
+    @classmethod
+    def normalizar_motivo(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        limpo = v.strip()
+        return limpo if limpo else None
+
+    @model_validator(mode="after")
+    def validar_intervalo(self):
+        if self.data_hora_fim <= self.data_hora_inicio:
+            raise ValueError("data_hora_fim deve ser posterior a data_hora_inicio.")
+        return self
+
+
+class BloqueioAgendaRead(BaseModel):
+    """Bloqueio pontual de agenda persistido para o profissional (issue #16)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    professional_id: int
+    data_hora_inicio: datetime
+    data_hora_fim: datetime
+    motivo: Optional[str] = None
+    created_at: datetime
+
+
 class AgendaSlotRead(BaseModel):
     """
     Slot de atendimento devolvido pela agenda.
