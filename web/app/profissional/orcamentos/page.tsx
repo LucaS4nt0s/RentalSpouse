@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
+  Ban,
   Briefcase,
   Calendar,
   CheckCircle2,
@@ -19,7 +20,9 @@ import {
   RefreshCw,
   ThumbsDown,
   ThumbsUp,
+  TrendingUp,
   User,
+  Wallet,
   XCircle,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
@@ -30,18 +33,23 @@ import {
   obterFotoUrl,
   obterResumoCapacidade,
 } from '../../../services/orcamentos';
+import {
+  GanhosProfissionalResumo,
+  obterResumoGanhos,
+} from '../../../services/pagamentos';
 import { Button } from '../../../components/ui/Button';
 import { ThemeToggle } from '../../../components/ui/ThemeToggle';
 import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
 import { QuoteDetailModal } from '../../../components/orcamentos/QuoteDetailModal';
 
-type FilterTab = 'todos' | 'pendente' | 'aceito' | 'recusado' | 'respondido';
+type FilterTab = 'todos' | 'pendente' | 'aceito' | 'recusado' | 'respondido' | 'cancelado';
 
 export default function ProfissionalOrcamentosPage() {
   const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
 
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [resumo, setResumo] = useState<OrcamentoResumoCapacidade | null>(null);
+  const [resumoGanhos, setResumoGanhos] = useState<GanhosProfissionalResumo | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>('todos');
@@ -60,11 +68,13 @@ export default function ProfissionalOrcamentosPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [resumoData, orcamentosData] = await Promise.all([
+      const [resumoData, ganhosData, orcamentosData] = await Promise.all([
         obterResumoCapacidade(token).catch(() => null),
+        obterResumoGanhos(token).catch(() => null),
         listarMeusOrcamentos(token, activeTab === 'todos' ? undefined : activeTab),
       ]);
       if (resumoData) setResumo(resumoData);
+      if (ganhosData) setResumoGanhos(ganhosData);
       setOrcamentos(orcamentosData);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Falha ao carregar orçamentos.';
@@ -158,6 +168,13 @@ export default function ProfissionalOrcamentosPage() {
             Recusado
           </span>
         );
+      case 'cancelado':
+        return (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-500/15 px-3 py-1 text-xs font-bold text-slate-500 dark:text-slate-300">
+            <Ban className="h-3.5 w-3.5" />
+            Cancelado pelo Cliente
+          </span>
+        );
       default:
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-rental-surface2 px-3 py-1 text-xs font-bold text-rental-muted">
@@ -167,9 +184,14 @@ export default function ProfissionalOrcamentosPage() {
     }
   };
 
+  const formatarBrl = (valor: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+      Number.isFinite(valor) ? valor : 0
+    );
+
   return (
     <main className="min-h-screen bg-rental-bg text-rental-ink p-4 sm:p-6 lg:p-10">
-      <div className="max-w-6xl mx-auto space-y-8 animate-fadeIn">
+      <div className="max-w-6xl mx-auto space-y-8">
         {/* Cabeçalho de Navegação e Ações */}
         <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-rental-border">
           <div className="space-y-1">
@@ -187,11 +209,18 @@ export default function ProfissionalOrcamentosPage() {
               Gestão de Orçamentos e Capacidade
             </h1>
             <p className="text-xs sm:text-sm text-rental-muted">
-              Aceite novos pedidos ou recuse solicitações para controlar sua capacidade de trabalho e agenda.
+              Aceite novos pedidos, envie estimativas para aprovação ou recuse solicitações para controlar sua agenda.
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <Link
+              href="/profissional/ganhos"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 transition-colors hover:bg-emerald-500/20"
+            >
+              <Wallet className="h-3.5 w-3.5" />
+              <span>Meus Ganhos</span>
+            </Link>
             <Link
               href="/profissional/agenda"
               className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
@@ -210,6 +239,57 @@ export default function ProfissionalOrcamentosPage() {
             <ThemeToggle />
           </div>
         </header>
+
+        {/* Resumo Financeiro Rápido (Issue #27) */}
+        <section
+          aria-label="Resumo rápido de ganhos"
+          className="rounded-3xl border border-emerald-500/25 bg-emerald-500/5 p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-500">
+              <TrendingUp className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-extrabold text-rental-ink">Resumo dos Seus Ganhos</h2>
+              <p className="text-xs text-rental-muted">
+                Valores consolidados de pagamentos aprovados na plataforma.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4 sm:gap-6">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-rental-muted block">
+                Semana
+              </span>
+              <span className="text-sm sm:text-base font-black text-rental-ink">
+                {resumoGanhos ? formatarBrl(resumoGanhos.ganhos_semana_atual) : '—'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-rental-muted block">
+                Mês Atual
+              </span>
+              <span className="text-sm sm:text-base font-black text-blue-600 dark:text-blue-400">
+                {resumoGanhos ? formatarBrl(resumoGanhos.ganhos_mes_atual) : '—'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-rental-muted block">
+                Acumulado
+              </span>
+              <span className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400">
+                {resumoGanhos ? formatarBrl(resumoGanhos.total_acumulado) : '—'}
+              </span>
+            </div>
+          </div>
+
+          <Link href="/profissional/ganhos" className="shrink-0">
+            <Button variant="secondary" size="sm" leftIcon={<Wallet className="h-3.5 w-3.5 text-emerald-500" />}>
+              Ver Painel Financeiro
+            </Button>
+          </Link>
+        </section>
 
         {/* Métricas de Capacidade de Trabalho (Issue #29) */}
         <section aria-labelledby="capacidade-metrics-title">
@@ -289,6 +369,7 @@ export default function ProfissionalOrcamentosPage() {
                 { id: 'aceito', label: 'Aceitos', count: resumo?.aceitos },
                 { id: 'recusado', label: 'Recusados', count: resumo?.recusados },
                 { id: 'respondido', label: 'Respondidos', count: resumo?.respondidos },
+                { id: 'cancelado', label: 'Cancelados', count: undefined },
               ] as const
             ).map((tab) => {
               const isActive = activeTab === tab.id;
@@ -475,6 +556,25 @@ export default function ProfissionalOrcamentosPage() {
                       {orcamento.decidido_em && (
                         <span className="text-[10px] text-rental-muted block">
                           Recusado em {new Date(orcamento.decidido_em).toLocaleString('pt-BR')}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {orcamento.status === 'cancelado' && (
+                    <div className="rounded-2xl border border-slate-500/30 bg-slate-500/10 p-4 text-xs space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-extrabold">
+                        <Ban className="h-4 w-4" />
+                        <span>Solicitação Cancelada pelo Cliente</span>
+                      </div>
+                      {(orcamento.justificativa_recusa || orcamento.motivo_recusa) && (
+                        <p className="text-rental-muted text-[11px]">
+                          {orcamento.justificativa_recusa || orcamento.motivo_recusa}
+                        </p>
+                      )}
+                      {orcamento.decidido_em && (
+                        <span className="text-[10px] text-rental-muted block">
+                          Cancelado em {new Date(orcamento.decidido_em).toLocaleString('pt-BR')}
                         </span>
                       )}
                     </div>

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Zap, ArrowRight, Wrench, ShieldCheck, Star, Clock, User, LogOut, Briefcase, Calendar } from 'lucide-react';
+import { Zap, ArrowRight, Wrench, ShieldCheck, Star, Clock, User, LogOut, Briefcase, Calendar, Wallet } from 'lucide-react';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
 import {
   ProfessionalDocumentsLink,
@@ -83,14 +83,24 @@ export default function Home() {
               </Link>
               <ProfessionalDocumentsLink variant="header" />
               {isProfessional && (
-                <Link
-                  href="/profissional/agenda"
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
-                  title="Minha Agenda"
-                >
-                  <Calendar className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Minha Agenda</span>
-                </Link>
+                <>
+                  <Link
+                    href="/profissional/agenda"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
+                    title="Minha Agenda"
+                  >
+                    <Calendar className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Minha Agenda</span>
+                  </Link>
+                  <Link
+                    href="/profissional/ganhos"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-emerald-500/40 hover:text-emerald-500"
+                    title="Meus Ganhos"
+                  >
+                    <Wallet className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Meus Ganhos</span>
+                  </Link>
+                </>
               )}
               <NotificationBell />
               <button
@@ -165,6 +175,13 @@ export default function Home() {
                   >
                     <Calendar className="h-4 w-4 text-rental-primary" />
                     Minha Agenda
+                  </Link>
+                  <Link
+                    href="/profissional/ganhos"
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-emerald-500/40"
+                  >
+                    <Wallet className="h-4 w-4 text-emerald-500" />
+                    Meus Ganhos
                   </Link>
                   <ProfessionalDocumentsLink variant="hero" />
                 </>
