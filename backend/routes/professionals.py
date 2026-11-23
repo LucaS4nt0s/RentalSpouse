@@ -405,6 +405,8 @@ def _execute_professionals_search(
     limit: int,
     db: Session,
     order_by: Optional[str] = None,
+    min_radius_km: Optional[float] = None,
+    max_radius_km: Optional[float] = None,
 ) -> PaginatedResponse[ProfessionalPublicRead]:
     """
     Executa a busca de profissionais (com pré-filtro SQL + ranqueamento inteligente em memória),
@@ -423,6 +425,16 @@ def _execute_professionals_search(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Estado '{state}' inválido. Deve ser uma sigla de UF brasileira válida.",
             )
+
+    if (
+        min_radius_km is not None
+        and max_radius_km is not None
+        and min_radius_km > max_radius_km
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="O raio mínimo de atendimento não pode ser maior que o raio máximo.",
+        )
 
     ordenar_por_avaliacao = False
     if order_by:
@@ -466,6 +478,12 @@ def _execute_professionals_search(
 
     if state:
         query = query.filter(models.Professional.state == state.strip().upper())
+
+    if min_radius_km is not None:
+        query = query.filter(models.Professional.service_radius_km >= min_radius_km)
+
+    if max_radius_km is not None:
+        query = query.filter(models.Professional.service_radius_km <= max_radius_km)
 
     if city and city.strip():
         norm_city = normalize_text(city)
@@ -706,6 +724,25 @@ def list_professionals(
     state: Optional[str] = Query(
         None, min_length=2, max_length=2, description="Sigla da UF (ex: SP, RJ)"
     ),
+    min_radius_km: Optional[float] = Query(
+        None,
+        gt=0,
+        le=500,
+        description="Raio mínimo de atendimento em km (ex: 10, 25, 50)",
+    ),
+    max_radius_km: Optional[float] = Query(
+        None,
+        gt=0,
+        le=500,
+        description="Raio máximo de atendimento em km (ex: 10)",
+    ),
+    radius_km: Optional[float] = Query(
+        None,
+        gt=0,
+        le=500,
+        include_in_schema=False,
+        description="Alias para min_radius_km.",
+    ),
     approval_status: Optional[str] = Query(
         models.ProfessionalApprovalStatus.APPROVED.value,
         description="Filtra por status de aprovação cadastral (padrão: approved; use 'all' para desativar filtro)",
@@ -735,7 +772,7 @@ def list_professionals(
 ):
     """
     Lista profissionais cadastrados ativos com suporte a busca inteligente (Tiered Two-Stage Search),
-    filtros por especialidade, cidade, UF, ordenação por reputação, paginação, mascaramento seguro LGPD e cabeçalhos de metadados.
+    filtros por especialidade, cidade, UF, raio de atendimento, ordenação por reputação, paginação, mascaramento seguro LGPD e cabeçalhos de metadados.
     """
     paginated = _execute_professionals_search(
         request=request,
@@ -749,6 +786,8 @@ def list_professionals(
         limit=limit,
         db=db,
         order_by=order_by or sort or sort_by,
+        min_radius_km=min_radius_km if min_radius_km is not None else radius_km,
+        max_radius_km=max_radius_km,
     )
     if envelope:
         return JSONResponse(
@@ -775,6 +814,9 @@ def search_professionals_enveloped(
     specialty: Optional[str] = Query(None, max_length=100),
     city: Optional[str] = Query(None, max_length=100),
     state: Optional[str] = Query(None, min_length=2, max_length=2),
+    min_radius_km: Optional[float] = Query(None, gt=0, le=500),
+    max_radius_km: Optional[float] = Query(None, gt=0, le=500),
+    radius_km: Optional[float] = Query(None, gt=0, le=500, include_in_schema=False),
     approval_status: Optional[str] = Query(models.ProfessionalApprovalStatus.APPROVED.value),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
@@ -806,6 +848,8 @@ def search_professionals_enveloped(
         limit=limit,
         db=db,
         order_by=order_by or sort or sort_by,
+        min_radius_km=min_radius_km if min_radius_km is not None else radius_km,
+        max_radius_km=max_radius_km,
     )
 
 

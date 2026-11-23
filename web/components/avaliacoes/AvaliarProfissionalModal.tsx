@@ -20,6 +20,7 @@ import {
   AvaliacaoRead,
 } from '../../types/avaliacoes';
 import { StarRatingInput } from './StarRatingInput';
+import { acquireBodyScrollLock } from '../../lib/scrollLock';
 
 export interface AvaliarProfissionalModalProps {
   isOpen: boolean;
@@ -58,34 +59,36 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
   const modalRef = useRef<HTMLDivElement>(null);
   const previousActiveElement = useRef<HTMLElement | null>(null);
 
-  // Armazena e restaura o foco do elemento que abriu o modal
+  // Armazena e restaura o foco do elemento que abriu o modal e gerencia o lock de scroll
   useEffect(() => {
-    if (isOpen) {
-      previousActiveElement.current = document.activeElement as HTMLElement | null;
-      document.body.style.overflow = 'hidden';
+    if (!isOpen) return;
 
-      // Reseta estado do formulário ao abrir
-      setNota(0);
-      setComentario('');
-      setIsLoading(false);
-      setError(null);
-      setIsConflictError(false);
-      setIsSuccess(false);
-      setCreatedAvaliacao(null);
+    previousActiveElement.current = document.activeElement as HTMLElement | null;
+    const releaseScrollLock = acquireBodyScrollLock();
 
-      // Foca no container do modal
-      setTimeout(() => {
-        modalRef.current?.focus();
-      }, 50);
-    } else {
-      document.body.style.overflow = '';
-      if (previousActiveElement.current && typeof previousActiveElement.current.focus === 'function') {
-        previousActiveElement.current.focus();
-      }
-    }
+    // Reseta estado do formulário ao abrir
+    setNota(0);
+    setComentario('');
+    setIsLoading(false);
+    setError(null);
+    setIsConflictError(false);
+    setIsSuccess(false);
+    setCreatedAvaliacao(null);
+
+    // Foca no container do modal
+    const focusTimeout = setTimeout(() => {
+      modalRef.current?.focus();
+    }, 50);
 
     return () => {
-      document.body.style.overflow = '';
+      clearTimeout(focusTimeout);
+      releaseScrollLock();
+      if (
+        previousActiveElement.current &&
+        typeof previousActiveElement.current.focus === 'function'
+      ) {
+        previousActiveElement.current.focus();
+      }
     };
   }, [isOpen]);
 
