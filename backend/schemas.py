@@ -55,14 +55,46 @@ class UserBase(BaseModel):
     email: EmailStr = Field(..., description="E-mail do usuário")
 
 
+def mascarar_cpf_leitura(cpf: Optional[str]) -> Optional[str]:
+    """Formata e mascara parcialmente o CPF para exibição segura em Minha Conta (***.456.789-**)."""
+    if not cpf:
+        return None
+    digitos = "".join(filter(str.isdigit, str(cpf)))
+    if len(digitos) != 11:
+        return "***.***.***-**"
+    return f"***.{digitos[3:6]}.{digitos[6:9]}-**"
+
+
+
 class UserRead(UserBase):
-    """Schema de resposta para exibição de dados do usuário."""
+    """Schema de resposta para exibição de dados do usuário e perfil completo (Minha Conta)."""
 
     id: Optional[int] = None
     role: str
     is_active: bool
     email_verificado: bool = True
     created_at: Optional[datetime] = None
+
+    # Campos de Cliente (quando role == "client")
+    cpf: Optional[str] = None
+    data_nascimento: Optional[date] = None
+    cep: Optional[str] = None
+    logradouro: Optional[str] = None
+    numero: Optional[str] = None
+    complemento: Optional[str] = None
+    bairro: Optional[str] = None
+    cidade: Optional[str] = None
+    estado: Optional[str] = None
+    endereco: Optional[Any] = None
+
+    # Campos de Profissional (quando role == "professional")
+    phone: Optional[str] = None
+    bio: Optional[str] = None
+    service_radius_km: Optional[float] = None
+    specialties: Optional[List[str]] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    approval_status: Optional[str] = None
 
     @computed_field
     @property
@@ -80,6 +112,167 @@ class UserRead(UserBase):
         return role_map.get(self.role, self.role)
 
     model_config = {"from_attributes": True}
+
+
+class ContaUpdateRequest(BaseModel):
+    """Schema para atualização de dados cadastrais, preferências e senha na página Minha Conta (#94)."""
+
+    name: Optional[str] = Field(None, max_length=255, description="Nome completo")
+    data_nascimento: Optional[date] = None
+
+    # Endereço do cliente
+    cep: Optional[str] = Field(None, max_length=9)
+    logradouro: Optional[str] = Field(None, max_length=255)
+    numero: Optional[str] = Field(None, max_length=50)
+    complemento: Optional[str] = Field(None, max_length=255)
+    bairro: Optional[str] = Field(None, max_length=100)
+    cidade: Optional[str] = Field(None, max_length=100)
+    estado: Optional[str] = Field(None, min_length=2, max_length=2)
+
+    # Dados do profissional
+    phone: Optional[str] = Field(None, max_length=20)
+    bio: Optional[str] = Field(None, max_length=2000)
+    service_radius_km: Optional[float] = Field(None, ge=1.0, le=100.0)
+    specialties: Optional[List[str]] = None
+    city: Optional[str] = Field(None, max_length=100)
+    state: Optional[str] = Field(None, min_length=2, max_length=2)
+
+    # Alteração opcional de senha
+    senha_atual: Optional[str] = Field(None, max_length=128)
+    nova_senha: Optional[str] = Field(None, max_length=128)
+    confirmar_nova_senha: Optional[str] = Field(None, max_length=128)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalizar_aliases(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        payload = dict(data)
+        if "name" not in payload and "nome" in payload:
+            payload["name"] = payload["nome"]
+        if "phone" not in payload and "telefone" in payload:
+            payload["phone"] = payload["telefone"]
+        if "specialties" not in payload and "especialidades" in payload:
+            payload["specialties"] = payload["especialidades"]
+        if "service_radius_km" not in payload and "raio_atendimento_km" in payload:
+            payload["service_radius_km"] = payload["raio_atendimento_km"]
+        if "senha_atual" not in payload and "current_password" in payload:
+            payload["senha_atual"] = payload["current_password"]
+        if "nova_senha" not in payload and "new_password" in payload:
+            payload["nova_senha"] = payload["new_password"]
+        if "confirmar_nova_senha" not in payload and "confirm_password" in payload:
+            payload["confirmar_nova_senha"] = payload["confirm_password"]
+
+        if isinstance(payload.get("endereco"), dict):
+            end = payload["endereco"]
+            for campo in ("cep", "logradouro", "numero", "complemento", "bairro", "cidade"):
+                if campo not in payload and campo in end:
+                    payload[campo] = end[campo]
+            if "estado" not in payload:
+                if "estado" in end:
+                    payload["estado"] = end["estado"]
+                elif "estado_uf" in end:
+                    payload["estado"] = end["estado_uf"]
+        return payload
+
+    @field_validator("name")
+    @classmethod
+    def validar_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        limpo = v.strip()
+        if len(limpo) < 2:
+            raise ValueError("O nome deve ter no mínimo 2 caracteres.")
+        if not any(c.isalpha() for c in limpo):
+            raise ValueError("O nome deve conter letras.")
+        return limpo
+
+    @field_validator("cep")
+    @classmethod
+    def validar_cep_opcional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        digitos = "".join(filter(str.isdigit, v))
+        if len(digitos) != 8:
+            raise ValueError("O CEP deve conter exatamente 8 dígitos numéricos.")
+        return digitos
+
+    @field_validator("logradouro", "numero", "bairro", "cidade", "city")
+    @classmethod
+    def validar_texto_nao_vazio(cls, v: Optional[str], info) -> Optional[str]:
+        if v is None:
+            return None
+        limpo = v.strip()
+        if not limpo:
+            raise ValueError(f"O campo '{info.field_name}' não pode ser vazio.")
+        return limpo
+
+    @field_validator("complemento")
+    @classmethod
+    def validar_complemento_opcional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        limpo = v.strip()
+        return limpo if limpo else None
+
+    @field_validator("estado", "state")
+    @classmethod
+    def validar_uf_opcional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        uf = v.strip().upper()
+        if uf not in UFS_VALIDAS:
+            raise ValueError(f"Estado '{v}' inválido. Deve ser uma sigla de UF brasileira válida.")
+        return uf
+
+    @field_validator("bio")
+    @classmethod
+    def validar_bio_opcional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        limpo = v.strip()
+        if len(limpo) < 10:
+            raise ValueError("A biografia deve ter no mínimo 10 caracteres.")
+        return limpo
+
+    @field_validator("specialties")
+    @classmethod
+    def validar_specialties_opcional(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return None
+        limpas = [s.strip() for s in v if isinstance(s, str) and s.strip()]
+        if not limpas:
+            raise ValueError("Informe ao menos uma especialidade válida.")
+        return limpas
+
+    @field_validator("data_nascimento")
+    @classmethod
+    def validar_data_nascimento_opcional(cls, v: Optional[date]) -> Optional[date]:
+        if v is None:
+            return None
+        hoje = date.today()
+        if v > hoje:
+            raise ValueError("A data de nascimento não pode ser no futuro.")
+        idade = hoje.year - v.year - ((hoje.month, hoje.day) < (v.month, v.day))
+        if idade < 18:
+            raise ValueError("O usuário deve ter no mínimo 18 anos.")
+        if idade > 120:
+            raise ValueError("Data de nascimento inválida.")
+        return v
+
+    @model_validator(mode="after")
+    def validar_alteracao_senha(self):
+        if self.nova_senha is not None:
+            if len(self.nova_senha) < 8:
+                raise ValueError("A nova senha deve conter no mínimo 8 caracteres.")
+            if not any(c.isalpha() for c in self.nova_senha):
+                raise ValueError("A nova senha deve conter pelo menos uma letra.")
+            if not any(c.isdigit() for c in self.nova_senha):
+                raise ValueError("A nova senha deve conter pelo menos um número.")
+            if self.confirmar_nova_senha is not None and self.nova_senha != self.confirmar_nova_senha:
+                raise ValueError("A confirmação de senha não confere com a nova senha informada.")
+        return self
+
 
 
 class AdminBase(UserBase):

@@ -17,6 +17,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (usuario: AuthUser, token: string) => void;
+  updateUser: (partial: Partial<AuthUser>) => void;
   logout: () => void;
 }
 
@@ -148,6 +149,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateUser = (partial: Partial<AuthUser>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const nextName = partial.nome ?? partial.name ?? prev.nome;
+      const nextRole = partial.role ?? prev.role;
+      const updated: AuthUser = {
+        ...prev,
+        ...partial,
+        nome: nextName,
+        name: partial.name ?? partial.nome ?? prev.name ?? nextName,
+        tipo: deriveTipoFromRole(nextRole, partial.tipo ?? prev.tipo),
+      };
+      try {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updated));
+        }
+      } catch (error) {
+        console.error('Erro ao atualizar usuário na sessão:', error);
+      }
+      return updated;
+    });
+  };
+
   const logout = () => {
     setUser(null);
     setToken(null);
@@ -170,6 +194,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: !!user && !!token,
         isLoading,
         login,
+        updateUser,
         logout,
       }}
     >

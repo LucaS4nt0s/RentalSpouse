@@ -11,7 +11,7 @@
     "build": "npm run build:search && next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "npm run build:search && node --test ../packages/shared-search/searchMatching.test.js"
+    "test": "npm run build:search && node --test ../packages/shared-search/searchMatching.test.js ./tests/minha-conta.test.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.48.0",

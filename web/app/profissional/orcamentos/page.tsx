@@ -30,8 +30,7 @@ import {
   obterResumoCapacidade,
 } from '../../../services/orcamentos';
 import { Button } from '../../../components/ui/Button';
-import { ThemeToggle } from '../../../components/ui/ThemeToggle';
-import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
+import { AppHeader } from '../../../components/layout/AppHeader';
 import { QuoteDetailModal } from '../../../components/orcamentos/QuoteDetailModal';
 
 type FilterTab = 'todos' | 'pendente' | 'aceito' | 'recusado' | 'respondido';
@@ -167,41 +166,22 @@ export default function ProfissionalOrcamentosPage() {
   };
 
   return (
-    <main className="min-h-screen bg-rental-bg text-rental-ink p-4 sm:p-6 lg:p-10">
-      <div className="max-w-6xl mx-auto space-y-8 animate-fadeIn">
-        {/* Cabeçalho de Navegação e Ações */}
-        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-rental-border">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Link
-                href="/profissionais"
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-rental-muted hover:text-rental-primary transition-colors"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>Voltar ao Diretório</span>
-              </Link>
+    <div className="min-h-screen flex flex-col bg-rental-bg text-rental-ink">
+      <AppHeader />
+      <main className="flex-1 p-4 sm:p-6 lg:p-10">
+        <div className="max-w-6xl mx-auto space-y-8 animate-fadeIn">
+          {/* Cabeçalho da Página */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-rental-border">
+            <div className="space-y-1">
+              <h1 className="text-2xl sm:text-3xl font-black text-rental-ink tracking-tight flex items-center gap-2.5">
+                <Briefcase className="h-7 w-7 text-rental-primary" />
+                Gestão de Orçamentos e Capacidade
+              </h1>
+              <p className="text-xs sm:text-sm text-rental-muted">
+                Aceite novos pedidos ou recuse solicitações para controlar sua capacidade de trabalho e agenda.
+              </p>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-rental-ink tracking-tight flex items-center gap-2.5">
-              <Briefcase className="h-7 w-7 text-rental-primary" />
-              Gestão de Orçamentos e Capacidade
-            </h1>
-            <p className="text-xs sm:text-sm text-rental-muted">
-              Aceite novos pedidos ou recuse solicitações para controlar sua capacidade de trabalho e agenda.
-            </p>
           </div>
-
-          <div className="flex items-center gap-3">
-            <Link
-              href="/profissional/documentos"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
-            >
-              <FileCheck2 className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Meus Documentos</span>
-            </Link>
-            <NotificationBell />
-            <ThemeToggle />
-          </div>
-        </header>
 
         {/* Métricas de Capacidade de Trabalho (Issue #29) */}
         <section aria-labelledby="capacidade-metrics-title">
@@ -536,6 +516,7 @@ export default function ProfissionalOrcamentosPage() {
           />
         </div>
       )}
-    </main>
+      </main>
+    </div>
   );
 }

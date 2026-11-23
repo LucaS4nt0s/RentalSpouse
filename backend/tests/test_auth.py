@@ -423,3 +423,187 @@ class TestAuthLogin:
             assert res_me.json()["role"] == "client"
             assert res_me.json()["tipo"] == "cliente"
 
+
+class TestMinhaContaEndpoints:
+    """Testes para leitura completa e atualização de conta em /api/auth/me e /api/conta/me (#94)."""
+
+    def test_get_me_retorna_dados_completos_cliente_com_cpf_mascarado(self, client: TestClient):
+        """GET /api/auth/me e /api/conta/me retornam endereço completo e CPF mascarado do cliente."""
+        res_cad = cadastrar_cliente_auxiliar(
+            client,
+            email="conta.cliente@exemplo.com",
+            senha="SenhaForte123",
+            verificado=True,
+        )
+        assert res_cad.status_code == 201
+
+        login_res = client.post(
+            "/api/auth/login",
+            json={"email": "conta.cliente@exemplo.com", "senha": "SenhaForte123"},
+        )
+        token = login_res.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        for endpoint in ("/api/auth/me", "/api/conta/me"):
+            res = client.get(endpoint, headers=headers)
+            assert res.status_code == 200
+            dados = res.json()
+            assert dados["name"] == "Maria da Silva"
+            assert dados["nome"] == "Maria da Silva"
+            assert dados["cpf"] == "***.456.789-**"
+            assert dados["data_nascimento"] == "1992-08-15"
+            assert dados["cep"] == "01001000"
+            assert dados["logradouro"] == "Praça da Sé"
+            assert dados["numero"] == "50"
+            assert dados["bairro"] == "Sé"
+            assert dados["cidade"] == "São Paulo"
+            assert dados["estado"] == "SP"
+            assert dados["email_verificado"] is True
+
+    def test_patch_me_atualiza_dados_e_endereco_do_cliente_sincronizando_users(self, client: TestClient):
+        """PATCH /api/auth/me atualiza nome e endereço do cliente em clientes e users."""
+        cadastrar_cliente_auxiliar(
+            client,
+            email="editar.cliente@exemplo.com",
+            senha="SenhaForte123",
+            verificado=True,
+        )
+        login_res = client.post(
+            "/api/auth/login",
+            json={"email": "editar.cliente@exemplo.com", "senha": "SenhaForte123"},
+        )
+        token = login_res.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        patch_res = client.patch(
+            "/api/auth/me",
+            headers=headers,
+            json={
+                "name": "Maria Silva Editada",
+                "cep": "01310-100",
+                "logradouro": "Avenida Paulista",
+                "numero": "1578",
+                "complemento": "Conjunto 42",
+                "bairro": "Bela Vista",
+                "cidade": "São Paulo",
+                "estado": "SP",
+            },
+        )
+        assert patch_res.status_code == 200
+        atualizado = patch_res.json()
+        assert atualizado["name"] == "Maria Silva Editada"
+        assert atualizado["nome"] == "Maria Silva Editada"
+        assert atualizado["cep"] == "01310100"
+        assert atualizado["logradouro"] == "Avenida Paulista"
+        assert atualizado["numero"] == "1578"
+        assert atualizado["complemento"] == "Conjunto 42"
+        assert atualizado["bairro"] == "Bela Vista"
+
+        # Verifica sincronização na tabela users
+        db = SessionLocal()
+        try:
+            usr = db.query(models.User).filter(models.User.email == "editar.cliente@exemplo.com").first()
+            cli = db.query(models.Cliente).filter(models.Cliente.email == "editar.cliente@exemplo.com").first()
+            assert usr is not None and usr.name == "Maria Silva Editada"
+            assert cli is not None and cli.nome == "Maria Silva Editada"
+        finally:
+            db.close()
+
+    def test_patch_me_atualiza_perfil_profissional(self, client: TestClient):
+        """GET e PATCH /api/conta/me permitem ler e editar bio, telefone, raio e especialidades do profissional."""
+        res_prof = client.post(
+            "/api/professionals",
+            json={
+                "name": "Carlos Encanador",
+                "email": "carlos.prof@exemplo.com",
+                "phone": "11988887777",
+                "bio": "Especialista em hidráulica residencial e detecção de vazamentos.",
+                "service_radius_km": 15.0,
+                "specialties": ["Hidráulica"],
+                "city": "Campinas",
+                "state": "SP",
+                "senha": "SenhaForte@2026",
+            },
+        )
+        assert res_prof.status_code == 201
+
+        login_res = client.post(
+            "/api/auth/login",
+            json={"email": "carlos.prof@exemplo.com", "senha": "SenhaForte@2026"},
+        )
+        token = login_res.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        get_res = client.get("/api/conta/me", headers=headers)
+        assert get_res.status_code == 200
+        assert get_res.json()["specialties"] == ["Hidráulica"]
+        assert get_res.json()["service_radius_km"] == 15.0
+
+        patch_res = client.patch(
+            "/api/conta/me",
+            headers=headers,
+            json={
+                "name": "Carlos Alberto Hidráulica",
+                "phone": "11977776666",
+                "bio": "Mais de 20 anos de experiência em hidráulica e elétrica residencial.",
+                "service_radius_km": 30.0,
+                "specialties": ["Hidráulica", "Elétrica"],
+                "city": "São Paulo",
+                "state": "SP",
+            },
+        )
+        assert patch_res.status_code == 200
+        dados = patch_res.json()
+        assert dados["name"] == "Carlos Alberto Hidráulica"
+        assert dados["phone"] == "11977776666"
+        assert dados["service_radius_km"] == 30.0
+        assert dados["specialties"] == ["Hidráulica", "Elétrica"]
+        assert dados["city"] == "São Paulo"
+
+    def test_patch_me_alteracao_de_senha_valida_senha_atual(self, client: TestClient):
+        """PATCH /api/auth/me exige senha_atual correta antes de gravar nova_senha."""
+        cadastrar_cliente_auxiliar(
+            client,
+            email="troca.senha@exemplo.com",
+            senha="SenhaAntiga123",
+            verificado=True,
+        )
+        login_res = client.post(
+            "/api/auth/login",
+            json={"email": "troca.senha@exemplo.com", "senha": "SenhaAntiga123"},
+        )
+        token = login_res.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 1. Senha atual incorreta -> 400
+        res_err = client.patch(
+            "/api/auth/me",
+            headers=headers,
+            json={
+                "senha_atual": "SenhaErrada999",
+                "nova_senha": "SenhaNovaForte456",
+                "confirmar_nova_senha": "SenhaNovaForte456",
+            },
+        )
+        assert res_err.status_code == 400
+        assert "senha atual" in res_err.json()["detail"].lower()
+
+        # 2. Senha atual correta -> 200 e novo login funciona com a nova senha
+        res_ok = client.patch(
+            "/api/auth/me",
+            headers=headers,
+            json={
+                "senha_atual": "SenhaAntiga123",
+                "nova_senha": "SenhaNovaForte456",
+                "confirmar_nova_senha": "SenhaNovaForte456",
+            },
+        )
+        assert res_ok.status_code == 200
+
+        login_novo = client.post(
+            "/api/auth/login",
+            json={"email": "troca.senha@exemplo.com", "senha": "SenhaNovaForte456"},
+        )
+        assert login_novo.status_code == 200
+
+
