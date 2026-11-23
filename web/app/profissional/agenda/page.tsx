@@ -34,8 +34,7 @@ import {
   validarGradeDisponibilidade,
 } from '../../../services/agenda';
 import { Button } from '../../../components/ui/Button';
-import { ThemeToggle } from '../../../components/ui/ThemeToggle';
-import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
+import { AppHeader } from '../../../components/layout/AppHeader';
 
 interface JanelaEditor {
   localId: string;
@@ -382,49 +381,23 @@ export default function ProfissionalAgendaPage() {
   }
 
   return (
-    <main className="min-h-screen bg-rental-bg text-rental-ink p-4 sm:p-6 lg:p-10">
-      <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn">
-        {/* Cabeçalho */}
-        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-rental-border">
-          <div className="space-y-1">
-            <div className="flex items-center gap-3">
-              <Link
-                href="/"
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-rental-muted hover:text-rental-primary transition-colors"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>Início</span>
-              </Link>
+    <div className="min-h-screen flex flex-col bg-rental-bg text-rental-ink">
+      <AppHeader />
+      <main className="flex-1 p-4 sm:p-6 lg:p-10">
+        <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn">
+          {/* Cabeçalho */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-rental-border">
+            <div className="space-y-1">
+              <h1 className="text-2xl sm:text-3xl font-black text-rental-ink tracking-tight flex items-center gap-2.5">
+                <Calendar className="h-7 w-7 text-rental-primary" />
+                <span>Minha Agenda de Disponibilidade</span>
+              </h1>
+              <p className="text-xs sm:text-sm text-rental-muted">
+                Defina os dias e horários da sua grade semanal para que clientes
+                possam agendar atendimentos com você.
+              </p>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-rental-ink tracking-tight flex items-center gap-2.5">
-              <Calendar className="h-7 w-7 text-rental-primary" />
-              <span>Minha Agenda de Disponibilidade</span>
-            </h1>
-            <p className="text-xs sm:text-sm text-rental-muted">
-              Defina os dias e horários da sua grade semanal para que clientes
-              possam agendar atendimentos com você.
-            </p>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
-            <Link
-              href="/profissional/orcamentos"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
-            >
-              <Briefcase className="h-3.5 w-3.5" />
-              <span>Orçamentos</span>
-            </Link>
-            <Link
-              href="/profissional/documentos"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
-            >
-              <FileCheck2 className="h-3.5 w-3.5" />
-              <span>Documentos</span>
-            </Link>
-            <NotificationBell />
-            <ThemeToggle />
-          </div>
-        </header>
 
         {/* Estado de erro de carregamento */}
         {loadError ? (
@@ -761,7 +734,8 @@ export default function ProfissionalAgendaPage() {
             </div>
           </>
         )}
-      </div>
-    </main>
+        </div>
+      </main>
+    </div>
   );
 }

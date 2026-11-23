@@ -15,8 +15,7 @@ import {
   ListChecks,
   Clock,
 } from 'lucide-react';
-import { ThemeToggle } from '../../../../components/ui/ThemeToggle';
-import { NotificationBell } from '../../../../components/notificacoes/NotificationBell';
+import { AppHeader } from '../../../../components/layout/AppHeader';
 import { Calendario } from '../../../../components/agenda/Calendario';
 import { GradeHorarios } from '../../../../components/agenda/GradeHorarios';
 import { ConfirmacaoAgendamento } from '../../../../components/agenda/ConfirmacaoAgendamento';
@@ -83,60 +82,8 @@ export default function AgendarProfissionalPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-rental-bg text-rental-ink">
-      {/* Header Global */}
-      <header className="sticky top-0 z-30 bg-rental-bg/90 backdrop-blur-md">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
-          <Link
-            href="/"
-            className="flex items-center gap-2 transition-opacity hover:opacity-90"
-          >
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rental-primary text-[var(--rs-primary-text)]">
-              <Zap className="h-5 w-5" />
-            </span>
-            <span className="text-lg font-extrabold tracking-tight">
-              RentalSpouse
-            </span>
-          </Link>
-
-          <nav className="flex items-center gap-3">
-            <Link
-              href="/profissionais"
-              className="hidden sm:inline-block text-xs font-semibold text-rental-muted transition-colors hover:text-rental-primary"
-            >
-              Profissionais
-            </Link>
-
-            {isAuthenticated && ehCliente && (
-              <button
-                type="button"
-                onClick={handleVerMeusAgendamentos}
-                className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
-              >
-                <ListChecks className="h-3.5 w-3.5" />
-                <span>Meus agendamentos</span>
-              </button>
-            )}
-
-            {isAuthenticated && user ? (
-              <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-rental-primary/10 text-xs font-bold text-rental-primary">
-                  {user.nome.charAt(0).toUpperCase()}
-                </span>
-                <NotificationBell />
-              </div>
-            ) : (
-              <Link
-                href="/entrar"
-                className="rounded-xl bg-rental-primary px-3.5 py-1.5 text-xs font-bold text-[var(--rs-primary-text)] shadow-primary transition-colors hover:bg-[var(--rs-primary-hover)]"
-              >
-                Entrar
-              </Link>
-            )}
-
-            <ThemeToggle showLabel={false} />
-          </nav>
-        </div>
-      </header>
+      {/* Header Global Unificado */}
+      <AppHeader onOpenAgendamentos={handleVerMeusAgendamentos} />
 
       <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-4 py-8 sm:px-6">
         {/* Navegação de retorno e Meus agendamentos */}

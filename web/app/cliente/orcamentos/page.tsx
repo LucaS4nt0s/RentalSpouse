@@ -40,8 +40,7 @@ import {
   listarMeusPagamentos,
 } from '../../../services/pagamentos';
 import { Button } from '../../../components/ui/Button';
-import { ThemeToggle } from '../../../components/ui/ThemeToggle';
-import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
+import { AppHeader } from '../../../components/layout/AppHeader';
 import { useNotifications } from '../../../context/NotificationContext';
 import { QuoteDetailModal } from '../../../components/orcamentos/QuoteDetailModal';
 import { AvaliarProfissionalModal } from '../../../components/avaliacoes/AvaliarProfissionalModal';
@@ -249,49 +248,34 @@ export default function ClienteOrcamentosPage() {
   };
 
   return (
-    <main className="min-h-screen bg-rental-bg text-rental-ink p-4 sm:p-6 lg:p-10 space-y-8">
-      <div className="max-w-6xl mx-auto space-y-8">
-        {/* Barra Superior / Header */}
-        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-rental-border/60">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="p-2 rounded-xl border border-rental-border text-rental-muted hover:text-rental-ink hover:bg-rental-surface transition-colors"
-              title="Voltar ao início"
-              aria-label="Voltar à página inicial"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
+    <div className="min-h-screen flex flex-col bg-rental-bg text-rental-ink">
+      <AppHeader />
+      <main className="flex-1 p-4 sm:p-6 lg:p-10 space-y-8 animate-fadeIn">
+        <div className="max-w-6xl mx-auto space-y-8">
+          {/* Barra Superior / Header da Página */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-rental-border/60">
             <div>
-              <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rental-primary text-[var(--rs-primary-text)] text-xs">
-                  <Zap className="h-4 w-4" />
-                </span>
-                <h1 className="text-xl sm:text-2xl font-black text-rental-ink tracking-tight">
-                  Meus Orçamentos
-                </h1>
-              </div>
+              <h1 className="text-xl sm:text-2xl font-black text-rental-ink tracking-tight">
+                Meus Orçamentos
+              </h1>
               <p className="text-xs text-rental-muted mt-0.5">
                 Acompanhe o andamento das suas solicitações, estimativas e confirmações de serviço.
               </p>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto">
-            <Link href="/profissionais">
-              <Button
-                variant="primary"
-                size="sm"
-                leftIcon={<Sparkles className="h-4 w-4" />}
-                className="text-xs font-bold"
-              >
-                Solicitar Novo Orçamento
-              </Button>
-            </Link>
-            <NotificationBell />
-            <ThemeToggle />
+            <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto">
+              <Link href="/profissionais">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Sparkles className="h-4 w-4" />}
+                  className="text-xs font-bold"
+                >
+                  Solicitar Novo Orçamento
+                </Button>
+              </Link>
+            </div>
           </div>
-        </header>
 
         {/* Resumo / Métricas Rápidas */}
         <section aria-label="Resumo das solicitações" className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
@@ -868,6 +852,7 @@ export default function ClienteOrcamentosPage() {
           </div>
         </div>
       )}
-    </main>
+      </main>
+    </div>
   );
 }
