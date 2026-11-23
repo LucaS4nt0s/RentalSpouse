@@ -34,6 +34,7 @@ import {
   Orcamento,
   listarMeusOrcamentos,
   obterFotoUrl,
+  aprovarEstimativaOrcamento,
 } from '../../../services/orcamentos';
 import {
   Pagamento,
@@ -66,6 +67,7 @@ export default function ClienteOrcamentosPage() {
     'visualizar' | 'aprovar_estimativa' | 'cancelar_cliente'
   >('visualizar');
   const [checkoutOrcamento, setCheckoutOrcamento] = useState<Orcamento | null>(null);
+  const [approvingId, setApprovingId] = useState<number | null>(null);
 
   // Modal de Avaliação de Serviço (issue #19)
   const [avaliarOrcamento, setAvaliarOrcamento] = useState<Orcamento | null>(null);
@@ -74,6 +76,22 @@ export default function ClienteOrcamentosPage() {
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
 
   const { notificacoes } = useNotifications();
+
+  const handleAprovarEstimativaDireto = async (orcamentoId: number) => {
+    setApprovingId(orcamentoId);
+    setError(null);
+    setFeedbackBanner(null);
+    try {
+      await aprovarEstimativaOrcamento(orcamentoId, token);
+      setFeedbackBanner('Estimativa aprovada com sucesso! O serviço foi confirmado e o profissional notificado.');
+      await carregarOrcamentos();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao aprovar estimativa do orçamento.';
+      setError(msg);
+    } finally {
+      setApprovingId(null);
+    }
+  };
 
   const carregarOrcamentos = useCallback(async () => {
     if (!token) return;
@@ -689,14 +707,18 @@ export default function ClienteOrcamentosPage() {
                           <Button
                             variant="primary"
                             size="sm"
-                            onClick={() => {
-                              setSelectedInitialAction('aprovar_estimativa');
-                              setSelectedOrcamentoId(orcamento.id);
-                            }}
-                            leftIcon={<ThumbsUp className="h-3.5 w-3.5" />}
+                            disabled={approvingId === orcamento.id}
+                            onClick={() => handleAprovarEstimativaDireto(orcamento.id)}
+                            leftIcon={
+                              approvingId === orcamento.id ? (
+                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <ThumbsUp className="h-3.5 w-3.5" />
+                              )
+                            }
                             className="font-bold text-xs"
                           >
-                            Aprovar Estimativa
+                            {approvingId === orcamento.id ? 'Aprovando...' : 'Aprovar Estimativa'}
                           </Button>
                           <Button
                             variant="danger"

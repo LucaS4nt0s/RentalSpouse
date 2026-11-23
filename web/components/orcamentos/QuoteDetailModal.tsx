@@ -71,7 +71,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
 }) => {
   const { token, user } = useAuth();
   const isProfessional = Boolean(
-    user && (user.tipo === 'profissional' || user.role === 'professional' || user.role === 'admin')
+    user && (user.tipo === 'profissional' || user.role === 'professional')
   );
   const [orcamento, setOrcamento] = useState<Orcamento | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -276,14 +276,19 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
 
   const handleAprovarEstimativaCliente = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) return;
+    const effectiveToken =
+      token || (typeof window !== 'undefined' ? localStorage.getItem('rentalspouse_token') : null);
+    if (!effectiveToken) {
+      setSubmitError('Você precisa estar autenticado como o cliente autor para aprovar a estimativa.');
+      return;
+    }
 
     setIsSubmitting(true);
     setSubmitError(null);
     setSubmitSuccess(null);
 
     try {
-      const updated = await aprovarEstimativaOrcamento(orcamentoId, token, {
+      const updated = await aprovarEstimativaOrcamento(orcamentoId, effectiveToken, {
         mensagem: mensagemAprovacaoCliente.trim() || undefined,
       });
       setOrcamento(updated);
@@ -302,7 +307,12 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
 
   const handleCancelarOrcamentoCliente = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) return;
+    const effectiveToken =
+      token || (typeof window !== 'undefined' ? localStorage.getItem('rentalspouse_token') : null);
+    if (!effectiveToken) {
+      setSubmitError('Você precisa estar autenticado como o cliente autor para cancelar a solicitação.');
+      return;
+    }
 
     const motivoLimpo = motivoCancelamentoCliente.trim();
     if (motivoLimpo.length < 3) {
@@ -315,7 +325,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
     setSubmitSuccess(null);
 
     try {
-      const updated = await cancelarOrcamentoCliente(orcamentoId, token, {
+      const updated = await cancelarOrcamentoCliente(orcamentoId, effectiveToken, {
         motivo: motivoLimpo,
       });
       setOrcamento(updated);
@@ -382,7 +392,8 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[65] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm"
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh' }}
       role="dialog"
       aria-modal="true"
       aria-label={`Detalhes do Orçamento #${orcamentoId}`}

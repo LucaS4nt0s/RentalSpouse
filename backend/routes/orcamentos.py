@@ -13,6 +13,7 @@ from typing import List, Optional
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Body,
     Depends,
     File,
     Form,
@@ -743,7 +744,7 @@ def recusar_orcamento(
 )
 def aprovar_estimativa_orcamento(
     orcamento_id: int,
-    payload: Optional[OrcamentoAprovarEstimativaCliente] = None,
+    payload: Optional[OrcamentoAprovarEstimativaCliente] = Body(default=None),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -765,29 +766,30 @@ def aprovar_estimativa_orcamento(
             detail="Apenas o cliente autor deste orçamento pode aprovar a estimativa.",
         )
 
-    # Validações de integridade de ciclo de vida
-    if orcamento.status == models.OrcamentoStatus.ACEITO.value:
+    # Validações de integridade de ciclo de vida (case-insensitive)
+    status_atual = (orcamento.status or "").strip().lower()
+    if status_atual == models.OrcamentoStatus.ACEITO.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Esta solicitação de orçamento já foi aceita anteriormente.",
         )
-    if orcamento.status == models.OrcamentoStatus.CANCELADO.value:
+    if status_atual == models.OrcamentoStatus.CANCELADO.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Não é possível aprovar uma estimativa de solicitação já cancelada.",
         )
-    if orcamento.status == models.OrcamentoStatus.RECUSADO.value:
+    if status_atual == models.OrcamentoStatus.RECUSADO.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Não é possível aprovar uma estimativa de solicitação já recusada.",
         )
-    if orcamento.status == models.OrcamentoStatus.PENDENTE.value:
+    if status_atual == models.OrcamentoStatus.PENDENTE.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="O orçamento ainda não possui uma estimativa enviada pelo profissional para ser aprovada.",
         )
 
-    if orcamento.status != models.OrcamentoStatus.RESPONDIDO.value:
+    if status_atual != models.OrcamentoStatus.RESPONDIDO.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Não é possível aprovar estimativa com status atual '{orcamento.status}'.",
@@ -796,6 +798,8 @@ def aprovar_estimativa_orcamento(
     agora = datetime.now(timezone.utc)
     orcamento.status = models.OrcamentoStatus.ACEITO.value
     orcamento.decidido_em = agora
+    if payload and payload.mensagem and payload.mensagem.strip():
+        orcamento.mensagem_resposta = payload.mensagem.strip()
 
     db.commit()
     db.refresh(orcamento)
@@ -854,7 +858,7 @@ def aprovar_estimativa_orcamento(
 )
 def cancelar_orcamento_cliente(
     orcamento_id: int,
-    payload: Optional[OrcamentoCancelarCliente] = None,
+    payload: Optional[OrcamentoCancelarCliente] = Body(default=None),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -875,7 +879,8 @@ def cancelar_orcamento_cliente(
             detail="Apenas o cliente autor deste orçamento pode cancelá-lo ou recusar a proposta.",
         )
 
-    if orcamento.status == models.OrcamentoStatus.CANCELADO.value:
+    status_atual = (orcamento.status or "").strip().lower()
+    if status_atual == models.OrcamentoStatus.CANCELADO.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Esta solicitação de orçamento já foi cancelada anteriormente.",

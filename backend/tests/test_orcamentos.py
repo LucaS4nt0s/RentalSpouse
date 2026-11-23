@@ -1701,5 +1701,43 @@ class TestInteratividadeBilateralCliente:
         assert res_tentativa.status_code == 400
         assert "pagamento aprovado" in res_tentativa.json()["detail"]
 
+    def test_aprovar_estimativa_com_body_vazio_e_json_vazio(
+        self,
+        client: TestClient,
+        profissional_teste: models.Professional,
+        cliente_teste: models.Cliente,
+    ):
+        """Valida que PATCH /api/orcamentos/{id}/aprovar-estimativa aceita body vazio ou {} sem erro 422."""
+        token_cliente = create_access_token({"sub": cliente_teste.email, "role": "client"})
+        headers_cliente = {"Authorization": f"Bearer {token_cliente}"}
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        # 1. Cria orçamento e responde com estimativa
+        res_create = client.post(
+            "/api/orcamentos",
+            data={
+                "professional_id": str(profissional_teste.id),
+                "descricao": "Instalação sem mensagem.",
+            },
+            headers=headers_cliente,
+        )
+        orc_id = res_create.json()["id"]
+
+        client.patch(
+            f"/api/orcamentos/{orc_id}/responder",
+            json={"valor_estimado": 190.0, "resposta_profissional": "Estimativa simples."},
+            headers=headers_prof,
+        )
+
+        # 2. Aprova sem body nenhum (Content-Length: 0)
+        res_aprov = client.patch(
+            f"/api/orcamentos/{orc_id}/aprovar-estimativa",
+            headers=headers_cliente,
+        )
+        assert res_aprov.status_code == 200
+        assert res_aprov.json()["status"] == "aceito"
+
 
 
