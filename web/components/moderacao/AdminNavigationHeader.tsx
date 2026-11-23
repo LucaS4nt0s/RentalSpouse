@@ -16,4 +16,3 @@ export const AdminNavigationHeader: React.FC<AdminNavigationHeaderProps> = ({
 }) => {
   return <AppHeader onCustomLogout={onLogout} />;
 };
-

@@ -1277,6 +1277,26 @@ class OrcamentoResumoCapacidade(BaseModel):
     respondidos: int = 0
 
 
+class OrcamentoAprovarEstimativaCliente(BaseModel):
+    """Payload opcional para o cliente aprovar a estimativa enviada pelo profissional (Issue #98)."""
+
+    mensagem: Optional[str] = Field(
+        None,
+        max_length=1000,
+        description="Mensagem ou observação opcional do cliente ao aprovar a estimativa",
+    )
+
+
+class OrcamentoCancelarCliente(BaseModel):
+    """Payload para o cliente cancelar solicitação ou recusar estimativa (Issue #98)."""
+
+    motivo: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="Motivo do cancelamento ou recusa da estimativa pelo cliente",
+    )
+
+
 class NotificacaoRead(BaseModel):
     """Schema de notificação em tempo real ou persistida no banco."""
 
@@ -1464,6 +1484,57 @@ class DisponibilidadeRead(BaseModel):
     hora_inicio: time
     hora_fim: time
     duracao_slot_min: int
+
+
+class BloqueioAgendaCreate(BaseModel):
+    """Payload para bloquear um dia inteiro ou faixa de horário específica na agenda (issue #16)."""
+
+    data_hora_inicio: datetime = Field(
+        ...,
+        description="Início do bloqueio (ISO 8601; datas sem fuso são interpretadas como UTC).",
+    )
+    data_hora_fim: datetime = Field(
+        ...,
+        description="Fim do bloqueio (ISO 8601; deve ser posterior a data_hora_inicio).",
+    )
+    motivo: Optional[str] = Field(
+        None,
+        max_length=255,
+        description="Motivo opcional da folga/indisponibilidade (ex.: Feriado, Consulta médica).",
+    )
+
+    @field_validator("data_hora_inicio", "data_hora_fim")
+    @classmethod
+    def normalizar_datas_utc(cls, v: datetime) -> datetime:
+        """Converte datas aware/naive para o padrão naive-UTC da agenda."""
+        return normalizar_datetime_utc(v)
+
+    @field_validator("motivo")
+    @classmethod
+    def normalizar_motivo(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        limpo = v.strip()
+        return limpo if limpo else None
+
+    @model_validator(mode="after")
+    def validar_intervalo(self):
+        if self.data_hora_fim <= self.data_hora_inicio:
+            raise ValueError("data_hora_fim deve ser posterior a data_hora_inicio.")
+        return self
+
+
+class BloqueioAgendaRead(BaseModel):
+    """Bloqueio pontual de agenda persistido para o profissional (issue #16)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    professional_id: int
+    data_hora_inicio: datetime
+    data_hora_fim: datetime
+    motivo: Optional[str] = None
+    created_at: datetime
 
 
 class AgendaSlotRead(BaseModel):
@@ -1736,6 +1807,37 @@ class PagamentoRead(BaseModel):
     _utc = field_validator(
         "pix_expira_em", "pago_em", "criado_em", "atualizado_em", mode="after"
     )(_garantir_utc_pagamento)
+
+
+class PagamentoRecenteResumo(BaseModel):
+    """Resumo de um pagamento aprovado para o extrato do profissional (Issue #27)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    orcamento_id: int
+    agendamento_id: Optional[int] = None
+    cliente_nome: Optional[str] = None
+    valor: float
+    metodo: str
+    status: str
+    pago_em: Optional[datetime] = None
+    gateway_txid: str
+
+
+class GanhosProfissionalResumoRead(BaseModel):
+    """Métricas consolidadas de faturamento e ganhos do profissional (Issue #27)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    total_acumulado: float = 0.0
+    ganhos_mes_atual: float = 0.0
+    ganhos_semana_atual: float = 0.0
+    total_atendimentos_pagos: int = 0
+    ticket_medio: float = 0.0
+    mes_referencia: str
+    semana_referencia: str
+    pagamentos_recentes: List[PagamentoRecenteResumo] = []
 
 
 # ---------------------------------------------------------------------------

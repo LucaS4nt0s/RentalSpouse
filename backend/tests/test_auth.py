@@ -605,5 +605,3 @@ class TestMinhaContaEndpoints:
             json={"email": "troca.senha@exemplo.com", "senha": "SenhaNovaForte456"},
         )
         assert login_novo.status_code == 200
-
-

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, ShieldCheck, Star, Clock, User } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Star, Clock, User, Calendar } from 'lucide-react';
 import {
   ProfessionalDocumentsLink,
   useIsProfessional,
@@ -72,7 +72,18 @@ export default function Home() {
                 <User className="h-4 w-4 text-rental-primary" />
                 Minha Conta ({user.nome.split(' ')[0]})
               </Link>
-              {isProfessional && <ProfessionalDocumentsLink variant="hero" />}
+              {isProfessional && (
+                <>
+                  <Link
+                    href="/profissional/agenda"
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+                  >
+                    <Calendar className="h-4 w-4 text-rental-primary" />
+                    Minha Agenda
+                  </Link>
+                  <ProfessionalDocumentsLink variant="hero" />
+                </>
+              )}
             </>
           ) : (
             <>

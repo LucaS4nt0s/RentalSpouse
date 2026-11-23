@@ -18,6 +18,7 @@ import { ProfessionalCardSkeleton } from '../../components/profissionais/Profess
 import { SearchEmptyState } from '../../components/profissionais/SearchEmptyState';
 import { SearchErrorState } from '../../components/profissionais/SearchErrorState';
 import { QuoteModal } from '../../components/profissionais/QuoteModal';
+import { ProfessionalProfileModal } from '../../components/profissionais/ProfessionalProfileModal';
 import { DenunciaModal } from '../../components/denuncias/DenunciaModal';
 import { AvaliacoesProfissionalModal } from '../../components/avaliacoes/AvaliacoesProfissionalModal';
 import { Professional } from '../../types/professional';
@@ -27,10 +28,15 @@ function ProfissionaisSearchContent() {
   const {
     specialty,
     city,
+    state,
     q,
+    radius,
+    orderBy,
     setSpecialty,
     setCity,
     setQ,
+    setRadius,
+    setOrderBy,
     clearFilters,
     hasActiveFilters,
   } = useUrlFilters();
@@ -40,6 +46,9 @@ function ProfissionaisSearchContent() {
   const [cityInput, setCityInput] = useState<string>(city);
   const debouncedSearch = useDebounce(searchInput, 350);
   const debouncedCity = useDebounce(cityInput, 350);
+
+  // Modal de Perfil Detalhado do Profissional (issue #96)
+  const [profileTarget, setProfileTarget] = useState<Professional | null>(null);
 
   // Modal de Solicitação de Orçamento
   const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
@@ -77,7 +86,10 @@ function ProfissionaisSearchContent() {
   const { data, isLoading, isRetrying, error, isEmpty, detectedSuggestion, retry } = useProfessionalsSearch({
     specialty,
     city: debouncedCity,
+    state,
     q: debouncedSearch,
+    radius,
+    orderBy,
   });
 
   // Paginação progressiva sob demanda (LoadMoreControl - PRD §3.1)
@@ -85,13 +97,21 @@ function ProfissionaisSearchContent() {
 
   useEffect(() => {
     setVisibleCount(12);
-  }, [specialty, debouncedCity, debouncedSearch]);
+  }, [specialty, debouncedCity, state, debouncedSearch, radius, orderBy]);
 
   const handleClearAll = () => {
     setSearchInput('');
     setCityInput('');
     clearFilters();
   };
+
+  const handleOpenProfileModal = useCallback((prof: Professional) => {
+    setProfileTarget(prof);
+  }, []);
+
+  const handleCloseProfileModal = useCallback(() => {
+    setProfileTarget(null);
+  }, []);
 
   const handleOpenQuoteModal = useCallback((prof: Professional) => {
     setSelectedProfessional(prof);
@@ -156,6 +176,10 @@ function ProfissionaisSearchContent() {
         <FilterActionBar
           city={cityInput}
           onCityChange={setCityInput}
+          radius={radius}
+          onRadiusChange={setRadius}
+          orderBy={orderBy}
+          onOrderByChange={setOrderBy}
           resultsCount={data.length}
           isLoading={isLoading}
           hasActiveFilters={hasActiveFilters}
@@ -220,6 +244,7 @@ function ProfissionaisSearchContent() {
                     professional={prof}
                     activeSpecialty={specialty}
                     onSpecialtyClick={setSpecialty}
+                    onViewProfile={handleOpenProfileModal}
                     onRequestQuote={handleOpenQuoteModal}
                     onViewReviews={handleOpenReviewsModal}
                     ratingSummary={ratingsCache[prof.id]}
@@ -244,6 +269,16 @@ function ProfissionaisSearchContent() {
           )}
         </section>
       </main>
+
+      {/* Modal de Perfil Detalhado do Profissional (issue #96) */}
+      <ProfessionalProfileModal
+        professional={profileTarget}
+        onClose={handleCloseProfileModal}
+        onRequestQuote={handleOpenQuoteModal}
+        onReportProfessional={handleOpenReportModal}
+        onSpecialtyClick={setSpecialty}
+        onResumoCarregado={handleResumoAvaliacoesCarregado}
+      />
 
       {/* Modal de Solicitação de Orçamento Acessível com Focus Trap */}
       <QuoteModal

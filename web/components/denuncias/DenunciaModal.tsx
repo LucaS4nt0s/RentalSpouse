@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Professional } from '../../types/professional';
 import { useDenuncias } from '../../hooks/useDenuncias';
+import { acquireBodyScrollLock } from '../../lib/scrollLock';
 import {
   DENUNCIA_MOTIVOS,
   DESCRICAO_MAX_CARACTERES,
@@ -79,8 +80,7 @@ export function DenunciaModal({ professional, onClose }: DenunciaModalProps) {
       firstFieldRef.current?.focus();
     }, 50);
 
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const releaseScrollLock = acquireBodyScrollLock();
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -118,7 +118,7 @@ export function DenunciaModal({ professional, onClose }: DenunciaModalProps) {
 
     return () => {
       clearTimeout(focusTimeout);
-      document.body.style.overflow = originalOverflow;
+      releaseScrollLock();
       window.removeEventListener('keydown', handleKeyDown);
 
       if (previouslyFocusedElementRef.current) {

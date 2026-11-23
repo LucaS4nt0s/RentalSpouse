@@ -2,7 +2,9 @@ import { Professional } from '../types/professional';
 import { ApiError, parseErrorMessage } from './apiError';
 import {
   cancelarAgendamentoMock,
+  consultarMinhaDisponibilidadeMock,
   criarAgendamentoMock,
+  definirMinhaDisponibilidadeMock,
   gerarAgendaMock,
   listarMeusAgendamentosMock,
   obterProfissionalPorIdMock,
@@ -11,9 +13,16 @@ import {
 export { ApiError, parseErrorMessage } from './apiError';
 export {
   calcularDuracaoMinutos,
+  calcularQuantidadeSlots,
+  converterHoraParaMinutos,
+  DIAS_SEMANA_PT,
   extrairDataIso,
   extrairHoraCurta,
   formatarDataCompleta,
+  MAX_JANELAS_POR_GRADE,
+  normalizarHoraCurta,
+  validarGradeDisponibilidade,
+  type JanelaDisponibilidadeInput,
 } from './agenda-format';
 
 const API_BASE_URL =
@@ -53,6 +62,22 @@ export interface Agendamento {
   criado_em: string;
   motivo_cancelamento?: string | null;
   cancelado_em?: string | null;
+}
+
+export interface DisponibilidadeJanela {
+  id: number;
+  professional_id: number;
+  dia_semana: number;
+  hora_inicio: string;
+  hora_fim: string;
+  duracao_slot_min: number;
+}
+
+export interface DisponibilidadePayload {
+  dia_semana: number;
+  hora_inicio: string;
+  hora_fim: string;
+  duracao_slot_min: number;
 }
 
 /** Busca os dados públicos do profissional para exibir no topo e no resumo. */
@@ -287,3 +312,75 @@ export {
   verificarPermissaoCancelamento,
   type StatusPermissaoCancelamento,
 } from './agenda-format';
+
+/**
+ * Consulta a grade semanal de disponibilidade do profissional autenticado:
+ * `GET /api/agendamentos/disponibilidade`.
+ */
+export async function consultarMinhaDisponibilidade(
+  token: string,
+): Promise<DisponibilidadeJanela[]> {
+  if (IS_MOCK_ENABLED) {
+    return consultarMinhaDisponibilidadeMock();
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/agendamentos/disponibilidade`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => null);
+    throw new ApiError(
+      response.status,
+      parseErrorMessage(
+        errorBody,
+        'Não foi possível carregar sua grade de disponibilidade.',
+      ),
+      errorBody,
+    );
+  }
+
+  return response.json();
+}
+
+/**
+ * Substitui toda a grade semanal do profissional autenticado:
+ * `PUT /api/agendamentos/disponibilidade`.
+ */
+export async function definirMinhaDisponibilidade(
+  token: string,
+  grade: DisponibilidadePayload[],
+): Promise<DisponibilidadeJanela[]> {
+  if (IS_MOCK_ENABLED) {
+    return definirMinhaDisponibilidadeMock(grade);
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/agendamentos/disponibilidade`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(grade),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => null);
+    throw new ApiError(
+      response.status,
+      parseErrorMessage(
+        errorBody,
+        'Não foi possível salvar sua grade de disponibilidade.',
+      ),
+      errorBody,
+    );
+  }
+
+  return response.json();
+}

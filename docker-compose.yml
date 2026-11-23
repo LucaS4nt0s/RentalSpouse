@@ -23,6 +23,8 @@ services:
       dockerfile: Dockerfile
     container_name: rentalspouse_backend
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       DATABASE_URL: ${DATABASE_URL}
       # Configuração do e-mail transacional (verificação de conta).

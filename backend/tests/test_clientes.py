@@ -452,7 +452,6 @@ class TestUnicidadeCliente:
         )
         assert cliente_resp.status_code == 409
         assert "E-mail já cadastrado" in cliente_resp.json()["detail"]
-
     def test_rejeita_email_ja_usado_por_admin_user_cross_table(self, client: TestClient, db_session):
         """Tentar cadastrar cliente com e-mail já pertencente a um User/Admin deve retornar 409 Conflict (#53/#93)."""
         import models
@@ -472,4 +471,3 @@ class TestUnicidadeCliente:
         )
         assert cliente_resp.status_code == 409
         assert "E-mail já cadastrado" in cliente_resp.json()["detail"]
-

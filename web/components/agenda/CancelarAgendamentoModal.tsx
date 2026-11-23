@@ -9,6 +9,7 @@ import {
   formatarDataCompleta,
   verificarPermissaoCancelamento,
 } from '../../services/agenda';
+import { acquireBodyScrollLock } from '../../lib/scrollLock';
 
 export interface CancelarAgendamentoModalProps {
   isOpen: boolean;
@@ -50,8 +51,7 @@ export function CancelarAgendamentoModal({
 
     previouslyFocusedElementRef.current = document.activeElement as HTMLElement;
 
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const releaseScrollLock = acquireBodyScrollLock();
 
     const focusTimeout = setTimeout(() => {
       textareaRef.current?.focus();
@@ -67,7 +67,7 @@ export function CancelarAgendamentoModal({
 
     return () => {
       clearTimeout(focusTimeout);
-      document.body.style.overflow = originalOverflow;
+      releaseScrollLock();
       window.removeEventListener('keydown', handleKeyDown);
       previouslyFocusedElementRef.current?.focus();
     };

@@ -189,4 +189,3 @@ def test_migrations_users_and_clientes_legacy_tables():
         "verificacao_expira_em",
         "verificacao_enviada_em",
     }.issubset(cliente_cols)
-

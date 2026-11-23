@@ -2,14 +2,26 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useMemo, useRef } from 'react';
+import {
+  RadiusFilterValue,
+  SortOrderValue,
+  parseRadiusFilter,
+  parseSortOrder,
+} from '../lib/professionalsSearchQuery';
 
 export interface UrlFilters {
   specialty: string;
   city: string;
+  state: string;
   q: string;
+  radius: RadiusFilterValue;
+  orderBy: SortOrderValue;
   setSpecialty: (specialty: string) => void;
   setCity: (city: string) => void;
+  setState: (state: string) => void;
   setQ: (q: string) => void;
+  setRadius: (radius: RadiusFilterValue) => void;
+  setOrderBy: (orderBy: SortOrderValue) => void;
   clearFilters: () => void;
   hasActiveFilters: boolean;
 }
@@ -30,7 +42,10 @@ export function useUrlFilters(): UrlFilters {
 
   const specialty = searchParams.get('specialty') || '';
   const city = searchParams.get('city') || '';
+  const state = searchParams.get('state') || '';
   const q = searchParams.get('q') || '';
+  const radius = parseRadiusFilter(searchParams.get('radius'));
+  const orderBy = parseSortOrder(searchParams.get('order_by'));
 
   const specialtyRef = useRef(specialty);
   specialtyRef.current = specialty;
@@ -85,6 +100,13 @@ export function useUrlFilters(): UrlFilters {
     [updateUrl]
   );
 
+  const setState = useCallback(
+    (newState: string) => {
+      updateUrl({ state: newState ? newState.toUpperCase() : null });
+    },
+    [updateUrl]
+  );
+
   const setQ = useCallback(
     (newQ: string) => {
       updateUrl({ q: newQ });
@@ -92,31 +114,50 @@ export function useUrlFilters(): UrlFilters {
     [updateUrl]
   );
 
+  const setRadius = useCallback(
+    (newRadius: RadiusFilterValue) => {
+      updateUrl({ radius: newRadius || null });
+    },
+    [updateUrl]
+  );
+
+  const setOrderBy = useCallback(
+    (newOrderBy: SortOrderValue) => {
+      updateUrl({ order_by: newOrderBy || null });
+    },
+    [updateUrl]
+  );
+
   const clearFilters = useCallback(() => {
     const current = pendingParamsRef.current;
-    const hadFilters = current.has('specialty') || current.has('city') || current.has('q');
+    const keys = ['specialty', 'city', 'state', 'q', 'radius', 'order_by'];
+    const hadFilters = keys.some((k) => current.has(k));
 
     if (!hadFilters) return;
 
-    current.delete('specialty');
-    current.delete('city');
-    current.delete('q');
+    keys.forEach((k) => current.delete(k));
     const query = current.toString();
     const targetUrl = query ? `${pathname}?${query}` : pathname;
     router.replace(targetUrl, { scroll: false });
   }, [router, pathname]);
 
   const hasActiveFilters = useMemo(() => {
-    return Boolean(specialty || city || q);
-  }, [specialty, city, q]);
+    return Boolean(specialty || city || state || q || radius || orderBy);
+  }, [specialty, city, state, q, radius, orderBy]);
 
   return {
     specialty,
     city,
+    state,
     q,
+    radius,
+    orderBy,
     setSpecialty,
     setCity,
+    setState,
     setQ,
+    setRadius,
+    setOrderBy,
     clearFilters,
     hasActiveFilters,
   };

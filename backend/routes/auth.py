@@ -272,7 +272,6 @@ def get_me(
     """Retorna os dados cadastrais completos do usuário autenticado atual."""
     return _montar_perfil_usuario(current_user, db)
 
-
 @router.patch(
     "/me",
     response_model=UserRead,
@@ -398,10 +397,13 @@ def update_me(
             prof.service_radius_km = payload.service_radius_km
         if payload.specialties is not None:
             prof.specialties = payload.specialties
+            prof.normalized_specialties = models.normalize_text(" ".join(payload.specialties))
         if payload.city is not None:
             prof.city = payload.city
+            prof.normalized_city = models.normalize_text(payload.city)
         elif payload.cidade is not None:
             prof.city = payload.cidade
+            prof.normalized_city = models.normalize_text(payload.cidade)
         if payload.state is not None:
             prof.state = payload.state
         elif payload.estado is not None:
@@ -423,4 +425,3 @@ def update_me(
         db.refresh(prof)
 
     return _montar_perfil_usuario(current_user, db)
-
