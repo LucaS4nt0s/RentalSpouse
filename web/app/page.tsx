@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, ShieldCheck, Star, Clock, User, Calendar } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Star, Clock, User, Calendar, Wallet } from 'lucide-react';
 import {
   ProfessionalDocumentsLink,
   useIsProfessional,
@@ -80,6 +80,13 @@ export default function Home() {
                   >
                     <Calendar className="h-4 w-4 text-rental-primary" />
                     Minha Agenda
+                  </Link>
+                  <Link
+                    href="/profissional/ganhos"
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-emerald-500/40"
+                  >
+                    <Wallet className="h-4 w-4 text-emerald-500" />
+                    Meus Ganhos
                   </Link>
                   <ProfessionalDocumentsLink variant="hero" />
                 </>

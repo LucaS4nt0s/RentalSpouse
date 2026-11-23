@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   AlertTriangle,
@@ -130,7 +131,7 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, isLoading, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
   const comentarioLimpo = comentario.trim();
   const comentarioValido =
@@ -188,9 +189,9 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
     }
   };
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn"
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="avaliar-modal-title"
@@ -391,6 +392,7 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

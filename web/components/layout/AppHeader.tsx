@@ -16,6 +16,7 @@ import {
   Menu,
   X,
   Users,
+  Wallet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ThemeToggle } from '../ui/ThemeToggle';
@@ -82,6 +83,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       return [
         { href: '/profissional/agenda', label: 'Minha Agenda', icon: Calendar },
         { href: '/profissional/orcamentos', label: 'Orçamentos Recebidos', icon: Briefcase },
+        { href: '/profissional/ganhos', label: 'Meus Ganhos', icon: Wallet },
         { href: '/profissional/documentos', label: 'Meus Documentos', icon: FileCheck2 },
       ];
     }
