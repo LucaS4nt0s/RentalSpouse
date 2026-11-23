@@ -1084,6 +1084,26 @@ class OrcamentoResumoCapacidade(BaseModel):
     respondidos: int = 0
 
 
+class OrcamentoAprovarEstimativaCliente(BaseModel):
+    """Payload opcional para o cliente aprovar a estimativa enviada pelo profissional (Issue #98)."""
+
+    mensagem: Optional[str] = Field(
+        None,
+        max_length=1000,
+        description="Mensagem ou observação opcional do cliente ao aprovar a estimativa",
+    )
+
+
+class OrcamentoCancelarCliente(BaseModel):
+    """Payload para o cliente cancelar solicitação ou recusar estimativa (Issue #98)."""
+
+    motivo: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="Motivo do cancelamento ou recusa da estimativa pelo cliente",
+    )
+
+
 class NotificacaoRead(BaseModel):
     """Schema de notificação em tempo real ou persistida no banco."""
 
@@ -1594,6 +1614,37 @@ class PagamentoRead(BaseModel):
     _utc = field_validator(
         "pix_expira_em", "pago_em", "criado_em", "atualizado_em", mode="after"
     )(_garantir_utc_pagamento)
+
+
+class PagamentoRecenteResumo(BaseModel):
+    """Resumo de um pagamento aprovado para o extrato do profissional (Issue #27)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    orcamento_id: int
+    agendamento_id: Optional[int] = None
+    cliente_nome: Optional[str] = None
+    valor: float
+    metodo: str
+    status: str
+    pago_em: Optional[datetime] = None
+    gateway_txid: str
+
+
+class GanhosProfissionalResumoRead(BaseModel):
+    """Métricas consolidadas de faturamento e ganhos do profissional (Issue #27)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    total_acumulado: float = 0.0
+    ganhos_mes_atual: float = 0.0
+    ganhos_semana_atual: float = 0.0
+    total_atendimentos_pagos: int = 0
+    ticket_medio: float = 0.0
+    mes_referencia: str
+    semana_referencia: str
+    pagamentos_recentes: List[PagamentoRecenteResumo] = []
 
 
 # ---------------------------------------------------------------------------
