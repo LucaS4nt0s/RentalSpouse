@@ -302,6 +302,16 @@ class MercadoPagoProvider:
         self.mode = obter_provider_mode()
         self.base_url = os.getenv("MP_API_BASE_URL", "https://api.mercadopago.com").rstrip("/")
         self.access_token = os.getenv("MP_ACCESS_TOKEN", "").strip()
+
+        # Fallback defensivo inteligente (Issue #97):
+        # Se MP_ACCESS_TOKEN não estiver configurado e não estivermos em ambiente de produção,
+        # opera em modo sandbox_mock automaticamente para evitar erro 503 / RuntimeError em dev/docker.
+        if not self.access_token and _ambiente_atual() != "production" and transport is None:
+            logger.info(
+                "MP_ACCESS_TOKEN ausente fora de produção: fallback automático do provider para sandbox_mock."
+            )
+            self.mode = "sandbox_mock"
+
         if transport is not None:
             self._transport = transport
         elif self.mode == "sandbox_mock":

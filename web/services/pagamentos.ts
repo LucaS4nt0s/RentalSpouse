@@ -96,6 +96,14 @@ export async function tokenizarCartaoMercadoPago(dados: {
   cvv: string;
 }): Promise<{ card_token: string; payment_method_id: string }> {
   if (!MP_PUBLIC_KEY || MP_PUBLIC_KEY.startsWith('TEST_MOCK')) {
+    if (process.env.NODE_ENV !== 'production') {
+      const numeroLimpo = dados.numeroCartao.replace(/\D/g, '');
+      const lastFour = numeroLimpo.slice(-4) || '4242';
+      return {
+        card_token: `tok_sandbox_${lastFour}`,
+        payment_method_id: detectarBandeiraCartao(numeroLimpo),
+      };
+    }
     throw new Error(
       'Pagamento com cartão indisponível: NEXT_PUBLIC_MP_PUBLIC_KEY não está configurada. Use PIX ou contate o suporte.'
     );
@@ -203,5 +211,50 @@ export async function simularAprovacaoPix(
     }
     throw new Error(err);
   }
+  return res.json();
+}
+
+export interface PagamentoRecenteResumo {
+  id: number;
+  orcamento_id: number;
+  agendamento_id?: number | null;
+  cliente_nome?: string | null;
+  valor: number;
+  metodo: string;
+  status: string;
+  pago_em?: string | null;
+  gateway_txid: string;
+}
+
+export interface GanhosProfissionalResumo {
+  total_acumulado: number;
+  ganhos_mes_atual: number;
+  ganhos_semana_atual: number;
+  total_atendimentos_pagos: number;
+  ticket_medio: number;
+  mes_referencia: string;
+  semana_referencia: string;
+  pagamentos_recentes: PagamentoRecenteResumo[];
+}
+
+export async function obterResumoGanhos(token: string): Promise<GanhosProfissionalResumo> {
+  const res = await fetch(`${API_BASE_URL}/api/pagamentos/resumo-ganhos`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    let err = 'Falha ao obter resumo financeiro.';
+    try {
+      const errJson = await res.json();
+      err = extrairDetalheErro(errJson.detail, err);
+    } catch {
+      // ignora
+    }
+    throw new Error(err);
+  }
+
   return res.json();
 }

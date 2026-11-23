@@ -291,3 +291,69 @@ export async function obterResumoCapacidade(
 
   return res.json();
 }
+
+export interface AprovarEstimativaPayload {
+  mensagem?: string | null;
+}
+
+export async function aprovarEstimativaOrcamento(
+  id: number,
+  token: string,
+  payload?: AprovarEstimativaPayload
+): Promise<Orcamento> {
+  const res = await fetch(`${API_BASE_URL}/api/orcamentos/${id}/aprovar-estimativa`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(payload ?? {}),
+  });
+
+  if (!res.ok) {
+    let err = 'Falha ao aprovar estimativa do orçamento.';
+    try {
+      const errJson = await res.json();
+      err = extrairDetalheErro(errJson.detail, err);
+    } catch {
+      // Ignora erro de JSON
+    }
+    throw new Error(err);
+  }
+
+  return res.json();
+}
+
+export interface CancelarOrcamentoPayload {
+  motivo?: string | null;
+}
+
+export async function cancelarOrcamentoCliente(
+  id: number,
+  token: string,
+  payload?: CancelarOrcamentoPayload
+): Promise<Orcamento> {
+  const res = await fetch(`${API_BASE_URL}/api/orcamentos/${id}/cancelar`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(payload ?? {}),
+  });
+
+  if (!res.ok) {
+    let err = 'Falha ao cancelar solicitação de orçamento.';
+    try {
+      const errJson = await res.json();
+      err = extrairDetalheErro(errJson.detail, err);
+    } catch {
+      // Ignora erro de JSON
+    }
+    throw new Error(err);
+  }
+
+  return res.json();
+}
