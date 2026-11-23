@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -27,6 +28,7 @@ import models
 import notificacoes
 import search
 import storage
+import verificacao
 from database import get_db
 from models import normalize_text
 from rate_limiter import check_contact_rate_limit, check_search_rate_limit
@@ -43,7 +45,7 @@ from schemas import (
     SpecialtyCategoryRead,
     UFS_VALIDAS,
 )
-from security import get_optional_current_user, hash_senha
+from security import get_optional_current_user, hash_senha, verificar_email_disponivel
 
 router = APIRouter(prefix="/api/professionals", tags=["Profissionais"])
 profissionais_router = APIRouter(prefix="/api/profissionais", tags=["Profissionais"])
@@ -74,50 +76,25 @@ MAX_FALLBACK_CANDIDATES = MAX_SEARCH_CANDIDATES
 )
 def create_professional(
     payload: ProfessionalCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """
     Cria um perfil de profissional com bio detalhada, especialidades e raio de atendimento.
-    Garante unicidade de e-mail e validação das especialidades e raio mínimo (>= 1 km).
+    Garante unicidade cross-table de e-mail, validação das especialidades, raio mínimo (>= 1 km)
+    e disparo do e-mail de verificação/boas-vindas em background.
     """
-    existing_professional = (
-        db.query(models.Professional)
-        .filter(models.Professional.email == payload.email)
-        .first()
+    email_normalizado = verificar_email_disponivel(
+        db,
+        payload.email,
+        detail="E-mail já cadastrado na plataforma.",
     )
-    if existing_professional:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="E-mail já cadastrado para outro profissional.",
-        )
-
-    existing_user = (
-        db.query(models.User)
-        .filter(models.User.email == payload.email)
-        .first()
-    )
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="E-mail já cadastrado na plataforma.",
-        )
-
-    existing_cliente = (
-        db.query(models.Cliente)
-        .filter(models.Cliente.email == payload.email)
-        .first()
-    )
-    if existing_cliente:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="E-mail já cadastrado na plataforma.",
-        )
 
     senha_hash = hash_senha(payload.password) if payload.password else None
 
     professional = models.Professional(
         name=payload.name,
-        email=payload.email,
+        email=email_normalizado,
         phone=payload.phone,
         bio=payload.bio,
         service_radius_km=payload.service_radius_km,
@@ -125,17 +102,18 @@ def create_professional(
         city=payload.city,
         state=payload.state,
         senha_hash=senha_hash,
+        email_verificado=False,
     )
     try:
         db.add(professional)
         if senha_hash:
             user = models.User(
                 name=payload.name,
-                email=payload.email,
+                email=email_normalizado,
                 hashed_password=senha_hash,
                 role=models.UserRole.PROFESSIONAL.value,
                 is_active=True,
-                email_verificado=True,
+                email_verificado=False,
             )
             db.add(user)
         db.commit()
@@ -147,6 +125,10 @@ def create_professional(
         )
 
     db.refresh(professional)
+
+    if senha_hash:
+        pendente = verificacao.preparar_verificacao(db, professional)
+        background_tasks.add_task(verificacao.enviar_email_de_verificacao, pendente)
 
     return professional
 
@@ -927,24 +909,24 @@ def update_professional(
             detail="Profissional não encontrado.",
         )
 
-    if payload.email and payload.email != professional.email:
-        existing = (
-            db.query(models.Professional)
-            .filter(
-                models.Professional.email == payload.email,
-                models.Professional.id != professional_id,
-            )
-            .first()
+    old_email = professional.email
+    if payload.email and payload.email != old_email:
+        verificar_email_disponivel(
+            db,
+            payload.email,
+            detail="E-mail já está em uso por outro profissional.",
+            exclude_professional_id=professional_id,
+            exclude_user_email=old_email,
         )
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="E-mail já está em uso por outro profissional.",
-            )
 
     update_fields = payload.model_dump(exclude_unset=True)
     for field_name, value in update_fields.items():
         setattr(professional, field_name, value)
+
+    if payload.email and payload.email != old_email:
+        linked_user = db.query(models.User).filter(models.User.email == old_email).first()
+        if linked_user is not None and linked_user.role == models.UserRole.PROFESSIONAL.value:
+            linked_user.email = payload.email
 
     try:
         db.commit()

@@ -430,3 +430,46 @@ class TestUnicidadeCliente:
             response = client.post("/api/clientes", json=payload)
             assert response.status_code == 409
             assert "E-mail ou CPF já cadastrado" in response.json()["detail"]
+
+    def test_rejeita_email_ja_usado_por_profissional_cross_table(self, client: TestClient):
+        """Tentar cadastrar cliente com e-mail já pertencente a um profissional deve retornar 409 Conflict (#53/#93)."""
+        prof_resp = client.post(
+            "/api/professionals",
+            json={
+                "name": "Profissional Existente",
+                "email": "cross.prof@example.com",
+                "bio": "Profissional com vasta experiência em serviços residenciais.",
+                "service_radius_km": 10.0,
+                "specialties": ["Elétrica"],
+                "senha": "SenhaForte123",
+            },
+        )
+        assert prof_resp.status_code == 201
+
+        cliente_resp = client.post(
+            "/api/clientes",
+            json=payload_cliente_valido(email="CROSS.PROF@EXAMPLE.COM", cpf="98765432100"),
+        )
+        assert cliente_resp.status_code == 409
+        assert "E-mail já cadastrado" in cliente_resp.json()["detail"]
+
+    def test_rejeita_email_ja_usado_por_admin_user_cross_table(self, client: TestClient, db_session):
+        """Tentar cadastrar cliente com e-mail já pertencente a um User/Admin deve retornar 409 Conflict (#53/#93)."""
+        import models
+        admin = models.User(
+            name="Admin Existente",
+            email="admin.cross@example.com",
+            hashed_password=hash_senha("SenhaForte123"),
+            role=models.UserRole.ADMIN.value,
+            is_active=True,
+        )
+        db_session.add(admin)
+        db_session.commit()
+
+        cliente_resp = client.post(
+            "/api/clientes",
+            json=payload_cliente_valido(email="admin.cross@example.com", cpf="11144477735"),
+        )
+        assert cliente_resp.status_code == 409
+        assert "E-mail já cadastrado" in cliente_resp.json()["detail"]
+

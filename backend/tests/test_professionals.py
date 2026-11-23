@@ -565,6 +565,42 @@ class TestUpdateAndRemoveProfessional:
         assert response.status_code == 409
         assert "E-mail já cadastrado" in response.json()["detail"]
 
+    def test_create_professional_dispatches_verification_email_and_confirms(
+        self, client: TestClient, caixa_de_entrada, db_session
+    ):
+        """Cadastro de profissional deve emitir token, disparar e-mail de verificação e permitir confirmação (#93)."""
+        import re
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["email"] = "prof.verificacao@teste.com"
+        payload["password"] = "SenhaForte@2026"
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 201
+        assert len(caixa_de_entrada) == 1
+        msg = caixa_de_entrada[0]
+        assert msg["To"] == "prof.verificacao@teste.com"
+        assert "Confirme seu e-mail" in msg["Subject"]
+
+        corpo_txt = msg.get_body(preferencelist=("plain",)).get_content()
+        achado = re.search(r"token=([A-Za-z0-9_\-]+)", corpo_txt)
+        assert achado is not None
+        token = achado.group(1)
+
+        prof_db = db_session.query(models.Professional).filter_by(email="prof.verificacao@teste.com").first()
+        user_db = db_session.query(models.User).filter_by(email="prof.verificacao@teste.com").first()
+        assert prof_db.email_verificado is False
+        assert user_db.email_verificado is False
+
+        # Confirma o token via /api/verificacao/confirmar
+        conf_resp = client.post("/api/verificacao/confirmar", json={"token": token})
+        assert conf_resp.status_code == 200
+        assert conf_resp.json()["email_verificado"] is True
+
+        db_session.expire_all()
+        assert prof_db.email_verificado is True
+        assert user_db.email_verificado is True
+
+
 
 class TestProfessionalReputationAndSorting:
     """Valida a exposição de nota média, contagem de avaliações e ordenação por reputação na vitrine (issues #19 e #21)."""

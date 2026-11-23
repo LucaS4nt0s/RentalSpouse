@@ -27,9 +27,13 @@ import { FormFieldWrapper } from '../../../components/ui/FormFieldWrapper';
 import { PasswordStrengthMeter } from '../../../components/ui/PasswordStrengthMeter';
 import { usePasswordStrength } from '../../../hooks/usePasswordStrength';
 import { validateEmail, validatePasswordMatch } from '../../../utils/validators';
+import {
+  useAuth,
+  TOKEN_STORAGE_KEY,
+  LEGACY_ADMIN_TOKEN_KEY,
+} from '../../../context/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
-const STORAGE_KEY = 'rentalspouse_admin_token';
 const isDevEnvironment = process.env.NODE_ENV === 'development';
 
 interface AdminUser {
@@ -42,6 +46,7 @@ interface AdminUser {
 }
 
 export default function CadastroAdminPage() {
+  const { token: contextToken, login: authLogin, logout: authLogout } = useAuth();
   // Estado da sessão do administrador autenticado
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
@@ -79,16 +84,18 @@ export default function CadastroAdminPage() {
   // Medidor de força da senha
   const passwordEvaluation = usePasswordStrength(newPassword);
 
-  // Logout do administrador
+  // Logout do administrador (consolidado com AuthContext)
   const handleLogout = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
     setAuthToken(null);
     setCurrentAdmin(null);
     setCreatedAdmin(null);
     setAdminsList([]);
-  }, []);
+    authLogout();
+  }, [authLogout]);
 
-  // 1. Carrega sessão salva no localStorage ao montar a página
+  // 1. Carrega sessão consolidada salva no localStorage/AuthContext ao montar a página
   const verifySession = useCallback(async (token: string) => {
     try {
       const res = await fetch(`${API_URL}/api/auth/me`, {
@@ -106,23 +113,38 @@ export default function CadastroAdminPage() {
 
       setCurrentAdmin(user);
       setAuthToken(token);
+      authLogin(
+        {
+          id: user.id,
+          nome: user.name,
+          name: user.name,
+          email: user.email,
+          tipo: 'admin',
+          role: 'admin',
+        },
+        token
+      );
       return true;
     } catch {
-      handleLogout();
+      setAuthToken(null);
+      setCurrentAdmin(null);
       return false;
     } finally {
       setIsValidatingSession(false);
     }
-  }, [handleLogout]);
+  }, [authLogin]);
 
   useEffect(() => {
-    const savedToken = localStorage.getItem(STORAGE_KEY);
+    const savedToken =
+      contextToken ||
+      localStorage.getItem(TOKEN_STORAGE_KEY) ||
+      localStorage.getItem(LEGACY_ADMIN_TOKEN_KEY);
     if (savedToken) {
       verifySession(savedToken);
     } else {
       setIsValidatingSession(false);
     }
-  }, [verifySession]);
+  }, [contextToken, verifySession]);
 
   // 2. Busca lista de administradores com tratamento correto de 401/403
   const fetchAdmins = useCallback(async (token: string) => {
@@ -183,8 +205,6 @@ export default function CadastroAdminPage() {
       }
 
       const token = data.access_token;
-      localStorage.setItem(STORAGE_KEY, token);
-
       const isValid = await verifySession(token);
       if (!isValid) {
         setLoginError('A conta autenticada não possui permissão de administrador.');

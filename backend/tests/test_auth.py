@@ -379,3 +379,47 @@ class TestAuthLogin:
         assert res_me.status_code == 200
         # id não é igual ao id da tabela clientes forjado
         assert res_me.json()["email"] == "pk.isolada@exemplo.com"
+
+    def test_cliente_nunca_vira_profissional_no_login_ou_me(self, client: TestClient):
+        """Garante blindagem de role: um cliente cadastrado jamais tem seu role/tipo alterado para profissional (#93)."""
+        res_cad = cadastrar_cliente_auxiliar(
+            client,
+            email="blindado.cliente@exemplo.com",
+            senha="SenhaForte123",
+            verificado=True,
+        )
+        assert res_cad.status_code == 201
+
+        # Tentativa de cadastrar profissional com o mesmo e-mail deve falhar com 409
+        res_prof = client.post(
+            "/api/professionals",
+            json={
+                "name": "Tentativa Sobrescrita",
+                "email": "blindado.cliente@exemplo.com",
+                "bio": "Tentativa de criar profissional com e-mail de cliente.",
+                "service_radius_km": 15.0,
+                "specialties": ["Elétrica"],
+                "senha": "OutraSenha@123",
+            },
+        )
+        assert res_prof.status_code == 409
+
+        # Múltiplos logins e chamadas a /api/auth/me preservam role='client' e tipo='cliente'
+        for _ in range(2):
+            login_res = client.post(
+                "/api/auth/login",
+                json={"email": "blindado.cliente@exemplo.com", "senha": "SenhaForte123"},
+            )
+            assert login_res.status_code == 200
+            dados = login_res.json()
+            assert dados["user"]["role"] == "client"
+            assert dados["user"]["tipo"] == "cliente"
+
+            res_me = client.get(
+                "/api/auth/me",
+                headers={"Authorization": f"Bearer {dados['access_token']}"},
+            )
+            assert res_me.status_code == 200
+            assert res_me.json()["role"] == "client"
+            assert res_me.json()["tipo"] == "cliente"
+

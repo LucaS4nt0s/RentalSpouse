@@ -163,6 +163,10 @@ class Professional(Base):
     state = Column(String(2), nullable=True)
     senha_hash = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    email_verificado = Column(Boolean, default=False, nullable=False, index=True)
+    verificacao_token_hash = Column(String(64), nullable=True, index=True)
+    verificacao_expira_em = Column(DateTime, nullable=True)
+    verificacao_enviada_em = Column(DateTime, nullable=True)
     approval_status = Column(
         String(50),
         default=ProfessionalApprovalStatus.PENDING.value,

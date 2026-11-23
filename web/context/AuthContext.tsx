@@ -32,8 +32,22 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  * a riscos de XSS. Em evolução futura para produção, recomenda-se a transição para cookies
  * com atributo httpOnly, flags Secure/SameSite e proteção CSRF integrada.
  */
-const USER_STORAGE_KEY = 'rentalspouse_user';
-const TOKEN_STORAGE_KEY = 'rentalspouse_token';
+export const USER_STORAGE_KEY = 'rentalspouse_user';
+export const TOKEN_STORAGE_KEY = 'rentalspouse_token';
+export const LEGACY_ADMIN_TOKEN_KEY = 'rentalspouse_admin_token';
+
+export function deriveTipoFromRole(
+  role?: string,
+  fallbackTipo?: string
+): 'cliente' | 'profissional' | 'admin' {
+  if (role === 'admin') return 'admin';
+  if (role === 'professional') return 'profissional';
+  if (role === 'client') return 'cliente';
+  if (fallbackTipo === 'admin' || fallbackTipo === 'profissional' || fallbackTipo === 'cliente') {
+    return fallbackTipo;
+  }
+  return 'cliente';
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -45,11 +59,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         if (typeof window !== 'undefined') {
           const storedUser = localStorage.getItem(USER_STORAGE_KEY);
-          const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+          let storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+          const legacyAdminToken = localStorage.getItem(LEGACY_ADMIN_TOKEN_KEY);
 
-          if (storedUser && storedToken) {
-            const parsedUser: AuthUser = JSON.parse(storedUser);
-            setUser(parsedUser);
+          // Consolida token legado de admin em rentalspouse_token (Issue #53 / #93)
+          if (!storedToken && legacyAdminToken) {
+            storedToken = legacyAdminToken;
+            localStorage.setItem(TOKEN_STORAGE_KEY, legacyAdminToken);
+          }
+          if (legacyAdminToken) {
+            localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
+          }
+
+          if (storedToken) {
+            let parsedUser: AuthUser | null = null;
+            if (storedUser) {
+              const raw: AuthUser = JSON.parse(storedUser);
+              parsedUser = {
+                ...raw,
+                tipo: deriveTipoFromRole(raw.role, raw.tipo),
+              };
+              setUser(parsedUser);
+            }
             setToken(storedToken);
 
             // Validação e sincronização com o servidor via GET /api/auth/me
@@ -66,10 +97,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const me = await res.json();
                 const refreshedUser: AuthUser = {
                   id: me.id,
-                  nome: me.name || me.nome || parsedUser.nome,
+                  nome: me.name || me.nome || parsedUser?.nome || '',
                   name: me.name,
                   email: me.email,
-                  tipo: me.role === 'admin' ? 'admin' : me.role === 'professional' ? 'profissional' : 'cliente',
+                  tipo: deriveTipoFromRole(me.role),
                   role: me.role,
                 };
                 setUser(refreshedUser);
@@ -80,6 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setToken(null);
                 localStorage.removeItem(USER_STORAGE_KEY);
                 localStorage.removeItem(TOKEN_STORAGE_KEY);
+                localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
               }
             } catch (networkError) {
               // Se o servidor backend estiver indisponível no momento, preserva estado local em cache
@@ -101,13 +133,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const formattedUser: AuthUser = {
       ...usuario,
       nome: usuario.nome || usuario.name || '',
-      tipo:
-        usuario.tipo ||
-        (usuario.role === 'admin'
-          ? 'admin'
-          : usuario.role === 'professional'
-          ? 'profissional'
-          : 'cliente'),
+      tipo: deriveTipoFromRole(usuario.role, usuario.tipo),
     };
     setUser(formattedUser);
     setToken(novoToken);
@@ -115,6 +141,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (typeof window !== 'undefined') {
         localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(formattedUser));
         localStorage.setItem(TOKEN_STORAGE_KEY, novoToken);
+        localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
       }
     } catch (error) {
       console.error('Erro ao persistir sessão:', error);
@@ -128,6 +155,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (typeof window !== 'undefined') {
         localStorage.removeItem(USER_STORAGE_KEY);
         localStorage.removeItem(TOKEN_STORAGE_KEY);
+        localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
       }
     } catch (error) {
       console.error('Erro ao remover sessão:', error);

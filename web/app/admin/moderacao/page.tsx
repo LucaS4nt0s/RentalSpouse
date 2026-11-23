@@ -16,7 +16,11 @@ import {
   AlertTriangle,
   Users,
 } from 'lucide-react';
-import { useAuth } from '../../../context/AuthContext';
+import {
+  useAuth,
+  TOKEN_STORAGE_KEY,
+  LEGACY_ADMIN_TOKEN_KEY,
+} from '../../../context/AuthContext';
 import { AdminNavigationHeader } from '../../../components/moderacao/AdminNavigationHeader';
 import { ModerationTable } from '../../../components/moderacao/ModerationTable';
 import { ModerationReviewModal } from '../../../components/moderacao/ModerationReviewModal';
@@ -39,8 +43,6 @@ import {
 } from '../../../services/moderation';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
-const ADMIN_STORAGE_KEY = 'rentalspouse_admin_token';
-const GENERAL_STORAGE_KEY = 'rentalspouse_token';
 const isDevEnvironment = process.env.NODE_ENV === 'development';
 
 interface AdminSessionUser {
@@ -51,7 +53,7 @@ interface AdminSessionUser {
 }
 
 export default function AdminModerationPage() {
-  const { user: authUser, token: contextToken, logout: authLogout } = useAuth();
+  const { user: authUser, token: contextToken, login: authLogin, logout: authLogout } = useAuth();
 
   // Sessão Administrativa
   const [adminToken, setAdminToken] = useState<string | null>(null);
@@ -91,9 +93,10 @@ export default function AdminModerationPage() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // 1. Validação de Sessão Administrativa
+  // 1. Validação de Sessão Administrativa Consolidada
   const handleLogout = useCallback(() => {
-    localStorage.removeItem(ADMIN_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
     setAdminToken(null);
     setAdminUser(null);
     setProfessionals([]);
@@ -114,34 +117,36 @@ export default function AdminModerationPage() {
 
       setAdminUser(data);
       setAdminToken(token);
+      authLogin(
+        {
+          id: data.id,
+          nome: data.name || data.nome || '',
+          name: data.name,
+          email: data.email,
+          tipo: 'admin',
+          role: 'admin',
+        },
+        token
+      );
       return true;
     } catch {
-      handleLogout();
+      setAdminToken(null);
+      setAdminUser(null);
       return false;
     } finally {
       setIsValidatingSession(false);
     }
-  }, [handleLogout]);
+  }, [authLogin]);
 
   useEffect(() => {
     const checkSession = async () => {
-      // Prioridade 1: Token do AuthContext (se for admin)
-      if (contextToken && authUser?.role === 'admin') {
-        const ok = await verifyAdminToken(contextToken);
-        if (ok) return;
-      }
+      const candidateToken =
+        contextToken ||
+        localStorage.getItem(TOKEN_STORAGE_KEY) ||
+        localStorage.getItem(LEGACY_ADMIN_TOKEN_KEY);
 
-      // Prioridade 2: Token exclusivo de admin no localStorage
-      const savedAdminToken = localStorage.getItem(ADMIN_STORAGE_KEY);
-      if (savedAdminToken) {
-        const ok = await verifyAdminToken(savedAdminToken);
-        if (ok) return;
-      }
-
-      // Prioridade 3: Token geral no localStorage
-      const savedGeneralToken = localStorage.getItem(GENERAL_STORAGE_KEY);
-      if (savedGeneralToken) {
-        const ok = await verifyAdminToken(savedGeneralToken);
+      if (candidateToken) {
+        const ok = await verifyAdminToken(candidateToken);
         if (ok) return;
       }
 
@@ -149,7 +154,7 @@ export default function AdminModerationPage() {
     };
 
     checkSession();
-  }, [contextToken, authUser, verifyAdminToken]);
+  }, [contextToken, authUser?.role, verifyAdminToken]);
 
   // 2. Busca lista de profissionais para moderação
   const loadProfessionals = useCallback(async (token: string) => {
@@ -199,8 +204,6 @@ export default function AdminModerationPage() {
       }
 
       const token = data.access_token;
-      localStorage.setItem(ADMIN_STORAGE_KEY, token);
-
       const isValid = await verifyAdminToken(token);
       if (!isValid) {
         setLoginError('A conta autenticada não possui permissão de administrador.');

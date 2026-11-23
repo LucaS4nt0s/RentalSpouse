@@ -60,7 +60,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
                     detail="E-mail pendente de confirmação. Por favor, verifique sua caixa de entrada.",
                 )
 
-            # 3. Sincroniza com a tabela de usuários para unificar autenticação
+            # 3. Sincroniza com a tabela de usuários para unificar autenticação (sem jamais alterar role existente)
             user = models.User(
                 name=cliente.nome,
                 email=cliente.email,
@@ -77,6 +77,11 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
             except IntegrityError:
                 db.rollback()
                 user = db.query(models.User).filter(models.User.email == email).first()
+                if user is not None and user.role != models.UserRole.CLIENT.value:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Conflito de identidade detectado para este e-mail.",
+                    )
 
             # Evita custo duplo de PBKDF2 (600.000 iterações já executadas na validação acima)
             senha_valida = True
@@ -102,14 +107,14 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
                         headers={"WWW-Authenticate": "Bearer"},
                     )
 
-                # Sincroniza profissional com a tabela users
+                # Sincroniza profissional com a tabela users (sem jamais sobrescrever role existente)
                 user = models.User(
                     name=profissional.name,
                     email=profissional.email,
                     hashed_password=profissional.senha_hash,
                     role=models.UserRole.PROFESSIONAL.value,
                     is_active=profissional.is_active,
-                    email_verificado=True,
+                    email_verificado=bool(getattr(profissional, "email_verificado", False)),
                     created_at=profissional.created_at,
                 )
                 try:
@@ -119,6 +124,11 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
                 except IntegrityError:
                     db.rollback()
                     user = db.query(models.User).filter(models.User.email == email).first()
+                    if user is not None and user.role != models.UserRole.PROFESSIONAL.value:
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="Conflito de identidade detectado para este e-mail.",
+                        )
 
                 senha_valida = True
             else:
@@ -186,9 +196,16 @@ def get_me(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Retorna os dados cadastrais do usuário autenticado atual, com reflexão fiel de status."""
+    """Retorna os dados cadastrais do usuário autenticado atual, com reflexão determinística de role e status."""
     if current_user.role == models.UserRole.CLIENT.value:
         cliente = db.query(models.Cliente).filter(models.Cliente.email == current_user.email).first()
         if cliente is not None:
+            current_user.name = cliente.nome
             current_user.email_verificado = cliente.email_verificado
+    elif current_user.role == models.UserRole.PROFESSIONAL.value:
+        prof = db.query(models.Professional).filter(models.Professional.email == current_user.email).first()
+        if prof is not None:
+            current_user.name = prof.name
+            current_user.is_active = prof.is_active
+            current_user.email_verificado = bool(getattr(prof, "email_verificado", True))
     return current_user
