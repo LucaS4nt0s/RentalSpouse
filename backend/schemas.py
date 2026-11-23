@@ -1188,6 +1188,39 @@ class DenunciaRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DenunciaAdminRead(BaseModel):
+    """Denúncia enriquecida com cliente autor, profissional denunciado e histórico para o painel admin."""
+
+    id: int
+    motivo: str
+    descricao: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    cliente_id: int
+    cliente_nome: Optional[str] = None
+    cliente_email: Optional[str] = None
+    professional_id: int
+    professional_name: Optional[str] = None
+    professional_email: Optional[str] = None
+    professional_is_active: bool = True
+    professional_total_denuncias: int = 0
+    total_denuncias_profissional: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class DenunciaAdminResumoRead(BaseModel):
+    """Contadores consolidados de denúncias para os cards do painel administrativo."""
+
+    total: int = 0
+    pendentes: int = 0
+    em_analise: int = 0
+    resolvidas_banimento: int = 0
+    rejeitadas: int = 0
+    arquivadas: int = 0
+
+
 # ---------------------------------------------------------------------------
 # Schemas da agenda de disponibilidade e agendamento de slots (issue #78)
 # ---------------------------------------------------------------------------

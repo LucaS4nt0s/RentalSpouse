@@ -638,3 +638,180 @@ class TestModeloDenuncia:
             models.DenunciaStatus.PENDENTE.value,
             models.DenunciaStatus.EM_ANALISE.value,
         )
+
+
+URL_ADMIN_DENUNCIAS = "/api/admin/denuncias"
+URL_ADMIN_RESUMO = "/api/admin/denuncias/resumo"
+
+
+def criar_admin_usuario(
+    db_session,
+    email: str = "admin.denuncias@rentalspouse.com",
+    is_active: bool = True,
+) -> models.User:
+    """Cria usuário administrador no banco de teste."""
+    admin = models.User(
+        name="Admin Moderador",
+        email=email,
+        hashed_password=hash_senha("Admin@123456"),
+        role=models.UserRole.ADMIN.value,
+        is_active=is_active,
+    )
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+    return admin
+
+
+class TestDenunciasAdminListagemEResumo:
+    """Cobertura dos endpoints administrativos de listagem, filtro e resumo de denúncias."""
+
+    @pytest.mark.parametrize("url", [URL_ADMIN_DENUNCIAS, URL_ADMIN_RESUMO])
+    def test_exige_autenticacao_e_bloqueia_nao_admin(
+        self, client: TestClient, db_session, url: str
+    ):
+        sem_token = client.get(url)
+        assert sem_token.status_code == 401
+
+        cliente = criar_cliente(client, db_session, "cli.block@exemplo.com", "321654987")
+        resp_cliente = client.get(
+            url, headers=cabecalho(cliente.email, models.UserRole.CLIENT.value)
+        )
+        assert resp_cliente.status_code == 403
+
+        prof = criar_profissional(client, "prof.block@exemplo.com")
+        resp_prof = client.get(
+            url, headers=cabecalho(prof["email"], models.UserRole.PROFESSIONAL.value)
+        )
+        assert resp_prof.status_code == 403
+
+        admin_inativo = criar_admin_usuario(
+            db_session, email="admin.inativo@rentalspouse.com", is_active=False
+        )
+        resp_inativo = client.get(
+            url, headers=cabecalho(admin_inativo.email, models.UserRole.ADMIN.value)
+        )
+        assert resp_inativo.status_code == 401
+
+    def test_listagem_enriquecida_ordenacao_filtros_e_resumo(
+        self, client: TestClient, db_session
+    ):
+        admin = criar_admin_usuario(db_session)
+        headers_admin = cabecalho(admin.email, models.UserRole.ADMIN.value)
+
+        cli_ana = criar_cliente(client, db_session, "ana.silva@exemplo.com", "111222333")
+        cli_bruno = criar_cliente(client, db_session, "bruno.souza@exemplo.com", "444555666")
+
+        prof_mario = criar_profissional(client, "mario.eletricista@exemplo.com")
+        prof_carla_resp = client.post(
+            "/api/professionals",
+            json={
+                **SAMPLE_PROF,
+                "name": "Carla Pintora",
+                "email": "carla.pintora@exemplo.com",
+            },
+        )
+        assert prof_carla_resp.status_code == 201
+        prof_carla = prof_carla_resp.json()
+
+        # 1) Denúncia já arquivada contra Mário (mais antiga)
+        d_arquivada = models.Denuncia(
+            cliente_id=cli_ana.id,
+            professional_id=prof_mario["id"],
+            motivo=models.DenunciaMotivo.COBRANCA_INDEVIDA.value,
+            descricao="Cobrança adicional sem autorização prévia no orçamento inicial.",
+            status=models.DenunciaStatus.ARQUIVADA.value,
+        )
+        # 2) Denúncia resolvida (banimento) contra Carla
+        d_resolvida = models.Denuncia(
+            cliente_id=cli_bruno.id,
+            professional_id=prof_carla["id"],
+            motivo=models.DenunciaMotivo.CONDUTA_INADEQUADA.value,
+            descricao="Relato de conduta inadequada durante visita técnica em residência.",
+            status=models.DenunciaStatus.RESOLVIDA.value,
+        )
+        # 3) Denúncia pendente contra Mário (mais recente, deve vir no topo)
+        d_pendente = models.Denuncia(
+            cliente_id=cli_bruno.id,
+            professional_id=prof_mario["id"],
+            motivo=models.DenunciaMotivo.SERVICO_NAO_REALIZADO.value,
+            descricao="Profissional não compareceu ao agendamento confirmado pela plataforma.",
+            status=models.DenunciaStatus.PENDENTE.value,
+        )
+        db_session.add_all([d_arquivada, d_resolvida, d_pendente])
+        db_session.commit()
+        for item in (d_arquivada, d_resolvida, d_pendente):
+            db_session.refresh(item)
+
+        # Marca Carla como banida (inativa) para verificar reflection de professional_is_active
+        carla_db = (
+            db_session.query(models.Professional)
+            .filter(models.Professional.id == prof_carla["id"])
+            .one()
+        )
+        carla_db.is_active = False
+        db_session.commit()
+
+        # Resumo consolidado
+        resumo = client.get(URL_ADMIN_RESUMO, headers=headers_admin)
+        assert resumo.status_code == 200, resumo.text
+        assert resumo.json() == {
+            "total": 3,
+            "pendentes": 1,
+            "em_analise": 0,
+            "resolvidas_banimento": 1,
+            "rejeitadas": 1,
+            "arquivadas": 1,
+        }
+
+        # Listagem completa: pendentes devem aparecer antes de arquivada/resolvida
+        listagem = client.get(URL_ADMIN_DENUNCIAS, headers=headers_admin)
+        assert listagem.status_code == 200, listagem.text
+        itens = listagem.json()
+        assert len(itens) == 3
+        assert itens[0]["id"] == d_pendente.id
+        assert itens[0]["status"] == "pendente"
+        assert itens[0]["cliente_nome"] == cli_bruno.nome
+        assert itens[0]["cliente_email"] == cli_bruno.email
+        assert itens[0]["professional_name"] == prof_mario["name"]
+        assert itens[0]["professional_email"] == prof_mario["email"]
+        assert itens[0]["professional_is_active"] is True
+        # Mário possui 2 denúncias no total
+        assert itens[0]["professional_total_denuncias"] == 2
+        assert itens[0]["total_denuncias_profissional"] == 2
+
+        item_carla = next(x for x in itens if x["id"] == d_resolvida.id)
+        assert item_carla["professional_is_active"] is False
+        assert item_carla["professional_total_denuncias"] == 1
+
+        # Filtro por status (incluindo sinônimo 'rejeitada' para 'arquivada')
+        resp_arq = client.get(
+            URL_ADMIN_DENUNCIAS, params={"status": "rejeitada"}, headers=headers_admin
+        )
+        assert resp_arq.status_code == 200
+        assert [x["id"] for x in resp_arq.json()] == [d_arquivada.id]
+
+        # Filtro por motivo
+        resp_motivo = client.get(
+            URL_ADMIN_DENUNCIAS,
+            params={"motivo": "conduta_inadequada"},
+            headers=headers_admin,
+        )
+        assert resp_motivo.status_code == 200
+        assert [x["id"] for x in resp_motivo.json()] == [d_resolvida.id]
+
+        # Busca textual `q` por nome do profissional
+        resp_q = client.get(
+            URL_ADMIN_DENUNCIAS, params={"q": "Carla"}, headers=headers_admin
+        )
+        assert resp_q.status_code == 200
+        assert [x["id"] for x in resp_q.json()] == [d_resolvida.id]
+
+        # Paginação skip/limit
+        resp_pag = client.get(
+            URL_ADMIN_DENUNCIAS,
+            params={"skip": 1, "limit": 1},
+            headers=headers_admin,
+        )
+        assert resp_pag.status_code == 200
+        assert len(resp_pag.json()) == 1

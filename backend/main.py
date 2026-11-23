@@ -16,7 +16,11 @@ from routes.agendamentos import router as agendamentos_router
 from routes.avaliacoes import router as avaliacoes_router
 from routes.auth import router as auth_router
 from routes.clientes import router as clientes_router
-from routes.denuncias import router as denuncias_router
+from routes.denuncias import (
+    admin_router as admin_denuncias_router,
+    admins_alias_router as admins_denuncias_alias_router,
+    router as denuncias_router,
+)
 from routes.hello import router as hello_router
 from routes.professional_documents_me import (
     router as professional_documents_me_router,
@@ -131,6 +135,8 @@ app.include_router(auth_router)
 app.include_router(recuperacao_senha_router)
 app.include_router(admins_router)
 app.include_router(denuncias_router)
+app.include_router(admin_denuncias_router)
+app.include_router(admins_denuncias_alias_router)
 app.include_router(admin_moderation_router)
 app.include_router(orcamentos_router)
 app.include_router(notificacoes_router)

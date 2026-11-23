@@ -1,10 +1,11 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Shield, Zap, ArrowLeft, LogOut, FileCheck2, UserPlus, Users } from 'lucide-react';
+import { Shield, Zap, ArrowLeft, LogOut, FileCheck2, UserPlus, Users, Flag } from 'lucide-react';
 import { ThemeToggle } from '../ui/ThemeToggle';
+import { getAdminDenunciasResumo } from '../../services/denuncias';
 
 interface AdminNavigationHeaderProps {
   currentAdmin?: {
@@ -12,16 +13,53 @@ interface AdminNavigationHeaderProps {
     email?: string;
   } | null;
   onLogout?: () => void;
+  pendingDenunciasCount?: number;
 }
 
 export const AdminNavigationHeader: React.FC<AdminNavigationHeaderProps> = ({
   currentAdmin,
   onLogout,
+  pendingDenunciasCount,
 }) => {
   const pathname = usePathname();
+  const [fetchedPendingCount, setFetchedPendingCount] = useState<number>(0);
 
   const isModeracao = pathname?.startsWith('/admin/moderacao') || pathname === '/admin';
+  const isDenuncias = pathname?.startsWith('/admin/denuncias');
   const isCadastroAdmin = pathname?.startsWith('/cadastro/admin');
+
+  useEffect(() => {
+    if (typeof pendingDenunciasCount === 'number' || typeof window === 'undefined') {
+      return;
+    }
+
+    const token =
+      localStorage.getItem('rentalspouse_admin_token') ||
+      localStorage.getItem('rentalspouse_token');
+    if (!token) {
+      return;
+    }
+
+    let cancelled = false;
+    getAdminDenunciasResumo(token)
+      .then((resumo) => {
+        if (!cancelled) {
+          setFetchedPendingCount(resumo.pendentes ?? 0);
+        }
+      })
+      .catch(() => {
+        // Silencioso no cabeçalho caso a sessão ainda esteja validando
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingDenunciasCount, pathname, currentAdmin]);
+
+  const badgeCount =
+    typeof pendingDenunciasCount === 'number'
+      ? pendingDenunciasCount
+      : fetchedPendingCount;
 
   return (
     <header className="border-b border-rental-border bg-rental-surface/80 backdrop-blur-md sticky top-0 z-30 transition-colors">
@@ -59,6 +97,29 @@ export const AdminNavigationHeader: React.FC<AdminNavigationHeaderProps> = ({
             >
               <FileCheck2 className="h-3.5 w-3.5" />
               Moderação de Profissionais
+            </Link>
+
+            <Link
+              href="/admin/denuncias"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                isDenuncias
+                  ? 'bg-rental-primary text-[var(--rs-primary-text)] shadow-sm'
+                  : 'text-rental-muted hover:text-rental-ink hover:bg-rental-surface2'
+              }`}
+            >
+              <Flag className="h-3.5 w-3.5" />
+              Denúncias de Usuários
+              {badgeCount > 0 && (
+                <span
+                  className={`ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-extrabold ${
+                    isDenuncias
+                      ? 'bg-white/20 text-[var(--rs-primary-text)]'
+                      : 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                  }`}
+                >
+                  {badgeCount}
+                </span>
+              )}
             </Link>
 
             <Link
@@ -122,6 +183,22 @@ export const AdminNavigationHeader: React.FC<AdminNavigationHeaderProps> = ({
         >
           <FileCheck2 className="h-3 w-3" />
           Moderação
+        </Link>
+        <Link
+          href="/admin/denuncias"
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold text-[11px] ${
+            isDenuncias
+              ? 'bg-rental-primary text-[var(--rs-primary-text)]'
+              : 'text-rental-muted'
+          }`}
+        >
+          <Flag className="h-3 w-3" />
+          Denúncias
+          {badgeCount > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[10px] font-extrabold">
+              {badgeCount}
+            </span>
+          )}
         </Link>
         <Link
           href="/cadastro/admin"

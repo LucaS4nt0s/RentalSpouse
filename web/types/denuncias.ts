@@ -77,7 +77,37 @@ const STATUS_LABELS: Record<string, string> = {
   em_analise: 'Em análise',
   resolvida: 'Resolvida',
   arquivada: 'Arquivada',
+  rejeitada: 'Arquivada',
 };
+
+export type DenunciaAdminStatusFilter = 'all' | 'pendente' | 'resolvida' | 'arquivada';
+
+export interface DenunciaAdminItem {
+  id: number;
+  motivo: DenunciaMotivo | string;
+  descricao: string;
+  status: DenunciaStatus | string;
+  created_at: string;
+  updated_at: string;
+  cliente_id: number;
+  cliente_nome: string | null;
+  cliente_email: string | null;
+  professional_id: number;
+  professional_name: string | null;
+  professional_email: string | null;
+  professional_is_active: boolean;
+  professional_total_denuncias: number;
+  total_denuncias_profissional: number;
+}
+
+export interface DenunciaAdminResumo {
+  total: number;
+  pendentes: number;
+  em_analise: number;
+  resolvidas_banimento: number;
+  rejeitadas: number;
+  arquivadas: number;
+}
 
 export function motivoDenunciaLabel(motivo: string): string {
   return DENUNCIA_MOTIVOS.find((item) => item.value === motivo)?.label ?? 'Motivo não informado';
