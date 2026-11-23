@@ -2,16 +2,8 @@
 
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import {
-  Zap,
-  User,
-  LogOut,
-  MessageSquare,
-  Sparkles,
-  Briefcase,
-} from 'lucide-react';
-import { ThemeToggle } from '../../components/ui/ThemeToggle';
-import { useAuth } from '../../context/AuthContext';
+import { Sparkles } from 'lucide-react';
+import { AppHeader } from '../../components/layout/AppHeader';
 import { useDebounce } from '../../hooks/useDebounce';
 import { useUrlFilters } from '../../hooks/useUrlFilters';
 import { useProfessionalsSearch } from '../../hooks/useProfessionalsSearch';
@@ -26,21 +18,25 @@ import { ProfessionalCardSkeleton } from '../../components/profissionais/Profess
 import { SearchEmptyState } from '../../components/profissionais/SearchEmptyState';
 import { SearchErrorState } from '../../components/profissionais/SearchErrorState';
 import { QuoteModal } from '../../components/profissionais/QuoteModal';
+import { ProfessionalProfileModal } from '../../components/profissionais/ProfessionalProfileModal';
 import { DenunciaModal } from '../../components/denuncias/DenunciaModal';
 import { AvaliacoesProfissionalModal } from '../../components/avaliacoes/AvaliacoesProfissionalModal';
-import { NotificationBell } from '../../components/notificacoes/NotificationBell';
 import { Professional } from '../../types/professional';
 import { ProfissionalAvaliacoesResumo } from '../../types/avaliacoes';
 
 function ProfissionaisSearchContent() {
-  const { user, isAuthenticated, logout } = useAuth();
   const {
     specialty,
     city,
+    state,
     q,
+    radius,
+    orderBy,
     setSpecialty,
     setCity,
     setQ,
+    setRadius,
+    setOrderBy,
     clearFilters,
     hasActiveFilters,
   } = useUrlFilters();
@@ -50,6 +46,9 @@ function ProfissionaisSearchContent() {
   const [cityInput, setCityInput] = useState<string>(city);
   const debouncedSearch = useDebounce(searchInput, 350);
   const debouncedCity = useDebounce(cityInput, 350);
+
+  // Modal de Perfil Detalhado do Profissional (issue #96)
+  const [profileTarget, setProfileTarget] = useState<Professional | null>(null);
 
   // Modal de Solicitação de Orçamento
   const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
@@ -87,7 +86,10 @@ function ProfissionaisSearchContent() {
   const { data, isLoading, isRetrying, error, isEmpty, detectedSuggestion, retry } = useProfessionalsSearch({
     specialty,
     city: debouncedCity,
+    state,
     q: debouncedSearch,
+    radius,
+    orderBy,
   });
 
   // Paginação progressiva sob demanda (LoadMoreControl - PRD §3.1)
@@ -95,13 +97,21 @@ function ProfissionaisSearchContent() {
 
   useEffect(() => {
     setVisibleCount(12);
-  }, [specialty, debouncedCity, debouncedSearch]);
+  }, [specialty, debouncedCity, state, debouncedSearch, radius, orderBy]);
 
   const handleClearAll = () => {
     setSearchInput('');
     setCityInput('');
     clearFilters();
   };
+
+  const handleOpenProfileModal = useCallback((prof: Professional) => {
+    setProfileTarget(prof);
+  }, []);
+
+  const handleCloseProfileModal = useCallback(() => {
+    setProfileTarget(null);
+  }, []);
 
   const handleOpenQuoteModal = useCallback((prof: Professional) => {
     setSelectedProfessional(prof);
@@ -142,70 +152,8 @@ function ProfissionaisSearchContent() {
 
   return (
     <div className="flex min-h-screen flex-col bg-rental-bg text-rental-ink">
-      {/* Header Global da Aplicação */}
-      <header className="sticky top-0 z-30 bg-rental-bg/90 backdrop-blur-md">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 sm:px-6 py-4">
-          <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-90">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rental-primary text-[var(--rs-primary-text)]">
-              <Zap className="h-5 w-5" />
-            </span>
-            <span className="text-lg font-extrabold tracking-tight">RentalSpouse</span>
-          </Link>
-
-          <nav className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="hidden sm:inline-block text-xs font-semibold text-rental-muted hover:text-rental-primary transition-colors"
-            >
-              Início
-            </Link>
-
-            {isAuthenticated && user && (
-              <Link
-                href={
-                  user.tipo === 'profissional' || user.role === 'professional'
-                    ? '/profissional/orcamentos'
-                    : '/cliente/orcamentos'
-                }
-                className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
-                title="Meus Orçamentos"
-              >
-                <Briefcase className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Meus Orçamentos</span>
-              </Link>
-            )}
-
-            {isAuthenticated && user ? (
-              <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-rental-primary/10 text-rental-primary text-xs font-bold">
-                  {user.nome.charAt(0).toUpperCase()}
-                </span>
-                <span className="hidden md:inline text-xs font-semibold text-rental-ink">
-                  {user.nome.split(' ')[0]}
-                </span>
-                <NotificationBell />
-                <button
-                  type="button"
-                  onClick={logout}
-                  className="rounded-xl border border-rental-border p-1.5 text-rental-muted hover:text-[var(--rs-error)] transition-colors"
-                  title="Sair"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ) : (
-              <Link
-                href="/entrar"
-                className="rounded-xl bg-rental-primary px-3.5 py-1.5 text-xs font-bold text-[var(--rs-primary-text)] shadow-primary hover:bg-[var(--rs-primary-hover)] transition-colors"
-              >
-                Entrar
-              </Link>
-            )}
-
-            <ThemeToggle />
-          </nav>
-        </div>
-      </header>
+      {/* Header Global Unificado da Aplicação */}
+      <AppHeader />
 
       {/* Conteúdo Principal */}
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 sm:px-6 py-8 space-y-6">
@@ -228,6 +176,10 @@ function ProfissionaisSearchContent() {
         <FilterActionBar
           city={cityInput}
           onCityChange={setCityInput}
+          radius={radius}
+          onRadiusChange={setRadius}
+          orderBy={orderBy}
+          onOrderByChange={setOrderBy}
           resultsCount={data.length}
           isLoading={isLoading}
           hasActiveFilters={hasActiveFilters}
@@ -292,6 +244,7 @@ function ProfissionaisSearchContent() {
                     professional={prof}
                     activeSpecialty={specialty}
                     onSpecialtyClick={setSpecialty}
+                    onViewProfile={handleOpenProfileModal}
                     onRequestQuote={handleOpenQuoteModal}
                     onViewReviews={handleOpenReviewsModal}
                     ratingSummary={ratingsCache[prof.id]}
@@ -316,6 +269,16 @@ function ProfissionaisSearchContent() {
           )}
         </section>
       </main>
+
+      {/* Modal de Perfil Detalhado do Profissional (issue #96) */}
+      <ProfessionalProfileModal
+        professional={profileTarget}
+        onClose={handleCloseProfileModal}
+        onRequestQuote={handleOpenQuoteModal}
+        onReportProfessional={handleOpenReportModal}
+        onSpecialtyClick={setSpecialty}
+        onResumoCarregado={handleResumoAvaliacoesCarregado}
+      />
 
       {/* Modal de Solicitação de Orçamento Acessível com Focus Trap */}
       <QuoteModal

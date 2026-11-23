@@ -22,10 +22,14 @@ import {
   AlertCircle,
   RefreshCw,
   LogOut,
+  Calendar,
 } from 'lucide-react';
 import { ThemeToggle } from '../../components/ui/ThemeToggle';
 import { Button } from '../../components/ui/Button';
-import { ProfessionalDocumentsLink } from '../../components/documentos/ProfessionalDocumentsLink';
+import {
+  ProfessionalDocumentsLink,
+  useIsProfessional,
+} from '../../components/documentos/ProfessionalDocumentsLink';
 import { useAuth, AuthUser } from '../../context/AuthContext';
 import { validateEmail } from '../../utils/validators';
 
@@ -197,6 +201,7 @@ function EntrarPageContent() {
 function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
   const router = useRouter();
   const { user, login, logout, isAuthenticated, isLoading: authLoading } = useAuth();
+  const isProfessional = useIsProfessional();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -235,11 +240,23 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
         </p>
 
         <div className="mt-6 flex flex-col gap-2.5">
-          <Link href="/">
+          <Link href="/minha-conta">
             <Button variant="primary" size="md" className="w-full" rightIcon={<ArrowRight className="h-4 w-4" />}>
+              Acessar Minha Conta
+            </Button>
+          </Link>
+          <Link href="/">
+            <Button variant="secondary" size="md" className="w-full">
               Ir para a Página Inicial
             </Button>
           </Link>
+          {isProfessional && (
+            <Link href="/profissional/agenda">
+              <Button variant="secondary" size="md" className="w-full" leftIcon={<Calendar className="h-4 w-4" />}>
+                Configurar Minha Agenda
+              </Button>
+            </Link>
+          )}
           <ProfessionalDocumentsLink variant="card" />
           <Button
             variant="secondary"
@@ -277,6 +294,13 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
           >
             Acessar Plataforma
           </Button>
+          {isProfessional && (
+            <Link href="/profissional/agenda">
+              <Button variant="secondary" size="md" className="w-full" leftIcon={<Calendar className="h-4 w-4" />}>
+                Configurar Minha Agenda
+              </Button>
+            </Link>
+          )}
           <ProfessionalDocumentsLink variant="card" />
         </div>
       </div>

@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -27,6 +28,7 @@ import models
 import notificacoes
 import search
 import storage
+import verificacao
 from database import get_db
 from models import normalize_text
 from rate_limiter import check_contact_rate_limit, check_search_rate_limit
@@ -43,7 +45,7 @@ from schemas import (
     SpecialtyCategoryRead,
     UFS_VALIDAS,
 )
-from security import get_optional_current_user, hash_senha
+from security import get_optional_current_user, hash_senha, verificar_email_disponivel
 
 router = APIRouter(prefix="/api/professionals", tags=["Profissionais"])
 profissionais_router = APIRouter(prefix="/api/profissionais", tags=["Profissionais"])
@@ -74,50 +76,25 @@ MAX_FALLBACK_CANDIDATES = MAX_SEARCH_CANDIDATES
 )
 def create_professional(
     payload: ProfessionalCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """
     Cria um perfil de profissional com bio detalhada, especialidades e raio de atendimento.
-    Garante unicidade de e-mail e validação das especialidades e raio mínimo (>= 1 km).
+    Garante unicidade cross-table de e-mail, validação das especialidades, raio mínimo (>= 1 km)
+    e disparo do e-mail de verificação/boas-vindas em background.
     """
-    existing_professional = (
-        db.query(models.Professional)
-        .filter(models.Professional.email == payload.email)
-        .first()
+    email_normalizado = verificar_email_disponivel(
+        db,
+        payload.email,
+        detail="E-mail já cadastrado na plataforma.",
     )
-    if existing_professional:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="E-mail já cadastrado para outro profissional.",
-        )
-
-    existing_user = (
-        db.query(models.User)
-        .filter(models.User.email == payload.email)
-        .first()
-    )
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="E-mail já cadastrado na plataforma.",
-        )
-
-    existing_cliente = (
-        db.query(models.Cliente)
-        .filter(models.Cliente.email == payload.email)
-        .first()
-    )
-    if existing_cliente:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="E-mail já cadastrado na plataforma.",
-        )
 
     senha_hash = hash_senha(payload.password) if payload.password else None
 
     professional = models.Professional(
         name=payload.name,
-        email=payload.email,
+        email=email_normalizado,
         phone=payload.phone,
         bio=payload.bio,
         service_radius_km=payload.service_radius_km,
@@ -125,17 +102,18 @@ def create_professional(
         city=payload.city,
         state=payload.state,
         senha_hash=senha_hash,
+        email_verificado=False,
     )
     try:
         db.add(professional)
         if senha_hash:
             user = models.User(
                 name=payload.name,
-                email=payload.email,
+                email=email_normalizado,
                 hashed_password=senha_hash,
                 role=models.UserRole.PROFESSIONAL.value,
                 is_active=True,
-                email_verificado=True,
+                email_verificado=False,
             )
             db.add(user)
         db.commit()
@@ -147,6 +125,10 @@ def create_professional(
         )
 
     db.refresh(professional)
+
+    if senha_hash:
+        pendente = verificacao.preparar_verificacao(db, professional)
+        background_tasks.add_task(verificacao.enviar_email_de_verificacao, pendente)
 
     return professional
 
@@ -405,6 +387,8 @@ def _execute_professionals_search(
     limit: int,
     db: Session,
     order_by: Optional[str] = None,
+    min_radius_km: Optional[float] = None,
+    max_radius_km: Optional[float] = None,
 ) -> PaginatedResponse[ProfessionalPublicRead]:
     """
     Executa a busca de profissionais (com pré-filtro SQL + ranqueamento inteligente em memória),
@@ -423,6 +407,16 @@ def _execute_professionals_search(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Estado '{state}' inválido. Deve ser uma sigla de UF brasileira válida.",
             )
+
+    if (
+        min_radius_km is not None
+        and max_radius_km is not None
+        and min_radius_km > max_radius_km
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="O raio mínimo de atendimento não pode ser maior que o raio máximo.",
+        )
 
     ordenar_por_avaliacao = False
     if order_by:
@@ -466,6 +460,12 @@ def _execute_professionals_search(
 
     if state:
         query = query.filter(models.Professional.state == state.strip().upper())
+
+    if min_radius_km is not None:
+        query = query.filter(models.Professional.service_radius_km >= min_radius_km)
+
+    if max_radius_km is not None:
+        query = query.filter(models.Professional.service_radius_km <= max_radius_km)
 
     if city and city.strip():
         norm_city = normalize_text(city)
@@ -706,6 +706,25 @@ def list_professionals(
     state: Optional[str] = Query(
         None, min_length=2, max_length=2, description="Sigla da UF (ex: SP, RJ)"
     ),
+    min_radius_km: Optional[float] = Query(
+        None,
+        gt=0,
+        le=500,
+        description="Raio mínimo de atendimento em km (ex: 10, 25, 50)",
+    ),
+    max_radius_km: Optional[float] = Query(
+        None,
+        gt=0,
+        le=500,
+        description="Raio máximo de atendimento em km (ex: 10)",
+    ),
+    radius_km: Optional[float] = Query(
+        None,
+        gt=0,
+        le=500,
+        include_in_schema=False,
+        description="Alias para min_radius_km.",
+    ),
     approval_status: Optional[str] = Query(
         models.ProfessionalApprovalStatus.APPROVED.value,
         description="Filtra por status de aprovação cadastral (padrão: approved; use 'all' para desativar filtro)",
@@ -735,7 +754,7 @@ def list_professionals(
 ):
     """
     Lista profissionais cadastrados ativos com suporte a busca inteligente (Tiered Two-Stage Search),
-    filtros por especialidade, cidade, UF, ordenação por reputação, paginação, mascaramento seguro LGPD e cabeçalhos de metadados.
+    filtros por especialidade, cidade, UF, raio de atendimento, ordenação por reputação, paginação, mascaramento seguro LGPD e cabeçalhos de metadados.
     """
     paginated = _execute_professionals_search(
         request=request,
@@ -749,6 +768,8 @@ def list_professionals(
         limit=limit,
         db=db,
         order_by=order_by or sort or sort_by,
+        min_radius_km=min_radius_km if min_radius_km is not None else radius_km,
+        max_radius_km=max_radius_km,
     )
     if envelope:
         return JSONResponse(
@@ -775,6 +796,9 @@ def search_professionals_enveloped(
     specialty: Optional[str] = Query(None, max_length=100),
     city: Optional[str] = Query(None, max_length=100),
     state: Optional[str] = Query(None, min_length=2, max_length=2),
+    min_radius_km: Optional[float] = Query(None, gt=0, le=500),
+    max_radius_km: Optional[float] = Query(None, gt=0, le=500),
+    radius_km: Optional[float] = Query(None, gt=0, le=500, include_in_schema=False),
     approval_status: Optional[str] = Query(models.ProfessionalApprovalStatus.APPROVED.value),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
@@ -806,6 +830,8 @@ def search_professionals_enveloped(
         limit=limit,
         db=db,
         order_by=order_by or sort or sort_by,
+        min_radius_km=min_radius_km if min_radius_km is not None else radius_km,
+        max_radius_km=max_radius_km,
     )
 
 
@@ -927,24 +953,24 @@ def update_professional(
             detail="Profissional não encontrado.",
         )
 
-    if payload.email and payload.email != professional.email:
-        existing = (
-            db.query(models.Professional)
-            .filter(
-                models.Professional.email == payload.email,
-                models.Professional.id != professional_id,
-            )
-            .first()
+    old_email = professional.email
+    if payload.email and payload.email != old_email:
+        verificar_email_disponivel(
+            db,
+            payload.email,
+            detail="E-mail já está em uso por outro profissional.",
+            exclude_professional_id=professional_id,
+            exclude_user_email=old_email,
         )
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="E-mail já está em uso por outro profissional.",
-            )
 
     update_fields = payload.model_dump(exclude_unset=True)
     for field_name, value in update_fields.items():
         setattr(professional, field_name, value)
+
+    if payload.email and payload.email != old_email:
+        linked_user = db.query(models.User).filter(models.User.email == old_email).first()
+        if linked_user is not None and linked_user.role == models.UserRole.PROFESSIONAL.value:
+            linked_user.email = payload.email
 
     try:
         db.commit()

@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
+  Ban,
   Briefcase,
   Calendar,
   CheckCircle2,
@@ -16,10 +17,12 @@ import {
   Lock,
   Maximize2,
   MessageSquare,
+  Receipt,
   RefreshCw,
   Search,
   Sparkles,
   Star,
+  ThumbsUp,
   User,
   Wrench,
   X,
@@ -31,30 +34,40 @@ import {
   Orcamento,
   listarMeusOrcamentos,
   obterFotoUrl,
+  aprovarEstimativaOrcamento,
 } from '../../../services/orcamentos';
 import { mensagemErro } from '../../../services/apiError';
+import {
+  Pagamento,
+  listarMeusPagamentos,
+} from '../../../services/pagamentos';
 import { Button } from '../../../components/ui/Button';
-import { ThemeToggle } from '../../../components/ui/ThemeToggle';
-import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
+import { AppHeader } from '../../../components/layout/AppHeader';
 import { useNotifications } from '../../../context/NotificationContext';
 import { QuoteDetailModal } from '../../../components/orcamentos/QuoteDetailModal';
 import { AvaliarProfissionalModal } from '../../../components/avaliacoes/AvaliarProfissionalModal';
 import { PaymentCheckoutModal } from '../../../components/pagamentos/PaymentCheckoutModal';
 
-type FilterTab = 'todos' | 'respondido' | 'aceito' | 'pendente' | 'recusado';
+type FilterTab = 'todos' | 'respondido' | 'aceito' | 'pendente' | 'recusado' | 'cancelado';
 
 export default function ClienteOrcamentosPage() {
   const { user, token, isAuthenticated, isLoading: authLoading } = useAuth();
 
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
+  const [pagamentosPorOrcamento, setPagamentosPorOrcamento] = useState<Record<number, Pagamento>>({});
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [feedbackBanner, setFeedbackBanner] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>('todos');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Modal de Detalhes e Checkout
   const [selectedOrcamentoId, setSelectedOrcamentoId] = useState<number | null>(null);
+  const [selectedInitialAction, setSelectedInitialAction] = useState<
+    'visualizar' | 'aprovar_estimativa' | 'cancelar_cliente'
+  >('visualizar');
   const [checkoutOrcamento, setCheckoutOrcamento] = useState<Orcamento | null>(null);
+  const [approvingId, setApprovingId] = useState<number | null>(null);
 
   // Modal de Avaliação de Serviço (issue #19)
   const [avaliarOrcamento, setAvaliarOrcamento] = useState<Orcamento | null>(null);
@@ -64,13 +77,41 @@ export default function ClienteOrcamentosPage() {
 
   const { notificacoes } = useNotifications();
 
+  const handleAprovarEstimativaDireto = async (orcamentoId: number) => {
+    setApprovingId(orcamentoId);
+    setError(null);
+    setFeedbackBanner(null);
+    try {
+      await aprovarEstimativaOrcamento(orcamentoId, token);
+      setFeedbackBanner('Estimativa aprovada com sucesso! O serviço foi confirmado e o profissional notificado.');
+      await carregarOrcamentos();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao aprovar estimativa do orçamento.';
+      setError(msg);
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
   const carregarOrcamentos = useCallback(async () => {
     if (!token) return;
     setIsLoading(true);
     setError(null);
     try {
-      const data = await listarMeusOrcamentos(token);
+      const [data, pagamentos] = await Promise.all([
+        listarMeusOrcamentos(token),
+        listarMeusPagamentos(token).catch(() => [] as Pagamento[]),
+      ]);
       setOrcamentos(data);
+
+      const mapaPagamentos: Record<number, Pagamento> = {};
+      for (const pgto of pagamentos) {
+        const atual = mapaPagamentos[pgto.orcamento_id];
+        if (!atual || pgto.status === 'aprovado') {
+          mapaPagamentos[pgto.orcamento_id] = pgto;
+        }
+      }
+      setPagamentosPorOrcamento(mapaPagamentos);
     } catch (err: unknown) {
       const msg = mensagemErro(err, 'Falha ao carregar orçamentos.');
       setError(msg);
@@ -209,6 +250,13 @@ export default function ClienteOrcamentosPage() {
             Recusado
           </span>
         );
+      case 'cancelado':
+        return (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-500/15 px-3 py-1 text-xs font-bold text-slate-500 dark:text-slate-300">
+            <Ban className="h-3.5 w-3.5" />
+            Cancelado
+          </span>
+        );
       default:
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-rental-surface2 px-3 py-1 text-xs font-bold text-rental-muted">
@@ -219,49 +267,34 @@ export default function ClienteOrcamentosPage() {
   };
 
   return (
-    <main className="min-h-screen bg-rental-bg text-rental-ink p-4 sm:p-6 lg:p-10 space-y-8 animate-fadeIn">
-      <div className="max-w-6xl mx-auto space-y-8">
-        {/* Barra Superior / Header */}
-        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-rental-border/60">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="p-2 rounded-xl border border-rental-border text-rental-muted hover:text-rental-ink hover:bg-rental-surface transition-colors"
-              title="Voltar ao início"
-              aria-label="Voltar à página inicial"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
+    <div className="min-h-screen flex flex-col bg-rental-bg text-rental-ink">
+      <AppHeader />
+      <main className="flex-1 p-4 sm:p-6 lg:p-10 space-y-8 animate-fadeIn">
+        <div className="max-w-6xl mx-auto space-y-8">
+          {/* Barra Superior / Header da Página */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-rental-border/60">
             <div>
-              <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-rental-primary text-[var(--rs-primary-text)] text-xs">
-                  <Zap className="h-4 w-4" />
-                </span>
-                <h1 className="text-xl sm:text-2xl font-black text-rental-ink tracking-tight">
-                  Meus Orçamentos
-                </h1>
-              </div>
+              <h1 className="text-xl sm:text-2xl font-black text-rental-ink tracking-tight">
+                Meus Orçamentos
+              </h1>
               <p className="text-xs text-rental-muted mt-0.5">
                 Acompanhe o andamento das suas solicitações, estimativas e confirmações de serviço.
               </p>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto">
-            <Link href="/profissionais">
-              <Button
-                variant="primary"
-                size="sm"
-                leftIcon={<Sparkles className="h-4 w-4" />}
-                className="text-xs font-bold"
-              >
-                Solicitar Novo Orçamento
-              </Button>
-            </Link>
-            <NotificationBell />
-            <ThemeToggle />
+            <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto">
+              <Link href="/profissionais">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Sparkles className="h-4 w-4" />}
+                  className="text-xs font-bold"
+                >
+                  Solicitar Novo Orçamento
+                </Button>
+              </Link>
+            </div>
           </div>
-        </header>
 
         {/* Resumo / Métricas Rápidas */}
         <section aria-label="Resumo das solicitações" className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
@@ -337,6 +370,7 @@ export default function ClienteOrcamentosPage() {
                 { id: 'aceito', label: 'Confirmados' },
                 { id: 'pendente', label: 'Em Análise' },
                 { id: 'recusado', label: 'Recusados' },
+                { id: 'cancelado', label: 'Cancelados' },
               ] as { id: FilterTab; label: string }[]
             ).map((tab) => (
               <button
@@ -376,6 +410,24 @@ export default function ClienteOrcamentosPage() {
             )}
           </div>
         </div>
+
+        {/* Banner de Sucesso / Feedback */}
+        {feedbackBanner && (
+          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs text-emerald-600 dark:text-emerald-400 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 font-semibold">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>{feedbackBanner}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFeedbackBanner(null)}
+              className="p-1 rounded-lg hover:bg-emerald-500/15 transition-colors"
+              aria-label="Dispensar aviso"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {/* Mensagem de Erro de Conexão */}
         {error && (
@@ -435,9 +487,13 @@ export default function ClienteOrcamentosPage() {
           <div className="space-y-4">
             {orcamentosFiltrados.map((orcamento) => {
               const hasPhotos = orcamento.fotos && orcamento.fotos.length > 0;
+              const isPendente = orcamento.status === 'pendente';
               const isRespondido = orcamento.status === 'respondido';
               const isAceito = orcamento.status === 'aceito';
               const isRecusado = orcamento.status === 'recusado';
+              const isCancelado = orcamento.status === 'cancelado';
+              const pagamentoVinculado = pagamentosPorOrcamento[orcamento.id];
+              const isPago = pagamentoVinculado?.status === 'aprovado';
 
               return (
                 <article
@@ -474,7 +530,13 @@ export default function ClienteOrcamentosPage() {
                       </div>
                     </div>
 
-                    <div className="self-start sm:self-auto">
+                    <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                      {isPago && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold text-emerald-500 border border-emerald-500/25">
+                          <Receipt className="h-3.5 w-3.5" />
+                          Pago • Comprovante Disponível
+                        </span>
+                      )}
                       {getStatusBadge(orcamento.status)}
                     </div>
                   </div>
@@ -595,29 +657,122 @@ export default function ClienteOrcamentosPage() {
                     </div>
                   )}
 
-                  {/* Rodapé do Card: Ação para Ver Detalhes */}
-                  <div className="flex items-center justify-between pt-2 border-t border-rental-border/50 text-xs">
+                  {isCancelado && (
+                    <div className="rounded-2xl border border-slate-500/30 bg-slate-500/10 p-4 space-y-1.5">
+                      <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 font-extrabold text-xs sm:text-sm">
+                        <Ban className="h-4 w-4" />
+                        <span>Solicitação Cancelada por Você</span>
+                      </div>
+                      {(orcamento.justificativa_recusa || orcamento.motivo_recusa) && (
+                        <p className="text-xs text-rental-muted">
+                          {orcamento.justificativa_recusa || orcamento.motivo_recusa}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Rodapé do Card: Ações Bilaterais e Detalhes */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-rental-border/50 text-xs">
                     <span className="text-rental-muted text-[11px]">
                       {isRespondido
-                        ? 'O profissional já calculou o valor.'
+                        ? 'O profissional enviou a estimativa. Aprove, recuse ou pague para confirmar.'
                         : isAceito
-                        ? 'Serviço confirmado.'
+                        ? isPago
+                          ? 'Serviço confirmado e pago.'
+                          : 'Serviço confirmado.'
                         : isRecusado
                         ? 'Tente solicitar para outro profissional.'
+                        : isCancelado
+                        ? 'Solicitação encerrada.'
                         : 'Aguardando avaliação técnica.'}
                     </span>
                     <div className="flex flex-wrap items-center gap-2">
-                      {(isRespondido || isAceito) && (orcamento.valor_estimado ?? 0) > 0 && (
+                      {isRespondido && (
+                        <>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            disabled={approvingId === orcamento.id}
+                            onClick={() => handleAprovarEstimativaDireto(orcamento.id)}
+                            leftIcon={
+                              approvingId === orcamento.id ? (
+                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <ThumbsUp className="h-3.5 w-3.5" />
+                              )
+                            }
+                            className="font-bold text-xs"
+                          >
+                            {approvingId === orcamento.id ? 'Aprovando...' : 'Aprovar Estimativa'}
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedInitialAction('cancelar_cliente');
+                              setSelectedOrcamentoId(orcamento.id);
+                            }}
+                            leftIcon={<Ban className="h-3.5 w-3.5" />}
+                            className="font-bold text-xs"
+                          >
+                            Recusar / Cancelar
+                          </Button>
+                        </>
+                      )}
+
+                      {isPendente && (
                         <Button
-                          variant="primary"
+                          variant="danger"
                           size="sm"
-                          onClick={() => setCheckoutOrcamento(orcamento)}
-                          leftIcon={<CreditCard className="h-3.5 w-3.5" />}
+                          onClick={() => {
+                            setSelectedInitialAction('cancelar_cliente');
+                            setSelectedOrcamentoId(orcamento.id);
+                          }}
+                          leftIcon={<Ban className="h-3.5 w-3.5" />}
                           className="font-bold text-xs"
                         >
-                          Pagar com Mercado Pago
+                          Cancelar Solicitação
                         </Button>
                       )}
+
+                      {(isRespondido || isAceito) && (
+                        <Link href={`/profissionais/${orcamento.professional_id}/agendar?orcamento_id=${orcamento.id}`}>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            leftIcon={<Calendar className="h-3.5 w-3.5" />}
+                            className="font-bold text-xs"
+                          >
+                            Agendar Horário
+                          </Button>
+                        </Link>
+                      )}
+
+                      {isPago ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setCheckoutOrcamento(orcamento)}
+                          leftIcon={<Receipt className="h-3.5 w-3.5 text-emerald-500" />}
+                          className="font-bold text-xs border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                        >
+                          Ver Comprovante Digital
+                        </Button>
+                      ) : (
+                        (isRespondido || isAceito) &&
+                        (orcamento.valor_estimado ?? 0) > 0 && (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => setCheckoutOrcamento(orcamento)}
+                            leftIcon={<CreditCard className="h-3.5 w-3.5" />}
+                            className="font-bold text-xs"
+                          >
+                            Pagar com Mercado Pago
+                          </Button>
+                        )
+                      )}
+
                       {isAceito && (
                         <Button
                           variant="primary"
@@ -632,7 +787,10 @@ export default function ClienteOrcamentosPage() {
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => setSelectedOrcamentoId(orcamento.id)}
+                        onClick={() => {
+                          setSelectedInitialAction('visualizar');
+                          setSelectedOrcamentoId(orcamento.id);
+                        }}
                         className="font-bold text-xs"
                       >
                         Ver Detalhes Completos
@@ -650,8 +808,20 @@ export default function ClienteOrcamentosPage() {
       {selectedOrcamentoId !== null && (
         <QuoteDetailModal
           orcamentoId={selectedOrcamentoId}
-          onClose={() => setSelectedOrcamentoId(null)}
-          onResponded={carregarOrcamentos}
+          initialAction={selectedInitialAction}
+          onClose={() => {
+            setSelectedOrcamentoId(null);
+            setSelectedInitialAction('visualizar');
+          }}
+          onOpenCheckout={(orc) => {
+            setSelectedOrcamentoId(null);
+            setSelectedInitialAction('visualizar');
+            setCheckoutOrcamento(orc);
+          }}
+          onResponded={(msg) => {
+            if (msg) setFeedbackBanner(msg);
+            carregarOrcamentos();
+          }}
         />
       )}
 
@@ -674,7 +844,10 @@ export default function ClienteOrcamentosPage() {
         <PaymentCheckoutModal
           orcamento={checkoutOrcamento}
           onClose={() => setCheckoutOrcamento(null)}
-          onPaid={() => carregarOrcamentos()}
+          onPaid={() => {
+            setFeedbackBanner('Pagamento confirmado com sucesso! Comprovante digital disponível.');
+            carregarOrcamentos();
+          }}
         />
       )}
 
@@ -702,6 +875,7 @@ export default function ClienteOrcamentosPage() {
           </div>
         </div>
       )}
-    </main>
+      </main>
+    </div>
   );
 }

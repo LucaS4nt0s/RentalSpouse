@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   AlertTriangle,
   ArrowLeft,
+  Calendar,
   CheckCircle2,
   FileCheck2,
   Lock,
@@ -14,10 +15,9 @@ import {
   UserX,
 } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
-import { ThemeToggle } from '../../../components/ui/ThemeToggle';
+import { AppHeader } from '../../../components/layout/AppHeader';
 import { DocumentUploadCard } from '../../../components/documentos/DocumentUploadCard';
 import { SubmissionStatusBanner } from '../../../components/documentos/SubmissionStatusBanner';
-import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
 import { useProfessionalDocuments } from '../../../hooks/useProfessionalDocuments';
 import {
   DOCUMENT_TYPES_CONFIG,
@@ -173,18 +173,12 @@ export default function ProfessionalDocumentsPage() {
   );
 
   return (
-    <main className="min-h-screen bg-rental-bg text-rental-ink p-4 sm:p-6 lg:p-10 transition-colors duration-300">
-      <div className="max-w-5xl mx-auto space-y-6 sm:space-y-8">
-        {/* Topo / Barra de Navegação Superior */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-rental-border">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="p-2 rounded-xl bg-rental-surface border border-rental-border hover:border-rental-primary/40 text-rental-muted hover:text-rental-ink transition-colors"
-              title="Voltar para a página inicial"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
+    <div className="min-h-screen flex flex-col bg-rental-bg text-rental-ink transition-colors duration-300">
+      <AppHeader />
+      <main className="flex-1 p-4 sm:p-6 lg:p-10">
+        <div className="max-w-5xl mx-auto space-y-6 sm:space-y-8">
+          {/* Topo da Página */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-rental-border">
             <div>
               <h1 className="text-xl sm:text-2xl font-black text-rental-ink tracking-tight">
                 Envio de Documentos para Análise
@@ -193,22 +187,19 @@ export default function ProfessionalDocumentsPage() {
                 Profissional: <span className="font-semibold text-rental-ink">{user?.nome || user?.name || user?.email}</span>
               </p>
             </div>
-          </div>
 
-          <div className="flex items-center gap-3 self-end sm:self-auto">
-            <NotificationBell />
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={fetchSummary}
-              disabled={isLoading}
-              leftIcon={<RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />}
-            >
-              Atualizar
-            </Button>
-            <ThemeToggle />
+            <div className="flex items-center gap-3 self-end sm:self-auto">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={fetchSummary}
+                disabled={isLoading}
+                leftIcon={<RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />}
+              >
+                Atualizar
+              </Button>
+            </div>
           </div>
-        </div>
 
         {/* Feedback Temporário de Sucesso */}
         {actionSuccessMessage && (
@@ -316,6 +307,7 @@ export default function ProfessionalDocumentsPage() {
           </section>
         )}
       </div>
-    </main>
+      </main>
+    </div>
   );
 }

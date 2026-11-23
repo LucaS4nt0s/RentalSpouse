@@ -18,16 +18,70 @@ logger = logging.getLogger(__name__)
 
 def migrate_columns_and_indexes(engine: Engine) -> None:
     """
-    Verifica a existência das colunas e índices de busca normalizada na tabela
-    'professionals'. Caso não existam (banco legado), executa ALTER TABLE e CREATE INDEX.
+    Verifica a existência das colunas e índices nas tabelas `users`, `clientes`,
+    `professionals` e `orcamentos`. Caso não existam (banco legado / volume PostgreSQL
+    persistente), executa ALTER TABLE e CREATE INDEX de forma idempotente.
     """
     inspector = inspect(engine)
+
+    # 1. Migrações defensivas na tabela users (Issue #53 / #93)
+    if inspector.has_table("users"):
+        existing_user_cols = {col["name"] for col in inspector.get_columns("users")}
+        user_cols_to_add = [
+            ("role", "VARCHAR(50) DEFAULT 'client' NOT NULL"),
+            ("is_active", "BOOLEAN DEFAULT TRUE NOT NULL"),
+            ("email_verificado", "BOOLEAN DEFAULT TRUE NOT NULL"),
+            ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+        ]
+        with engine.begin() as conn:
+            for col_name, col_type in user_cols_to_add:
+                if col_name not in existing_user_cols:
+                    logger.info(
+                        "Migração RentalSpouse: adicionando coluna '%s' na tabela 'users'...",
+                        col_name,
+                    )
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
+
+    # 2. Migrações defensivas na tabela clientes (Issue #53 / #93)
+    if inspector.has_table("clientes"):
+        existing_cliente_cols = {col["name"] for col in inspector.get_columns("clientes")}
+        cliente_cols_to_add = [
+            ("email_verificado", "BOOLEAN DEFAULT FALSE NOT NULL"),
+            ("verificacao_token_hash", "VARCHAR(64)"),
+            ("verificacao_expira_em", "TIMESTAMP"),
+            ("verificacao_enviada_em", "TIMESTAMP"),
+        ]
+        with engine.begin() as conn:
+            for col_name, col_type in cliente_cols_to_add:
+                if col_name not in existing_cliente_cols:
+                    logger.info(
+                        "Migração RentalSpouse: adicionando coluna '%s' na tabela 'clientes'...",
+                        col_name,
+                    )
+                    conn.execute(text(f"ALTER TABLE clientes ADD COLUMN {col_name} {col_type}"))
+
+            existing_cliente_idxs = {idx["name"] for idx in inspector.get_indexes("clientes")}
+            for idx_name, col_name in [
+                ("ix_clientes_email_verificado", "email_verificado"),
+                ("ix_clientes_verificacao_token_hash", "verificacao_token_hash"),
+            ]:
+                if idx_name not in existing_cliente_idxs:
+                    conn.execute(
+                        text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON clientes ({col_name})")
+                    )
+
     if not inspector.has_table("professionals"):
         return
 
     existing_columns = {col["name"] for col in inspector.get_columns("professionals")}
 
     columns_to_add = [
+        ("senha_hash", "VARCHAR(255)"),
+        ("is_active", "BOOLEAN DEFAULT TRUE NOT NULL"),
+        ("email_verificado", "BOOLEAN DEFAULT FALSE NOT NULL"),
+        ("verificacao_token_hash", "VARCHAR(64)"),
+        ("verificacao_expira_em", "TIMESTAMP"),
+        ("verificacao_enviada_em", "TIMESTAMP"),
         ("approval_status", "VARCHAR(50) DEFAULT 'pending_approval' NOT NULL"),
         ("approval_notes", "TEXT"),
         ("documents_submitted_at", "TIMESTAMP"),
@@ -50,6 +104,8 @@ def migrate_columns_and_indexes(engine: Engine) -> None:
         # Índices B-Tree
         existing_indexes = {idx["name"] for idx in inspector.get_indexes("professionals")}
         indexes_to_create = [
+            ("ix_professionals_email_verificado", "email_verificado"),
+            ("ix_professionals_verificacao_token_hash", "verificacao_token_hash"),
             ("ix_professionals_approval_status", "approval_status"),
             ("ix_professionals_normalized_city", "normalized_city"),
             ("ix_professionals_normalized_specialties", "normalized_specialties"),
@@ -124,6 +180,7 @@ def migrate_agenda_tables(engine: Engine) -> None:
     tabelas = [
         models.DisponibilidadeProfissional.__table__,
         models.Agendamento.__table__,
+        models.BloqueioAgendaProfissional.__table__,
     ]
     ausentes = [tabela.name for tabela in tabelas if not inspector.has_table(tabela.name)]
     if ausentes:

@@ -38,6 +38,7 @@ from client_access import get_current_cliente
 from database import get_db
 import models
 import payment_gateway
+from professional_access import get_current_professional
 from rate_limiter import check_payment_rate_limit
 from routes.notificacoes import (
     enviar_email_alerta_orcamento,
@@ -695,6 +696,11 @@ def criar_pagamento(
         db.refresh(pagamento)
 
         if pagamento.status == models.PagamentoStatus.APROVADO.value:
+            if orcamento and orcamento.status == models.OrcamentoStatus.RESPONDIDO.value:
+                orcamento.status = models.OrcamentoStatus.ACEITO.value
+                orcamento.decidido_em = orcamento.decidido_em or datetime.now(timezone.utc)
+                db.add(orcamento)
+                db.commit()
             _notificar_pagamento_confirmado(db, background_tasks, pagamento, orcamento)
 
         logger.info(
@@ -900,6 +906,11 @@ def webhook_mercadopago(
             .first()
         )
         if orcamento:
+            if orcamento.status == models.OrcamentoStatus.RESPONDIDO.value:
+                orcamento.status = models.OrcamentoStatus.ACEITO.value
+                orcamento.decidido_em = orcamento.decidido_em or datetime.now(timezone.utc)
+                db.add(orcamento)
+                db.commit()
             try:
                 _notificar_pagamento_confirmado(
                     db, background_tasks, pagamento, orcamento
@@ -982,9 +993,100 @@ def simular_aprovacao_pix(
             .first()
         )
         if orcamento:
+            if orcamento.status == models.OrcamentoStatus.RESPONDIDO.value:
+                orcamento.status = models.OrcamentoStatus.ACEITO.value
+                orcamento.decidido_em = orcamento.decidido_em or datetime.now(timezone.utc)
+                db.add(orcamento)
+                db.commit()
             _notificar_pagamento_confirmado(db, background_tasks, pagamento, orcamento)
 
     return pagamento
+
+
+@router.get(
+    "/resumo-ganhos",
+    response_model=schemas.GanhosProfissionalResumoRead,
+    summary="Resumo de faturamento e ganhos do profissional (Issue #27)",
+    description="Retorna métricas consolidadas de ganhos semanais, mensais, faturamento total e últimos recebimentos do profissional autenticado.",
+)
+def obter_resumo_ganhos(
+    prof: models.Professional = Depends(get_current_professional),
+    db: Session = Depends(get_db),
+):
+    agora = datetime.now(timezone.utc)
+    agora_naive = agora.replace(tzinfo=None)
+
+    # Início do mês atual (UTC naive)
+    inicio_mes = datetime(agora.year, agora.month, 1)
+
+    # Início da semana atual (segunda-feira 00:00:00 UTC naive)
+    inicio_semana = (agora_naive - timedelta(days=agora_naive.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+    # Pagamentos aprovados do profissional
+    pagamentos_aprovados = (
+        db.query(models.Pagamento)
+        .filter(
+            models.Pagamento.professional_id == prof.id,
+            models.Pagamento.status == models.PagamentoStatus.APROVADO.value,
+        )
+        .order_by(models.Pagamento.pago_em.desc(), models.Pagamento.id.desc())
+        .all()
+    )
+
+    total_acumulado = 0.0
+    ganhos_mes = 0.0
+    ganhos_semana = 0.0
+    recentes: List[schemas.PagamentoRecenteResumo] = []
+
+    for p in pagamentos_aprovados:
+        val = float(p.valor or 0.0)
+        total_acumulado += val
+
+        dt_pgto = p.pago_em or p.criado_em
+        dt_pgto_naive = dt_pgto.replace(tzinfo=None) if dt_pgto else None
+
+        if dt_pgto_naive:
+            if dt_pgto_naive >= inicio_mes:
+                ganhos_mes += val
+            if dt_pgto_naive >= inicio_semana:
+                ganhos_semana += val
+
+    for p in pagamentos_aprovados[:10]:
+        cliente_nome = None
+        if p.cliente:
+            cliente_nome = p.cliente.nome
+        elif p.orcamento:
+            cliente_nome = p.orcamento.cliente_nome
+
+        recentes.append(
+            schemas.PagamentoRecenteResumo(
+                id=p.id,
+                orcamento_id=p.orcamento_id,
+                agendamento_id=p.agendamento_id,
+                cliente_nome=cliente_nome,
+                valor=float(p.valor),
+                metodo=p.metodo,
+                status=p.status,
+                pago_em=p.pago_em,
+                gateway_txid=p.gateway_txid,
+            )
+        )
+
+    total_atendimentos = len(pagamentos_aprovados)
+    ticket_medio = round(total_acumulado / total_atendimentos, 2) if total_atendimentos > 0 else 0.0
+
+    return schemas.GanhosProfissionalResumoRead(
+        total_acumulado=round(total_acumulado, 2),
+        ganhos_mes_atual=round(ganhos_mes, 2),
+        ganhos_semana_atual=round(ganhos_semana, 2),
+        total_atendimentos_pagos=total_atendimentos,
+        ticket_medio=ticket_medio,
+        mes_referencia=agora.strftime("%Y-%m"),
+        semana_referencia=f"Semana {agora.isocalendar()[1]}/{agora.year}",
+        pagamentos_recentes=recentes,
+    )
 
 
 @router.get(

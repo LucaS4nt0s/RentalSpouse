@@ -20,7 +20,7 @@ import {
   Shield,
   Sparkles,
 } from 'lucide-react';
-import { ThemeToggle } from '../../../components/ui/ThemeToggle';
+import { AppHeader } from '../../../components/layout/AppHeader';
 import { Button } from '../../../components/ui/Button';
 import { TextInput } from '../../../components/ui/TextInput';
 import { PasswordInput } from '../../../components/ui/PasswordInput';
@@ -28,9 +28,13 @@ import { FormFieldWrapper } from '../../../components/ui/FormFieldWrapper';
 import { PasswordStrengthMeter } from '../../../components/ui/PasswordStrengthMeter';
 import { usePasswordStrength } from '../../../hooks/usePasswordStrength';
 import { validateEmail, validatePasswordMatch } from '../../../utils/validators';
+import {
+  useAuth,
+  TOKEN_STORAGE_KEY,
+  LEGACY_ADMIN_TOKEN_KEY,
+} from '../../../context/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
-const STORAGE_KEY = 'rentalspouse_admin_token';
 const isDevEnvironment = process.env.NODE_ENV === 'development';
 
 interface AdminUser {
@@ -43,6 +47,7 @@ interface AdminUser {
 }
 
 export default function CadastroAdminPage() {
+  const { token: contextToken, login: authLogin, logout: authLogout } = useAuth();
   // Estado da sessão do administrador autenticado
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
@@ -80,16 +85,18 @@ export default function CadastroAdminPage() {
   // Medidor de força da senha
   const passwordEvaluation = usePasswordStrength(newPassword);
 
-  // Logout do administrador
+  // Logout do administrador (consolidado com AuthContext)
   const handleLogout = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
     setAuthToken(null);
     setCurrentAdmin(null);
     setCreatedAdmin(null);
     setAdminsList([]);
-  }, []);
+    authLogout();
+  }, [authLogout]);
 
-  // 1. Carrega sessão salva no localStorage ao montar a página
+  // 1. Carrega sessão consolidada salva no localStorage/AuthContext ao montar a página
   const verifySession = useCallback(async (token: string) => {
     try {
       const res = await fetch(`${API_URL}/api/auth/me`, {
@@ -107,23 +114,38 @@ export default function CadastroAdminPage() {
 
       setCurrentAdmin(user);
       setAuthToken(token);
+      authLogin(
+        {
+          id: user.id,
+          nome: user.name,
+          name: user.name,
+          email: user.email,
+          tipo: 'admin',
+          role: 'admin',
+        },
+        token
+      );
       return true;
     } catch {
-      handleLogout();
+      setAuthToken(null);
+      setCurrentAdmin(null);
       return false;
     } finally {
       setIsValidatingSession(false);
     }
-  }, [handleLogout]);
+  }, [authLogin]);
 
   useEffect(() => {
-    const savedToken = localStorage.getItem(STORAGE_KEY);
+    const savedToken =
+      contextToken ||
+      localStorage.getItem(TOKEN_STORAGE_KEY) ||
+      localStorage.getItem(LEGACY_ADMIN_TOKEN_KEY);
     if (savedToken) {
       verifySession(savedToken);
     } else {
       setIsValidatingSession(false);
     }
-  }, [verifySession]);
+  }, [contextToken, verifySession]);
 
   // 2. Busca lista de administradores com tratamento correto de 401/403
   const fetchAdmins = useCallback(async (token: string) => {
@@ -184,8 +206,6 @@ export default function CadastroAdminPage() {
       }
 
       const token = data.access_token;
-      localStorage.setItem(STORAGE_KEY, token);
-
       const isValid = await verifySession(token);
       if (!isValid) {
         setLoginError('A conta autenticada não possui permissão de administrador.');
@@ -298,45 +318,8 @@ export default function CadastroAdminPage() {
       <div className="absolute top-0 left-1/3 w-96 h-96 bg-[#1D4ED8]/10 dark:bg-[#1D4ED8]/10 rounded-full blur-[140px] pointer-events-none" />
       <div className="absolute bottom-10 right-1/4 w-96 h-96 bg-[#16263F]/10 dark:bg-[var(--rs-surface)]/30 rounded-full blur-[160px] pointer-events-none" />
 
-      {/* Topo / Barra de Navegação */}
-      <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6 border-b border-rental-border">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-rental-primary text-[var(--rs-primary-text)] shadow-primary transition-transform hover:scale-105"
-            title="Voltar ao início"
-          >
-            <Zap className="h-5 w-5" />
-          </Link>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-extrabold tracking-tight">RentalSpouse</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-rental-primary/10 border border-rental-primary/20 px-2 py-0.5 text-[11px] font-bold text-rental-primary">
-                <Shield className="h-3 w-3" /> Admin
-              </span>
-            </div>
-            <p className="text-xs text-rental-muted">Portal de Gestão e Segurança</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 sm:gap-4">
-          <Link
-            href="/admin/moderacao"
-            className="inline-flex items-center gap-1 text-xs font-bold text-rental-muted hover:text-rental-primary transition-colors"
-          >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Moderação de Documentos
-          </Link>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-rental-muted hover:text-rental-primary transition-colors"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Voltar
-          </Link>
-          <ThemeToggle showLabel={false} />
-        </div>
-      </header>
+      {/* Topo / Barra de Navegação Unificada */}
+      <AppHeader onCustomLogout={authToken ? handleLogout : undefined} />
 
       <div className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 lg:py-12">
         {/* Cabeçalho da Página */}

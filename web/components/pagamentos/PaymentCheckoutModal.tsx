@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   Check,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { acquireBodyScrollLock } from '../../lib/scrollLock';
 import { Orcamento } from '../../services/orcamentos';
 import {
   Pagamento,
@@ -56,6 +58,27 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedPix, setCopiedPix] = useState<boolean>(false);
+  const [mounted, setMounted] = useState<boolean>(false);
+
+  // Bloqueia scroll de fundo e habilita Portal no document.body (Issue #97)
+  useEffect(() => {
+    setMounted(true);
+    const release = acquireBodyScrollLock();
+    return () => {
+      release();
+    };
+  }, []);
+
+  // Fecha o modal ao pressionar Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isLoading) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isLoading, onClose]);
 
   // Campos de Cartão (apenas em memória para tokenização client-side no Mercado Pago)
   const [numeroCartao, setNumeroCartao] = useState<string>('');
@@ -231,23 +254,29 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
     }
   };
 
-  return (
+  if (!mounted || typeof document === 'undefined') return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm"
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh' }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="checkout-modal-title"
       onClick={onClose}
     >
       <div
-        className="relative flex flex-col w-full max-w-lg max-h-[92vh] rounded-3xl border border-rental-border bg-rental-surface shadow-2xl overflow-hidden"
+        className="relative flex flex-col w-full max-w-lg max-h-[90vh] rounded-3xl border border-rental-border bg-rental-surface shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-rental-border bg-rental-surface2/50">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-rental-border bg-rental-surface2/50 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-500">
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-black text-rental-ink">
+              <h3 id="checkout-modal-title" className="text-sm sm:text-base font-black text-rental-ink">
                 Checkout Seguro • Mercado Pago
               </h3>
               <span className="text-[11px] text-rental-muted block">
@@ -259,6 +288,7 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-xl text-rental-muted hover:text-rental-ink hover:bg-rental-surface transition-colors"
+            title="Fechar (Esc)"
             aria-label="Fechar checkout"
           >
             <X className="h-5 w-5" />
@@ -266,10 +296,10 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
           {/* Resumo bloqueado do valor */}
-          <div className="rounded-2xl border border-rental-border bg-rental-surface2/40 p-4 flex items-center justify-between">
-            <div>
+          <div className="rounded-2xl border border-rental-border bg-rental-surface2/40 px-4 py-3 flex items-center justify-between">
+            <div className="min-w-0">
               <span className="text-[11px] font-bold uppercase tracking-wider text-rental-muted block">
                 Valor Total do Serviço
               </span>
@@ -278,7 +308,7 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
               </span>
             </div>
             <div className="text-right shrink-0 pl-3">
-              <span className="text-xl font-black text-emerald-500">
+              <span className="text-lg sm:text-xl font-black text-emerald-500">
                 R$ {valorTotal.toFixed(2)}
               </span>
               <span className="text-[10px] text-rental-muted flex items-center justify-end gap-1">
@@ -381,7 +411,7 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
                       </div>
 
                       {pagamento.pix_qr_code_base64 && (
-                        <div className="mx-auto w-44 h-44 rounded-2xl bg-white p-3 border border-rental-border flex items-center justify-center">
+                        <div className="mx-auto w-36 h-36 sm:w-40 sm:h-40 rounded-2xl bg-white p-2.5 border border-rental-border flex items-center justify-center">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={`data:image/png;base64,${pagamento.pix_qr_code_base64}`}
@@ -392,11 +422,11 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
                       )}
 
                       {pagamento.pix_copia_e_cola && (
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                           <span className="text-[11px] font-bold text-rental-muted block">
                             Código PIX Copia e Cola (Padrão EMV® BACEN):
                           </span>
-                          <div className="rounded-xl border border-rental-border bg-rental-surface p-2.5 font-mono text-[11px] text-rental-ink break-all select-all max-h-20 overflow-y-auto">
+                          <div className="rounded-xl border border-rental-border bg-rental-surface p-2 font-mono text-[11px] text-rental-ink break-all select-all max-h-16 overflow-y-auto">
                             {pagamento.pix_copia_e_cola}
                           </div>
                           <Button
@@ -412,7 +442,7 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
                         </div>
                       )}
 
-                      {pagamento.gateway_provider === 'sandbox_mock' && (
+                      {(pagamento.gateway_provider === 'sandbox_mock' || process.env.NODE_ENV !== 'production') && (
                         <div className="pt-2 border-t border-rental-border/50">
                           <Button
                             type="button"
@@ -565,6 +595,7 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

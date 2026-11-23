@@ -58,6 +58,8 @@ URL_MEUS_AGENDAMENTOS = "/agendamentos/meus"
 URL_CONCLUIR_AGENDAMENTO = "/agendamentos/{agendamento_id}/concluir"
 URL_AGENDAMENTO_CANCELAR = "/agendamentos/{agendamento_id}/cancelar"
 URL_DISPONIBILIDADE = "/agendamentos/disponibilidade"
+URL_BLOQUEIOS = "/agendamentos/bloqueios"
+URL_BLOQUEIO_ITEM = "/agendamentos/bloqueios/{bloqueio_id}"
 
 # Máximo de janelas aceitas em uma única definição de grade semanal.
 MAX_JANELAS_POR_GRADE = 50
@@ -67,6 +69,9 @@ Intervalo = Tuple[datetime, datetime]
 MENSAGEM_SLOT_INDISPONIVEL = (
     "Este horário acabou de ser reservado por outro cliente. "
     "Atualize a agenda e escolha outro slot."
+)
+MENSAGEM_SLOT_BLOQUEADO = (
+    "Este horário foi bloqueado pelo profissional e não está disponível para agendamento."
 )
 
 
@@ -145,13 +150,24 @@ def _intervalos_bloqueados(
     fim: datetime,
 ) -> List[Intervalo]:
     """
-    Bloqueios pontuais do profissional (issue #16) — único ponto de extensão.
+    Bloqueios pontuais do profissional (issue #16) que se sobrepõem a `[inicio, fim)`.
 
-    A tabela de bloqueios ainda não existe no schema, então a agenda segue
-    exclusivamente pela grade semanal. Quando #16 for entregue, basta consultar
-    a nova tabela aqui: a geração de slots e a reserva já respeitam o retorno.
+    Tanto a geração de slots (`GET /api/professionals/{id}/agenda`) quanto a
+    reserva (`POST /api/agendamentos`) consultam este retorno.
     """
-    return []
+    linhas = (
+        db.query(
+            models.BloqueioAgendaProfissional.data_hora_inicio,
+            models.BloqueioAgendaProfissional.data_hora_fim,
+        )
+        .filter(
+            models.BloqueioAgendaProfissional.professional_id == professional_id,
+            models.BloqueioAgendaProfissional.data_hora_inicio < fim,
+            models.BloqueioAgendaProfissional.data_hora_fim > inicio,
+        )
+        .all()
+    )
+    return [(linha[0], linha[1]) for linha in linhas]
 
 
 def _sobrepoe(inicio: datetime, fim: datetime, intervalos: Sequence[Intervalo]) -> bool:
@@ -443,6 +459,12 @@ def criar_agendamento(
 
     if payload.orcamento_id is not None:
         _validar_orcamento_vinculado(db, payload.orcamento_id, cliente, profissional)
+
+    if _sobrepoe(inicio, fim, _intervalos_bloqueados(db, profissional.id, inicio, fim)):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=MENSAGEM_SLOT_BLOQUEADO,
+        )
 
     if _slot_indisponivel(db, profissional.id, inicio, fim):
         raise HTTPException(
@@ -799,3 +821,144 @@ def definir_minha_disponibilidade(
         )
 
     return _grade_semanal(db, profissional.id)
+
+
+# ---------------------------------------------------------------------------
+# Bloqueios pontuais de dias e horários específicos do profissional (issue #16)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    URL_BLOQUEIOS,
+    response_model=List[schemas.BloqueioAgendaRead],
+    summary="Listar bloqueios de agenda do profissional",
+    description=(
+        "Lista os bloqueios pontuais (folgas, feriados ou faixas de horário) do "
+        "profissional autenticado, ordenados por `data_hora_inicio`. Por padrão "
+        "retorna apenas bloqueios ativos/futuros (`data_hora_fim > agora`)."
+    ),
+)
+def listar_meus_bloqueios(
+    incluir_passados: bool = Query(
+        False,
+        description="Se true, inclui bloqueios cujo término já passou.",
+    ),
+    data_inicio: Optional[date] = Query(
+        None,
+        description="Filtra bloqueios que cruzam a partir desta data (YYYY-MM-DD).",
+    ),
+    data_fim: Optional[date] = Query(
+        None,
+        description="Filtra bloqueios que cruzam até esta data, inclusive (YYYY-MM-DD).",
+    ),
+    profissional: models.Professional = Depends(get_current_professional),
+    db: Session = Depends(get_db),
+):
+    if data_inicio and data_fim and data_fim < data_inicio:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="`data_fim` deve ser igual ou posterior a `data_inicio`.",
+        )
+
+    query = db.query(models.BloqueioAgendaProfissional).filter(
+        models.BloqueioAgendaProfissional.professional_id == profissional.id
+    )
+
+    if not incluir_passados:
+        query = query.filter(models.BloqueioAgendaProfissional.data_hora_fim > _utcnow())
+
+    if data_inicio:
+        inicio_dt = datetime.combine(data_inicio, time.min)
+        query = query.filter(models.BloqueioAgendaProfissional.data_hora_fim > inicio_dt)
+
+    if data_fim:
+        fim_dt = datetime.combine(data_fim + timedelta(days=1), time.min)
+        query = query.filter(models.BloqueioAgendaProfissional.data_hora_inicio < fim_dt)
+
+    return (
+        query.order_by(
+            models.BloqueioAgendaProfissional.data_hora_inicio.asc(),
+            models.BloqueioAgendaProfissional.id.asc(),
+        )
+        .all()
+    )
+
+
+@router.post(
+    URL_BLOQUEIOS,
+    response_model=schemas.BloqueioAgendaRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Criar bloqueio pontual na agenda do profissional",
+    description=(
+        "Bloqueia um dia inteiro ou faixa específica de horário na agenda do "
+        "profissional autenticado (issue #16). Os horários bloqueados deixam "
+        "imediatamente de aparecer como disponíveis para novos agendamentos."
+    ),
+)
+def criar_bloqueio_agenda(
+    payload: schemas.BloqueioAgendaCreate,
+    profissional: models.Professional = Depends(get_current_professional),
+    db: Session = Depends(get_db),
+):
+    agora = _utcnow()
+    if payload.data_hora_fim <= agora:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Não é possível cadastrar um bloqueio totalmente no passado.",
+        )
+
+    sobrepostos = _intervalos_bloqueados(
+        db,
+        profissional.id,
+        payload.data_hora_inicio,
+        payload.data_hora_fim,
+    )
+    if sobrepostos:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Já existe um bloqueio cadastrado que se sobrepõe a este período.",
+        )
+
+    bloqueio = models.BloqueioAgendaProfissional(
+        professional_id=profissional.id,
+        data_hora_inicio=payload.data_hora_inicio,
+        data_hora_fim=payload.data_hora_fim,
+        motivo=payload.motivo,
+    )
+    db.add(bloqueio)
+    db.commit()
+    db.refresh(bloqueio)
+    return bloqueio
+
+
+@router.delete(
+    URL_BLOQUEIO_ITEM,
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remover bloqueio pontual da agenda",
+    description=(
+        "Remove um bloqueio pontual pertencente ao profissional autenticado, "
+        "liberando novamente os slots da grade semanal correspondentes."
+    ),
+)
+def remover_bloqueio_agenda(
+    bloqueio_id: int,
+    profissional: models.Professional = Depends(get_current_professional),
+    db: Session = Depends(get_db),
+):
+    bloqueio = (
+        db.query(models.BloqueioAgendaProfissional)
+        .filter(
+            models.BloqueioAgendaProfissional.id == bloqueio_id,
+            models.BloqueioAgendaProfissional.professional_id == profissional.id,
+        )
+        .first()
+    )
+    if bloqueio is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bloqueio de agenda não encontrado.",
+        )
+
+    db.delete(bloqueio)
+    db.commit()
+    return None
