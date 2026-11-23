@@ -191,7 +191,8 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh' }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="avaliar-modal-title"

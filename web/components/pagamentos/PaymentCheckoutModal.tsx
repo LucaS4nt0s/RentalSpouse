@@ -257,7 +257,8 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm"
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh' }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="checkout-modal-title"

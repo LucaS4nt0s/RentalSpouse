@@ -146,13 +146,24 @@ test('aprovarEstimativaOrcamento e cancelarOrcamentoCliente enviam contratos PAT
     assert.match(chamadas[0].url, /\/api\/orcamentos\/42\/aprovar-estimativa$/);
     assert.deepEqual(JSON.parse(chamadas[0].init.body), { mensagem: 'Pode confirmar!' });
 
+    // Aceita observacoes como alias de mensagem e body vazio
+    await aprovarEstimativaOrcamento(42, 'jwt-cli', { observacoes: 'Pode iniciar' });
+    assert.deepEqual(JSON.parse(chamadas[chamadas.length - 1].init.body), { mensagem: 'Pode iniciar' });
+
+    await aprovarEstimativaOrcamento(42, 'jwt-cli');
+    assert.deepEqual(JSON.parse(chamadas[chamadas.length - 1].init.body), {});
+
     const cancelado = await cancelarOrcamentoCliente(42, 'jwt-cli', {
       motivo: 'Valor acima do esperado',
     });
     assert.equal(cancelado.status, 'cancelado');
-    assert.equal(chamadas[1].init.method, 'PATCH');
-    assert.match(chamadas[1].url, /\/api\/orcamentos\/42\/cancelar$/);
-    assert.deepEqual(JSON.parse(chamadas[1].init.body), { motivo: 'Valor acima do esperado' });
+    assert.equal(chamadas[3].init.method, 'PATCH');
+    assert.match(chamadas[3].url, /\/api\/orcamentos\/42\/cancelar$/);
+    assert.deepEqual(JSON.parse(chamadas[3].init.body), { motivo: 'Valor acima do esperado' });
+
+    // Aceita motivo_cancelamento como alias
+    await cancelarOrcamentoCliente(42, 'jwt-cli', { motivo_cancelamento: 'Sem interesse' });
+    assert.deepEqual(JSON.parse(chamadas[chamadas.length - 1].init.body), { motivo: 'Sem interesse' });
   } finally {
     globalThis.fetch = originalFetch;
   }
