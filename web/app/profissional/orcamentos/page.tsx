@@ -33,6 +33,7 @@ import {
   obterFotoUrl,
   obterResumoCapacidade,
 } from '../../../services/orcamentos';
+import { mensagemErro } from '../../../services/apiError';
 import {
   GanhosProfissionalResumo,
   obterResumoGanhos,
@@ -76,7 +77,7 @@ export default function ProfissionalOrcamentosPage() {
       if (ganhosData) setResumoGanhos(ganhosData);
       setOrcamentos(orcamentosData);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao carregar orçamentos.';
+      const msg = mensagemErro(err, 'Falha ao carregar orçamentos.');
       setError(msg);
     } finally {
       setIsLoading(false);

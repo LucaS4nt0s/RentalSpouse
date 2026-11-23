@@ -28,6 +28,7 @@ import {
   simularAprovacaoPix,
   tokenizarCartaoMercadoPago,
 } from '../../services/pagamentos';
+import { mensagemErro } from '../../services/apiError';
 import { Button } from '../ui/Button';
 
 interface PaymentCheckoutModalProps {
@@ -165,7 +166,7 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
       setPagamento(novo);
       renovarIdempotencyKey();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao gerar cobrança PIX.');
+      setError(mensagemErro(err, 'Erro ao gerar cobrança PIX.'));
     } finally {
       setIsLoading(false);
     }
@@ -221,7 +222,7 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
         onPaid(novo);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao processar cartão de crédito.');
+      setError(mensagemErro(err, 'Erro ao processar cartão de crédito.'));
     } finally {
       setIsLoading(false);
     }
@@ -236,7 +237,7 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
       setPagamento(aprovado);
       if (onPaid) onPaid(aprovado);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Falha ao simular aprovação do PIX.');
+      setError(mensagemErro(err, 'Falha ao simular aprovação do PIX.'));
     } finally {
       setIsLoading(false);
     }

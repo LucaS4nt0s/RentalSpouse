@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { mensagemErro } from '../../../services/apiError';
 import {
   ShieldCheck,
   UserPlus,
@@ -212,7 +213,7 @@ export default function CadastroAdminPage() {
       // Não chamamos fetchAdmins(token) aqui para evitar chamada duplicada:
       // verifySession já define authToken que aciona o useEffect.
     } catch (err) {
-      setLoginError(err instanceof Error ? err.message : 'Falha ao autenticar.');
+      setLoginError(mensagemErro(err, 'Falha ao autenticar.'));
     } finally {
       setIsLoggingIn(false);
     }
@@ -305,7 +306,7 @@ export default function CadastroAdminPage() {
 
       throw new Error(data?.detail || `Erro ${res.status}: Não foi possível cadastrar o administrador.`);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Falha na conexão com o servidor.');
+      setFormError(mensagemErro(err, 'Falha na conexão com o servidor.'));
     } finally {
       setIsSubmitting(false);
     }

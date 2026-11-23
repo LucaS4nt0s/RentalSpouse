@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { mensagemErro } from '../services/apiError';
 import {
   deleteDocument,
   getDocumentsSummary,
@@ -42,7 +43,7 @@ export function useProfessionalDocuments() {
       setSummary(data);
     } catch (err: unknown) {
       const message =
-        err instanceof Error ? err.message : 'Falha ao carregar documentos do profissional.';
+        mensagemErro(err, 'Falha ao carregar documentos do profissional.');
       setError(message);
     } finally {
       setIsLoading(false);
@@ -85,9 +86,7 @@ export function useProfessionalDocuments() {
       );
     } catch (err: unknown) {
       const message =
-        err instanceof Error
-          ? err.message
-          : 'Falha ao submeter documentos para análise.';
+        mensagemErro(err, 'Falha ao submeter documentos para análise.');
       setError(message);
     } finally {
       setIsSubmitting(false);

@@ -1,3 +1,5 @@
+import { parseErrorMessage } from './apiError';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 const MP_PUBLIC_KEY = process.env.NEXT_PUBLIC_MP_PUBLIC_KEY ?? '';
 const MP_API_BASE_URL = 'https://api.mercadopago.com';
@@ -53,20 +55,6 @@ export interface CriarPagamentoPayload {
   parcelas?: number;
   idempotency_key: string;
   cartao?: CartaoTokenizadoPayload;
-}
-
-function extrairDetalheErro(detail: unknown, fallback: string): string {
-  if (typeof detail === 'string' && detail.trim()) return detail;
-  if (Array.isArray(detail) && detail.length > 0) {
-    return detail
-      .map((item) =>
-        typeof item === 'object' && item && 'msg' in item
-          ? String((item as { msg: unknown }).msg).replace(/^Value error,\s*/i, '')
-          : String(item)
-      )
-      .join(' ');
-  }
-  return fallback;
 }
 
 export function detectarBandeiraCartao(numero: string): string {
@@ -251,7 +239,7 @@ export async function criarPagamento(
     let err = 'Falha ao processar o pagamento.';
     try {
       const errJson = await res.json();
-      err = extrairDetalheErro(errJson.detail, err);
+      err = parseErrorMessage(errJson, err);
     } catch {
       // ignora erro de parse
     }
@@ -299,7 +287,7 @@ export async function simularAprovacaoPix(
     let err = 'Não foi possível simular a confirmação do PIX.';
     try {
       const errJson = await res.json();
-      err = extrairDetalheErro(errJson.detail, err);
+      err = parseErrorMessage(errJson, err);
     } catch {
       // ignora
     }
@@ -343,7 +331,7 @@ export async function obterResumoGanhos(token: string): Promise<GanhosProfission
     let err = 'Falha ao obter resumo financeiro.';
     try {
       const errJson = await res.json();
-      err = extrairDetalheErro(errJson.detail, err);
+      err = parseErrorMessage(errJson, err);
     } catch {
       // ignora
     }

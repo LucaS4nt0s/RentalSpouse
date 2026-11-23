@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { mensagemErro } from '../services/apiError';
 import { createDenuncia, getMinhasDenuncias } from '../services/denuncias';
 import {
   Denuncia,
@@ -43,9 +44,7 @@ export function useDenuncias() {
       setDenuncias(lista);
     } catch (err: unknown) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Falha ao carregar suas denúncias.',
+        mensagemErro(err, 'Falha ao carregar suas denúncias.'),
       );
     } finally {
       setIsLoading(false);
@@ -92,9 +91,7 @@ export function useDenuncias() {
         return true;
       } catch (err: unknown) {
         setSubmitError(
-          err instanceof Error
-            ? err.message
-            : 'Não foi possível registrar a denúncia.',
+          mensagemErro(err, 'Não foi possível registrar a denúncia.'),
         );
         return false;
       } finally {

@@ -1,18 +1,6 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+import { parseErrorMessage } from './apiError';
 
-function extrairDetalheErro(detail: unknown, fallback: string): string {
-  if (typeof detail === 'string' && detail.trim()) return detail;
-  if (Array.isArray(detail) && detail.length > 0) {
-    return detail
-      .map((item) =>
-        typeof item === 'object' && item && 'msg' in item
-          ? String((item as { msg: unknown }).msg).replace(/^Value error,\s*/i, '')
-          : String(item)
-      )
-      .join(' ');
-  }
-  return fallback;
-}
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 export interface OrcamentoFoto {
   id: number;
@@ -94,7 +82,7 @@ export async function criarOrcamento(
     let errorDetail = 'Falha ao enviar solicitação de orçamento.';
     try {
       const errJson = await response.json();
-      errorDetail = extrairDetalheErro(errJson.detail, errorDetail);
+      errorDetail = parseErrorMessage(errJson, errorDetail);
     } catch {
       // Ignora erro de parse
     }
@@ -143,7 +131,7 @@ export async function obterOrcamento(
     let err = 'Falha ao buscar detalhes do orçamento.';
     try {
       const errJson = await res.json();
-      err = extrairDetalheErro(errJson.detail, err);
+      err = parseErrorMessage(errJson, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -177,7 +165,7 @@ export async function responderOrcamento(
     let err = 'Falha ao responder orçamento.';
     try {
       const errJson = await res.json();
-      err = extrairDetalheErro(errJson.detail, err);
+      err = parseErrorMessage(errJson, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -216,7 +204,7 @@ export async function aceitarOrcamento(
     let err = 'Falha ao aceitar orçamento.';
     try {
       const errJson = await res.json();
-      err = extrairDetalheErro(errJson.detail, err);
+      err = parseErrorMessage(errJson, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -250,7 +238,7 @@ export async function recusarOrcamento(
     let err = 'Falha ao recusar orçamento.';
     try {
       const errJson = await res.json();
-      err = extrairDetalheErro(errJson.detail, err);
+      err = parseErrorMessage(errJson, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -282,7 +270,7 @@ export async function obterResumoCapacidade(
     let err = 'Falha ao obter resumo de capacidade.';
     try {
       const errJson = await res.json();
-      err = extrairDetalheErro(errJson.detail, err);
+      err = parseErrorMessage(errJson, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -331,7 +319,7 @@ export async function aprovarEstimativaOrcamento(
     let err = 'Falha ao aprovar estimativa do orçamento.';
     try {
       const errJson = await res.json();
-      err = extrairDetalheErro(errJson.detail, err);
+      err = parseErrorMessage(errJson, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -380,7 +368,7 @@ export async function cancelarOrcamentoCliente(
     let err = 'Falha ao cancelar solicitação de orçamento.';
     try {
       const errJson = await res.json();
-      err = extrairDetalheErro(errJson.detail, err);
+      err = parseErrorMessage(errJson, err);
     } catch {
       // Ignora erro de JSON
     }

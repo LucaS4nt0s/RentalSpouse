@@ -41,6 +41,7 @@ import {
   approveProfessional,
   rejectProfessional,
 } from '../../../services/moderation';
+import { mensagemErro } from '../../../services/apiError';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 const isDevEnvironment = process.env.NODE_ENV === 'development';
@@ -170,7 +171,7 @@ export default function AdminModerationPage() {
         setLoginError('Sua sessão de administrador expirou. Faça login novamente.');
         return;
       }
-      setListError(err instanceof Error ? err.message : 'Falha ao carregar profissionais.');
+      setListError(mensagemErro(err, 'Falha ao carregar profissionais.'));
     } finally {
       setIsLoadingList(false);
     }
@@ -209,7 +210,7 @@ export default function AdminModerationPage() {
         setLoginError('A conta autenticada não possui permissão de administrador.');
       }
     } catch (err) {
-      setLoginError(err instanceof Error ? err.message : 'Falha ao autenticar.');
+      setLoginError(mensagemErro(err, 'Falha ao autenticar.'));
     } finally {
       setIsLoggingIn(false);
     }
@@ -229,7 +230,7 @@ export default function AdminModerationPage() {
       addToast({
         type: 'error',
         title: 'Falha ao carregar auditoria',
-        message: err instanceof Error ? err.message : 'Não foi possível carregar os documentos.',
+        message: mensagemErro(err, 'Não foi possível carregar os documentos.'),
       });
     } finally {
       setIsLoadingReview(false);
@@ -252,7 +253,7 @@ export default function AdminModerationPage() {
       addToast({
         type: 'error',
         title: 'Erro na aprovação',
-        message: err instanceof Error ? err.message : 'Não foi possível concluir a aprovação.',
+        message: mensagemErro(err, 'Não foi possível concluir a aprovação.'),
       });
       throw err;
     }
@@ -274,7 +275,7 @@ export default function AdminModerationPage() {
       addToast({
         type: 'error',
         title: 'Erro na reprovação',
-        message: err instanceof Error ? err.message : 'Não foi possível registrar a reprovação.',
+        message: mensagemErro(err, 'Não foi possível registrar a reprovação.'),
       });
       throw err;
     }

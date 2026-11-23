@@ -37,6 +37,7 @@ import {
   cancelarOrcamentoCliente,
   obterFotoUrl,
 } from '../../services/orcamentos';
+import { mensagemErro } from '../../services/apiError';
 import { Button } from '../ui/Button';
 
 interface QuoteDetailModalProps {
@@ -129,7 +130,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
         setRespostaInput(data.resposta_profissional);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao carregar orçamento';
+      const msg = mensagemErro(err, 'Falha ao carregar orçamento');
       setError(msg);
     } finally {
       setIsLoading(false);
@@ -190,7 +191,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
         onResponded();
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao aceitar orçamento.';
+      const msg = mensagemErro(err, 'Erro ao aceitar orçamento.');
       setSubmitError(msg);
     } finally {
       setIsSubmitting(false);
@@ -225,7 +226,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
         onResponded();
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao recusar orçamento.';
+      const msg = mensagemErro(err, 'Erro ao recusar orçamento.');
       setSubmitError(msg);
     } finally {
       setIsSubmitting(false);
@@ -267,7 +268,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
         onResponded('Estimativa enviada ao cliente com sucesso!');
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao enviar proposta.';
+      const msg = mensagemErro(err, 'Erro ao enviar proposta.');
       setSubmitError(msg);
     } finally {
       setIsSubmitting(false);
