@@ -6,6 +6,7 @@ import {
   criarAgendamentoMock,
   definirMinhaDisponibilidadeMock,
   gerarAgendaMock,
+  listarAgendamentosRecebidosMock,
   listarMeusAgendamentosMock,
   obterProfissionalPorIdMock,
 } from './agenda.mock';
@@ -62,6 +63,10 @@ export interface Agendamento {
   criado_em: string;
   motivo_cancelamento?: string | null;
   cancelado_em?: string | null;
+}
+
+export interface AgendamentoRecebido extends Agendamento {
+  cliente_nome?: string | null;
 }
 
 export interface DisponibilidadeJanela {
@@ -377,6 +382,49 @@ export async function definirMinhaDisponibilidade(
       parseErrorMessage(
         errorBody,
         'Não foi possível salvar sua grade de disponibilidade.',
+      ),
+      errorBody,
+    );
+  }
+
+  return response.json();
+}
+
+/**
+ * Lista os agendamentos recebidos pelo profissional autenticado:
+ * `GET /api/agendamentos/recebidos`.
+ */
+export async function listarAgendamentosRecebidos(
+  token: string,
+  statusFiltro?: AgendamentoStatus,
+): Promise<AgendamentoRecebido[]> {
+  if (IS_MOCK_ENABLED) {
+    return listarAgendamentosRecebidosMock(statusFiltro);
+  }
+
+  const params = new URLSearchParams();
+  if (statusFiltro) params.set('status', statusFiltro);
+  const query = params.toString();
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/agendamentos/recebidos${query ? `?${query}` : ''}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+      cache: 'no-store',
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => null);
+    throw new ApiError(
+      response.status,
+      parseErrorMessage(
+        errorBody,
+        'Não foi possível carregar os agendamentos recebidos.',
       ),
       errorBody,
     );

@@ -1751,3 +1751,113 @@ class TestCancelamentoAgendamento:
         ag_db = db_session.query(models.Agendamento).filter_by(id=ag_id).first()
         assert ag_db.motivo_cancelamento is None
 
+
+class TestAgendamentosRecebidosProfissional:
+    """Listagem de agendamentos recebidos pelo profissional e conclusão (issue #95)."""
+
+    def test_listar_agendamentos_recebidos_ordena_inclui_nome_e_isola_profissionais(
+        self, client: TestClient, db_session, monkeypatch
+    ):
+        monkeypatch.setattr(agenda_routes, "_utcnow", lambda: AGORA_FIXO)
+        prof_a = criar_profissional(client, db_session, "prof.receb.a@exemplo.com", aprovado=True)
+        prof_b = criar_profissional(client, db_session, "prof.receb.b@exemplo.com", aprovado=True)
+        criar_grade(db_session, prof_a.id, [(d, "08:00", "18:00", 60) for d in range(7)])
+        criar_grade(db_session, prof_b.id, [(d, "08:00", "18:00", 60) for d in range(7)])
+        cliente = criar_cliente(client, db_session, "cliente.receb@exemplo.com", "811222501")
+
+        tarde = datetime.combine(DIA_FIXO + timedelta(days=2), time(15, 0))
+        manha = datetime.combine(DIA_FIXO + timedelta(days=2), time(9, 0))
+
+        client.post(
+            URL_AGENDAMENTOS,
+            json={"professional_id": prof_a.id, "data_hora_inicio": tarde.isoformat()},
+            headers=cabecalho(cliente.email),
+        )
+        client.post(
+            URL_AGENDAMENTOS,
+            json={"professional_id": prof_a.id, "data_hora_inicio": manha.isoformat()},
+            headers=cabecalho(cliente.email),
+        )
+        client.post(
+            URL_AGENDAMENTOS,
+            json={"professional_id": prof_b.id, "data_hora_inicio": manha.isoformat()},
+            headers=cabecalho(cliente.email),
+        )
+
+        token_prof_a = create_access_token(
+            {"sub": prof_a.email, "role": "professional", "tipo": "profissional", "id": prof_a.id}
+        )
+        resp = client.get(
+            "/api/agendamentos/recebidos",
+            headers={"Authorization": f"Bearer {token_prof_a}"},
+        )
+        assert resp.status_code == 200, resp.text
+        lista = resp.json()
+        assert len(lista) == 2
+        assert lista[0]["data_hora_inicio"] == manha.isoformat()
+        assert lista[1]["data_hora_inicio"] == tarde.isoformat()
+        assert all(item["professional_id"] == prof_a.id for item in lista)
+        assert all(item["cliente_nome"] == cliente.nome for item in lista)
+
+    def test_listar_agendamentos_recebidos_filtra_por_status_e_conclui(
+        self, client: TestClient, db_session, monkeypatch
+    ):
+        monkeypatch.setattr(agenda_routes, "_utcnow", lambda: AGORA_FIXO)
+        prof = criar_profissional(client, db_session, "prof.receb.status@exemplo.com", aprovado=True)
+        criar_grade(db_session, prof.id, [(d, "08:00", "18:00", 60) for d in range(7)])
+        cliente = criar_cliente(client, db_session, "cliente.receb.status@exemplo.com", "811222502")
+
+        h1 = datetime.combine(DIA_FIXO + timedelta(days=2), time(9, 0))
+        h2 = datetime.combine(DIA_FIXO + timedelta(days=2), time(10, 0))
+        ag1 = client.post(
+            URL_AGENDAMENTOS,
+            json={"professional_id": prof.id, "data_hora_inicio": h1.isoformat()},
+            headers=cabecalho(cliente.email),
+        ).json()
+        client.post(
+            URL_AGENDAMENTOS,
+            json={"professional_id": prof.id, "data_hora_inicio": h2.isoformat()},
+            headers=cabecalho(cliente.email),
+        )
+
+        token_prof = create_access_token(
+            {"sub": prof.email, "role": "professional", "tipo": "profissional", "id": prof.id}
+        )
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        resp_concluir = client.patch(
+            f"/api/agendamentos/{ag1['id']}/concluir",
+            headers=headers_prof,
+        )
+        assert resp_concluir.status_code == 200, resp_concluir.text
+        assert resp_concluir.json()["status"] == "concluido"
+
+        resp_concluidos = client.get(
+            "/api/agendamentos/recebidos",
+            params={"status": "concluido"},
+            headers=headers_prof,
+        )
+        assert resp_concluidos.status_code == 200
+        assert [item["id"] for item in resp_concluidos.json()] == [ag1["id"]]
+
+        resp_invalido = client.get(
+            "/api/agendamentos/recebidos",
+            params={"status": "desconhecido"},
+            headers=headers_prof,
+        )
+        assert resp_invalido.status_code == 422
+
+    def test_listar_agendamentos_recebidos_exige_profissional(
+        self, client: TestClient, db_session
+    ):
+        resp_sem_token = client.get("/api/agendamentos/recebidos")
+        assert resp_sem_token.status_code == 401
+
+        cliente = criar_cliente(client, db_session, "cliente.receb.403@exemplo.com", "811222503")
+        resp_cliente = client.get(
+            "/api/agendamentos/recebidos",
+            headers=cabecalho(cliente.email),
+        )
+        assert resp_cliente.status_code == 403
+
+

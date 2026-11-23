@@ -55,6 +55,7 @@ router = APIRouter(prefix="/api", tags=["Agenda"])
 URL_AGENDA_PROFISSIONAL = "/professionals/{professional_id}/agenda"
 URL_AGENDAMENTOS = "/agendamentos"
 URL_MEUS_AGENDAMENTOS = "/agendamentos/meus"
+URL_AGENDAMENTOS_RECEBIDOS = "/agendamentos/recebidos"
 URL_CONCLUIR_AGENDAMENTO = "/agendamentos/{agendamento_id}/concluir"
 URL_AGENDAMENTO_CANCELAR = "/agendamentos/{agendamento_id}/cancelar"
 URL_DISPONIBILIDADE = "/agendamentos/disponibilidade"
@@ -737,7 +738,65 @@ def concluir_agendamento(
         db.refresh(agendamento)
 
     return agendamento
-    return agendamento
+
+
+@router.get(
+    URL_AGENDAMENTOS_RECEBIDOS,
+    response_model=List[schemas.AgendamentoRecebidoRead],
+    summary="Listar agendamentos recebidos pelo profissional",
+    description=(
+        "Lista os agendamentos recebidos pelo profissional autenticado (issue #95), "
+        "ordenados por `data_hora_inicio`. Filtro opcional por `status` "
+        "(`agendado`, `cancelado`, `concluido`)."
+    ),
+)
+def listar_agendamentos_recebidos(
+    status_filtro: Optional[str] = Query(
+        None,
+        alias="status",
+        description="Filtra pelo status do agendamento.",
+    ),
+    skip: int = Query(0, ge=0, description="Quantidade de registros a ignorar."),
+    limit: int = Query(50, ge=1, le=100, description="Máximo de registros retornados."),
+    profissional: models.Professional = Depends(get_current_professional),
+    db: Session = Depends(get_db),
+):
+    """Lista os agendamentos recebidos pelo profissional dono do token."""
+    consulta = (
+        db.query(models.Agendamento, models.Cliente.nome)
+        .outerjoin(models.Cliente, models.Cliente.id == models.Agendamento.cliente_id)
+        .filter(models.Agendamento.professional_id == profissional.id)
+    )
+
+    if status_filtro is not None:
+        normalizado = status_filtro.strip().lower()
+        status_aceitos = [valor.value for valor in models.AgendamentoStatus]
+        if normalizado not in status_aceitos:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Status '{status_filtro}' inválido. "
+                    f"Valores aceitos: {', '.join(status_aceitos)}."
+                ),
+            )
+        consulta = consulta.filter(models.Agendamento.status == normalizado)
+
+    linhas = (
+        consulta.order_by(
+            models.Agendamento.data_hora_inicio.asc(),
+            models.Agendamento.id.asc(),
+        )
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    resultado: List[schemas.AgendamentoRecebidoRead] = []
+    for agendamento, cliente_nome in linhas:
+        item = schemas.AgendamentoRecebidoRead.model_validate(agendamento)
+        item.cliente_nome = cliente_nome
+        resultado.append(item)
+    return resultado
 
 
 # ---------------------------------------------------------------------------

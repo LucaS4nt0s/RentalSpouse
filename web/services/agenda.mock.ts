@@ -150,6 +150,18 @@ export function listarMeusAgendamentosMock(
     : lista;
 }
 
+export function listarAgendamentosRecebidosMock(
+  statusFiltro?: AgendamentoStatus,
+): Array<Agendamento & { cliente_nome?: string | null }> {
+  const lista = carregarAgendamentosMock().map((ag) => ({
+    ...ag,
+    cliente_nome: `Cliente #${ag.cliente_id}`,
+  }));
+  return statusFiltro
+    ? lista.filter((ag) => ag.status === statusFiltro)
+    : lista;
+}
+
 export function cancelarAgendamentoMock(
   agendamentoId: number,
   motivo?: string,

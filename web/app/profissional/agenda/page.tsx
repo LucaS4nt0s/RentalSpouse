@@ -36,6 +36,8 @@ import {
 import { Button } from '../../../components/ui/Button';
 import { ThemeToggle } from '../../../components/ui/ThemeToggle';
 import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
+import { AgendamentosRecebidosSection } from '../../../components/agenda/AgendamentosRecebidosSection';
+import { BloqueiosAgendaSection } from '../../../components/agenda/BloqueiosAgendaSection';
 
 interface JanelaEditor {
   localId: string;
@@ -759,6 +761,12 @@ export default function ProfissionalAgendaPage() {
                 </Button>
               </div>
             </div>
+
+            {/* Agendamentos recebidos e conclusão de atendimentos (issue #95) */}
+            {token && <AgendamentosRecebidosSection token={token} />}
+
+            {/* Bloqueios pontuais de folgas e horários (issue #16 / #95) */}
+            {token && <BloqueiosAgendaSection token={token} />}
           </>
         )}
       </div>
