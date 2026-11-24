@@ -1,0 +1,335 @@
+'use client';
+
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Sparkles } from 'lucide-react';
+import { AppHeader } from '../../components/layout/AppHeader';
+import { useDebounce } from '../../hooks/useDebounce';
+import { useUrlFilters } from '../../hooks/useUrlFilters';
+import { useProfessionalsSearch } from '../../hooks/useProfessionalsSearch';
+import { SearchHeader } from '../../components/profissionais/SearchHeader';
+import { CategoryChipsBar } from '../../components/profissionais/CategoryChipsBar';
+import { FilterActionBar } from '../../components/profissionais/FilterActionBar';
+import { ActiveFilterChips, ActiveFilter } from '../../components/profissionais/ActiveFilterChips';
+import {
+  ProfessionalCard,
+  ProfessionalRatingSummary,
+} from '../../components/profissionais/ProfessionalCard';
+import { ProfessionalCardSkeleton } from '../../components/profissionais/ProfessionalCardSkeleton';
+import { SearchEmptyState } from '../../components/profissionais/SearchEmptyState';
+import { SearchErrorState } from '../../components/profissionais/SearchErrorState';
+import { QuoteModal } from '../../components/profissionais/QuoteModal';
+import { ProfessionalProfileModal } from '../../components/profissionais/ProfessionalProfileModal';
+import { DenunciaModal } from '../../components/denuncias/DenunciaModal';
+import { AvaliacoesProfissionalModal } from '../../components/avaliacoes/AvaliacoesProfissionalModal';
+import { Professional } from '../../types/professional';
+import { ProfissionalAvaliacoesResumo } from '../../types/avaliacoes';
+
+function ProfissionaisSearchContent() {
+  const {
+    specialty,
+    city,
+    state,
+    q,
+    radius,
+    orderBy,
+    setSpecialty,
+    setCity,
+    setQ,
+    setRadius,
+    setOrderBy,
+    clearFilters,
+    hasActiveFilters,
+  } = useUrlFilters();
+
+  // Estado local para busca textual com debounce de 350ms (requisito PRD); cidade é instantânea
+  const [searchInput, setSearchInput] = useState<string>(q);
+  const debouncedSearch = useDebounce(searchInput, 350);
+
+  // Modal de Perfil Detalhado do Profissional (issue #96)
+  const [profileTarget, setProfileTarget] = useState<Professional | null>(null);
+
+  // Modal de Solicitação de Orçamento
+  const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
+
+  // Modal de Denúncia do Profissional (issue #68)
+  const [reportTarget, setReportTarget] = useState<Professional | null>(null);
+
+  // Modal de Avaliações e Comentários do Profissional (issue #21)
+  const [reviewsTarget, setReviewsTarget] = useState<Professional | null>(null);
+  const [ratingsCache, setRatingsCache] = useState<Record<number, ProfessionalRatingSummary>>({});
+
+  // Sincroniza estado de digitação do input com a URL e busca apenas quando houver alteração
+  useEffect(() => {
+    if (debouncedSearch !== q) {
+      setQ(debouncedSearch);
+    }
+  }, [debouncedSearch, q, setQ]);
+
+  // Se a URL mudou externamente (ex: botão limpar filtros), atualiza input local
+  useEffect(() => {
+    setSearchInput(q);
+  }, [q]);
+
+  // Hook central de busca e gestão dos 3 estados
+  const { data, isLoading, isRetrying, error, isEmpty, detectedSuggestion, retry } = useProfessionalsSearch({
+    specialty,
+    city,
+    state,
+    q: debouncedSearch,
+    radius,
+    orderBy,
+  });
+
+  // Paginação progressiva sob demanda (LoadMoreControl - PRD §3.1)
+  const [visibleCount, setVisibleCount] = useState<number>(12);
+
+  useEffect(() => {
+    setVisibleCount(12);
+  }, [specialty, city, state, debouncedSearch, radius, orderBy]);
+
+  const handleClearAll = () => {
+    setSearchInput('');
+    clearFilters();
+  };
+
+  const activeFilters: ActiveFilter[] = [
+    q && { key: 'q', label: `"${q}"`, onRemove: () => { setSearchInput(''); setQ(''); } },
+    specialty && specialty !== 'Todas' && { key: 'specialty', label: specialty, onRemove: () => setSpecialty('') },
+    city && { key: 'city', label: city, onRemove: () => setCity('') },
+    radius && { key: 'radius', label: `Até ${radius} km`, onRemove: () => setRadius('') },
+  ].filter(Boolean) as ActiveFilter[];
+
+  const handleOpenProfileModal = useCallback((prof: Professional) => {
+    setProfileTarget(prof);
+  }, []);
+
+  const handleCloseProfileModal = useCallback(() => {
+    setProfileTarget(null);
+  }, []);
+
+  const handleOpenQuoteModal = useCallback((prof: Professional) => {
+    setSelectedProfessional(prof);
+  }, []);
+
+  const handleCloseQuoteModal = useCallback(() => {
+    setSelectedProfessional(null);
+  }, []);
+
+  const handleOpenReportModal = useCallback((prof: Professional) => {
+    setReportTarget(prof);
+  }, []);
+
+  const handleCloseReportModal = useCallback(() => {
+    setReportTarget(null);
+  }, []);
+
+  const handleOpenReviewsModal = useCallback((prof: Professional) => {
+    setReviewsTarget(prof);
+  }, []);
+
+  const handleCloseReviewsModal = useCallback(() => {
+    setReviewsTarget(null);
+  }, []);
+
+  const handleResumoAvaliacoesCarregado = useCallback(
+    (resumo: ProfissionalAvaliacoesResumo) => {
+      setRatingsCache((prev) => ({
+        ...prev,
+        [resumo.professional_id]: {
+          media_notas: resumo.media_notas,
+          total_avaliacoes: resumo.total_avaliacoes,
+        },
+      }));
+    },
+    [],
+  );
+
+  return (
+    <div className="flex min-h-screen flex-col bg-rental-bg text-rental-ink">
+      {/* Header Global Unificado da Aplicação */}
+      <AppHeader />
+
+      {/* Conteúdo Principal */}
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 sm:px-6 py-8 space-y-6">
+        {/* Seção 1: Header de Busca */}
+        <SearchHeader
+          query={searchInput}
+          onQueryChange={setSearchInput}
+          isLoading={isLoading}
+        />
+
+        {/* Seção 2: Carrossel de Categorias Rápidas */}
+        <div className="pt-2">
+          <CategoryChipsBar
+            activeCategory={specialty}
+            onSelectCategory={setSpecialty}
+          />
+        </div>
+
+        {/* Seção 3: Barra de Ações e Filtros Secundários */}
+        <FilterActionBar
+          city={city}
+          onCityChange={setCity}
+          radius={radius}
+          onRadiusChange={setRadius}
+          orderBy={orderBy}
+          onOrderByChange={setOrderBy}
+          resultsCount={data.length}
+          isLoading={isLoading}
+          hasActiveFilters={hasActiveFilters}
+          onClearAllFilters={handleClearAll}
+        />
+
+        <ActiveFilterChips filters={activeFilters} />
+
+        {/* Banner de Busca Inteligente / Sugestão de Aproximação (Estilo YouTube / Spotify) */}
+        {!isLoading && !error && searchInput.trim() && detectedSuggestion && (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-rental-primary/30 bg-rental-primary/5 p-4 text-xs sm:text-sm animate-fadeIn">
+            <div className="flex items-center gap-2.5 text-rental-ink flex-wrap">
+              <span>
+                Mostrando resultados para <strong className="text-rental-primary font-semibold">"{searchInput}"</strong>
+                {detectedSuggestion.toLowerCase() !== searchInput.trim().toLowerCase() && (
+                  <span className="text-rental-muted">
+                    {' '}(aproximação com <strong className="text-rental-ink font-semibold">{detectedSuggestion}</strong>)
+                  </span>
+                )}
+              </span>
+            </div>
+            {specialty !== detectedSuggestion && (
+              <button
+                type="button"
+                onClick={() => setSpecialty(detectedSuggestion)}
+                className="text-xs font-bold text-rental-primary hover:underline flex items-center gap-1 shrink-0"
+              >
+                Filtrar apenas por {detectedSuggestion} →
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Seção 4: Grid com os 3 Estados Mandatórios */}
+        <section aria-label="Catálogo de Profissionais" className="pt-2">
+          {isLoading ? (
+            /* Estado 1: Loading (Grid de Skeletons com CLS = 0) */
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <ProfessionalCardSkeleton key={index} />
+              ))}
+            </div>
+          ) : error ? (
+            /* Estado 2: Error (Banner amigável com Retry preservando filtros) */
+            <SearchErrorState
+              message={error}
+              onRetry={retry}
+              isRetrying={isRetrying}
+            />
+          ) : isEmpty ? (
+            /* Estado 3: Empty State (Zero registros encontrados) */
+            <SearchEmptyState
+              onClearFilters={handleClearAll}
+              onSelectSuggestedCategory={(cat) => setSpecialty(cat)}
+            />
+          ) : (
+            /* Estado 3: Sucesso com Registros */
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                {data.slice(0, visibleCount).map((prof) => (
+                  <ProfessionalCard
+                    key={prof.id}
+                    professional={prof}
+                    activeSpecialty={specialty}
+                    onSpecialtyClick={setSpecialty}
+                    onViewProfile={handleOpenProfileModal}
+                    onRequestQuote={handleOpenQuoteModal}
+                    onViewReviews={handleOpenReviewsModal}
+                    ratingSummary={ratingsCache[prof.id]}
+                    onReportProfessional={handleOpenReportModal}
+                    scheduleHref={`/profissionais/${prof.id}/agendar`}
+                  />
+                ))}
+              </div>
+
+              {visibleCount < data.length && (
+                <div className="flex justify-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((prev) => prev + 12)}
+                    className="inline-flex items-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-6 py-3 text-xs sm:text-sm font-bold text-rental-ink shadow-sm transition-all hover:border-rental-primary/50 hover:bg-rental-surface2 active:scale-[0.98]"
+                  >
+                    Carregar mais profissionais ({data.length - visibleCount} restantes)
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      </main>
+
+      {/* Modal de Perfil Detalhado do Profissional (issue #96) */}
+      <ProfessionalProfileModal
+        professional={profileTarget}
+        onClose={handleCloseProfileModal}
+        onRequestQuote={handleOpenQuoteModal}
+        onReportProfessional={handleOpenReportModal}
+        onSpecialtyClick={setSpecialty}
+        onResumoCarregado={handleResumoAvaliacoesCarregado}
+      />
+
+      {/* Modal de Solicitação de Orçamento Acessível com Focus Trap */}
+      <QuoteModal
+        professional={selectedProfessional}
+        onClose={handleCloseQuoteModal}
+      />
+
+      {/* Modal de Denúncia do Profissional (issue #68) */}
+      <DenunciaModal
+        professional={reportTarget}
+        onClose={handleCloseReportModal}
+      />
+
+      {/* Modal de Avaliações e Comentários do Profissional (issue #21) */}
+      <AvaliacoesProfissionalModal
+        professional={reviewsTarget}
+        onClose={handleCloseReviewsModal}
+        onResumoCarregado={handleResumoAvaliacoesCarregado}
+        onRequestQuote={handleOpenQuoteModal}
+      />
+
+      {/* Footer */}
+      <footer className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 sm:px-6 py-6 text-xs text-rental-muted mt-12">
+        <div className="flex items-center gap-4">
+          <span>RentalSpouse © 2026</span>
+          <span>•</span>
+          <Link href="/" className="hover:text-rental-primary transition-colors">
+            Página Inicial
+          </Link>
+          <span>•</span>
+          <Link href="/cadastro/profissional" className="hover:text-rental-primary transition-colors">
+            Cadastrar como Profissional
+          </Link>
+        </div>
+        <span className="text-rental-muted hidden sm:inline">
+          Diretório e Busca de Serviços Residenciais
+        </span>
+      </footer>
+    </div>
+  );
+}
+
+export default function ProfissionaisPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-rental-bg p-8 flex items-center justify-center">
+          <div className="flex items-center gap-3 text-rental-primary">
+            <span className="h-6 w-6 animate-spin rounded-full border-2 border-rental-primary border-t-transparent" />
+            <span className="text-sm font-semibold">Carregando diretório de profissionais...</span>
+          </div>
+        </div>
+      }
+    >
+      <ProfissionaisSearchContent />
+    </Suspense>
+  );
+}

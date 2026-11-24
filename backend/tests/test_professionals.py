@@ -1,0 +1,839 @@
+"""
+Testes automatizados para os endpoints de Profissionais:
+- POST /api/professionals (Criação com bio, especialidades e raio >= 1 km)
+- GET /api/professionals (Listagem e filtros por especialidade, cidade e paginação)
+- GET /api/professionals/{id} (Consulta por ID)
+- PUT /api/professionals/{id} (Atualização de dados cadastrais, raio e validações estritas de null)
+- DELETE /api/professionals/{id} (Remoção de perfil)
+"""
+
+from unittest.mock import patch
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
+
+from schemas import ProfessionalUpdate
+import models
+
+SAMPLE_PROFESSIONAL = {
+    "name": "Carlos Marido de Aluguel",
+    "email": "carlos.silva@exemplo.com",
+    "phone": "(11) 98765-4321",
+    "bio": "Especialista em reparos residenciais rápidos, instalações elétricas e pequenos reparos hidráulicos com mais de 10 anos de experiência.",
+    "service_radius_km": 15.0,
+    "specialties": ["Elétrica", "Encanamento", "Reparos Gerais"],
+    "city": "São Paulo",
+    "state": "SP",
+}
+
+
+class TestCreateProfessional:
+    """Testes de criação de perfil profissional (POST /api/professionals)."""
+
+    def test_create_professional_success(self, client: TestClient):
+        """Deve criar perfil profissional com sucesso (HTTP 201)."""
+        response = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL)
+        assert response.status_code == 201
+
+        data = response.json()
+        assert data["id"] is not None
+        assert data["name"] == SAMPLE_PROFESSIONAL["name"]
+        assert data["email"] == SAMPLE_PROFESSIONAL["email"]
+        assert data["service_radius_km"] == 15.0
+        assert data["bio"] == SAMPLE_PROFESSIONAL["bio"]
+        assert "Elétrica" in data["specialties"]
+        assert data["is_active"] is True
+        assert "created_at" in data
+
+    def test_create_professional_duplicate_email(self, client: TestClient):
+        """Deve rejeitar cadastro com e-mail duplicado com HTTP 409 Conflict."""
+        first_resp = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL)
+        assert first_resp.status_code == 201
+
+        second_resp = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL)
+        assert second_resp.status_code == 409
+        assert "E-mail já cadastrado" in second_resp.json()["detail"]
+
+    def test_create_professional_integrity_error_race_condition(self, client: TestClient):
+        """Simula condição de corrida onde o commit falha por colisão de unicidade."""
+        with patch("sqlalchemy.orm.Session.commit", side_effect=IntegrityError("Unique violation", params=None, orig=Exception())):
+            response = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL)
+            assert response.status_code == 409
+            assert "E-mail já cadastrado" in response.json()["detail"]
+
+    def test_create_professional_invalid_radius_less_than_one(self, client: TestClient):
+        """Deve rejeitar raio de atendimento menor que 1 km (HTTP 422)."""
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["service_radius_km"] = 0.5
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 422
+
+    def test_create_professional_empty_specialties(self, client: TestClient):
+        """Deve rejeitar perfil sem especialidades (HTTP 422)."""
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["specialties"] = []
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 422
+
+    def test_create_professional_blank_specialties_strings(self, client: TestClient):
+        """Deve rejeitar especialidades compostas apenas por espaços vazios (HTTP 422)."""
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["specialties"] = ["   ", "  "]
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 422
+
+    def test_create_professional_short_bio(self, client: TestClient):
+        """Deve rejeitar bio com menos de 10 caracteres (HTTP 422)."""
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["bio"] = "Curto"
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 422
+
+    def test_create_professional_short_name(self, client: TestClient):
+        """Deve rejeitar nome com menos de 2 caracteres (HTTP 422)."""
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["name"] = "A"
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 422
+
+    def test_create_professional_invalid_email(self, client: TestClient):
+        """Deve rejeitar e-mail em formato inválido (HTTP 422)."""
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["email"] = "email-invalido"
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 422
+
+    def test_create_professional_invalid_uf(self, client: TestClient):
+        """Deve rejeitar sigla de estado inválida que não pertence ao Brasil (HTTP 422)."""
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["state"] = "ZZ"
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 422
+
+
+class TestListAndFilterProfessionals:
+    """Testes de listagem e filtros (GET /api/professionals)."""
+
+    def test_list_empty(self, client: TestClient):
+        """Deve retornar lista vazia quando nenhum profissional cadastrado."""
+        response = client.get("/api/professionals")
+        assert response.status_code == 200
+        assert response.json() == []
+
+    @staticmethod
+    def _approve_all(db_session):
+        db_session.query(models.Professional).update(
+            {models.Professional.approval_status: models.ProfessionalApprovalStatus.APPROVED.value}
+        )
+        db_session.commit()
+
+    def test_list_and_filter_by_specialty(self, client: TestClient, db_session):
+        """Deve listar profissionais e filtrar por especialidade com sucesso."""
+        p1 = dict(SAMPLE_PROFESSIONAL)
+        p1["email"] = "prof1@test.com"
+        p1["specialties"] = ["Elétrica", "Pintura"]
+        client.post("/api/professionals", json=p1)
+
+        p2 = dict(SAMPLE_PROFESSIONAL)
+        p2["email"] = "prof2@test.com"
+        p2["specialties"] = ["Encanamento", "Desentupimento"]
+        client.post("/api/professionals", json=p2)
+        self._approve_all(db_session)
+
+        # Sem filtro: 2 registros
+        all_resp = client.get("/api/professionals")
+        assert len(all_resp.json()) == 2
+
+        # Filtrando por elétrica
+        eletrica_resp = client.get("/api/professionals?specialty=elétrica")
+        assert len(eletrica_resp.json()) == 1
+        assert eletrica_resp.json()[0]["email"] == "pr***1@test.com"
+
+        # Filtrando por encanamento
+        encanamento_resp = client.get("/api/professionals?specialty=encanamento")
+        assert len(encanamento_resp.json()) == 1
+        assert encanamento_resp.json()[0]["email"] == "pr***2@test.com"
+
+        # Filtrando por eletrica (SEM ACENTO) deve encontrar Elétrica
+        sem_acento_resp = client.get("/api/professionals?specialty=eletrica")
+        assert len(sem_acento_resp.json()) == 1
+        assert sem_acento_resp.json()[0]["email"] == "pr***1@test.com"
+
+    def test_filter_by_city(self, client: TestClient, db_session):
+        """Deve filtrar profissionais por cidade (com e sem acentos)."""
+        p1 = dict(SAMPLE_PROFESSIONAL)
+        p1["email"] = "sp@test.com"
+        p1["city"] = "Campinas"
+        client.post("/api/professionals", json=p1)
+
+        p2 = dict(SAMPLE_PROFESSIONAL)
+        p2["email"] = "rj@test.com"
+        p2["city"] = "Niterói"
+        client.post("/api/professionals", json=p2)
+        self._approve_all(db_session)
+
+        resp = client.get("/api/professionals?city=Campinas")
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+        assert resp.json()[0]["email"] == "s***@test.com"
+
+        # Filtrando por niteroi (SEM ACENTO) deve encontrar Niterói
+        resp_sem_acento = client.get("/api/professionals?city=niteroi")
+        assert resp_sem_acento.status_code == 200
+        assert len(resp_sem_acento.json()) == 1
+        assert resp_sem_acento.json()[0]["email"] == "r***@test.com"
+
+    def test_pagination_skip_limit(self, client: TestClient, db_session):
+        """Deve respeitar paginação via skip e limit no banco."""
+        for i in range(3):
+            p = dict(SAMPLE_PROFESSIONAL)
+            p["email"] = f"page{i}@test.com"
+            client.post("/api/professionals", json=p)
+        self._approve_all(db_session)
+
+        resp = client.get("/api/professionals?skip=1&limit=1")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["email"] == "pa***1@test.com"
+
+    def test_search_free_text_q(self, client: TestClient, db_session):
+        """Deve buscar profissionais pelo parâmetro livre q (nome, bio, especialidade com/sem acento)."""
+        p1 = dict(SAMPLE_PROFESSIONAL)
+        p1["email"] = "marido1@test.com"
+        p1["name"] = "José Eletricista"
+        p1["bio"] = "Especialista em iluminação residencial e quadros elétricos de alta voltagem."
+        p1["specialties"] = ["Elétrica"]
+        p1["city"] = "Campinas"
+        client.post("/api/professionals", json=p1)
+
+        p2 = dict(SAMPLE_PROFESSIONAL)
+        p2["email"] = "marido2@test.com"
+        p2["name"] = "Marcos Encanador"
+        p2["bio"] = "Conserto de vazamentos em canos de cobre e pvc, desentupimentos rápidos."
+        p2["specialties"] = ["Hidráulica"]
+        p2["city"] = "Niterói"
+        client.post("/api/professionals", json=p2)
+        self._approve_all(db_session)
+
+        # Busca por nome
+        resp = client.get("/api/professionals?q=jose")
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+        assert resp.json()[0]["email"] == "ma***1@test.com"
+
+        # Busca por especialidade no q (SEM ACENTO)
+        resp_q_spec = client.get("/api/professionals?q=eletrica")
+        assert resp_q_spec.status_code == 200
+        assert len(resp_q_spec.json()) == 1
+        assert resp_q_spec.json()[0]["email"] == "ma***1@test.com"
+
+        # Busca por termo na bio (SEM ACENTO: "iluminacao" casa com "iluminação")
+        resp_bio = client.get("/api/professionals?q=iluminacao")
+        assert resp_bio.status_code == 200
+        assert len(resp_bio.json()) == 1
+        assert resp_bio.json()[0]["email"] == "ma***1@test.com"
+
+        # Busca combinada com q e city
+        resp_comb = client.get("/api/professionals?q=encanador&city=niteroi")
+        assert resp_comb.status_code == 200
+        assert len(resp_comb.json()) == 1
+        assert resp_comb.json()[0]["email"] == "ma***2@test.com"
+
+        # Busca com termo inexistente
+        resp_vazio = client.get("/api/professionals?q=termoinexistentexyz")
+        assert resp_vazio.status_code == 200
+        assert len(resp_vazio.json()) == 0
+
+        # Busca com caracteres curinga do LIKE (% e _) - devem ser tratados literalmente
+        resp_wildcard_pct = client.get("/api/professionals?q=%")
+        assert resp_wildcard_pct.status_code == 200
+        assert len(resp_wildcard_pct.json()) == 0
+
+        resp_wildcard_underscore = client.get("/api/professionals?q=_")
+        assert resp_wildcard_underscore.status_code == 200
+        assert len(resp_wildcard_underscore.json()) == 0
+
+    def test_list_defaults_to_approved_professionals_only(self, client: TestClient, db_session):
+        """Garante que profissionais pendentes não aparecem no catálogo público por padrão."""
+        p1 = dict(SAMPLE_PROFESSIONAL)
+        p1["email"] = "pendente@test.com"
+        client.post("/api/professionals", json=p1)
+
+        p2 = dict(SAMPLE_PROFESSIONAL)
+        p2["email"] = "aprovado@test.com"
+        r2 = client.post("/api/professionals", json=p2).json()
+        db_session.query(models.Professional).filter_by(id=r2["id"]).update(
+            {models.Professional.approval_status: models.ProfessionalApprovalStatus.APPROVED.value}
+        )
+        db_session.commit()
+
+        # Listagem padrão (público) só retorna o aprovado
+        resp = client.get("/api/professionals")
+        assert resp.status_code == 200
+        emails = [p["email"] for p in resp.json()]
+        assert "ap***o@test.com" in emails
+        assert "pe***e@test.com" not in emails
+
+        # Listagem com approval_status=all retorna ambos
+        resp_all = client.get("/api/professionals?approval_status=all")
+        assert len(resp_all.json()) == 2
+        assert len(resp_all.json()) == 2
+
+
+
+class TestGetProfessionalById:
+    """Testes de busca por ID (GET /api/professionals/{id})."""
+
+    def test_get_by_id_success(self, client: TestClient):
+        """Deve obter dados do profissional pelo ID correto com mascaramento LGPD."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        prof_id = created["id"]
+
+        response = client.get(f"/api/professionals/{prof_id}")
+        assert response.status_code == 200
+        assert response.json()["id"] == prof_id
+        assert response.json()["email"] == "ca***a@exemplo.com"
+        assert response.json()["phone"] == "(11) 9****-**21"
+
+    def test_get_by_id_not_found(self, client: TestClient):
+        """Deve retornar 404 quando o profissional não existir."""
+        response = client.get("/api/professionals/99999")
+        assert response.status_code == 404
+        assert "não encontrado" in response.json()["detail"]
+
+
+class TestUpdateAndRemoveProfessional:
+    """Testes de atualização e remoção (PUT / DELETE /api/professionals/{id})."""
+
+    def test_update_professional_success(self, client: TestClient):
+        """Deve atualizar bio, raio e especialidades do profissional."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        prof_id = created["id"]
+
+        update_payload = {
+            "bio": "Nova bio atualizada com vasta experiência comprovada em instalações industriais e prediais.",
+            "service_radius_km": 30.0,
+            "specialties": ["Elétrica Avançada", "CFTV"],
+            "state": "rj",
+            "name": " Carlos Atualizado ",
+        }
+        response = client.put(f"/api/professionals/{prof_id}", json=update_payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "Carlos Atualizado"
+        assert data["service_radius_km"] == 30.0
+        assert "CFTV" in data["specialties"]
+        assert data["state"] == "RJ"
+        assert data["bio"] == update_payload["bio"]
+
+    def test_update_professional_email_conflict(self, client: TestClient):
+        """Deve rejeitar atualização para e-mail já usado por outro profissional com HTTP 409."""
+        p1 = dict(SAMPLE_PROFESSIONAL)
+        p1["email"] = "user1@teste.com"
+        created1 = client.post("/api/professionals", json=p1).json()
+
+        p2 = dict(SAMPLE_PROFESSIONAL)
+        p2["email"] = "user2@teste.com"
+        created2 = client.post("/api/professionals", json=p2).json()
+
+        # Tentar trocar email do user2 para user1
+        response = client.put(f"/api/professionals/{created2['id']}", json={"email": "user1@teste.com"})
+        assert response.status_code == 409
+        assert "em uso" in response.json()["detail"]
+
+    def test_update_professional_integrity_error_race_condition(self, client: TestClient):
+        """Simula falha de integridade concorrente no update retornando HTTP 409."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        prof_id = created["id"]
+
+        with patch("sqlalchemy.orm.Session.commit", side_effect=IntegrityError("Unique violation", params=None, orig=Exception())):
+            response = client.put(f"/api/professionals/{prof_id}", json={"name": "Outro Nome"})
+            assert response.status_code == 409
+            assert "E-mail já está em uso" in response.json()["detail"]
+
+    def test_update_professional_not_found(self, client: TestClient):
+        """Deve retornar 404 ao tentar atualizar profissional inexistente."""
+        response = client.put("/api/professionals/99999", json={"bio": "Bio nova para profissional inexistente."})
+        assert response.status_code == 404
+        assert "não encontrado" in response.json()["detail"]
+
+    def test_update_professional_blank_specialties(self, client: TestClient):
+        """Deve retornar 422 ao tentar atualizar especialidades para lista vazia."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        prof_id = created["id"]
+
+        response = client.put(f"/api/professionals/{prof_id}", json={"specialties": ["   "]})
+        assert response.status_code == 422
+
+    def test_update_professional_invalid_state(self, client: TestClient):
+        """Deve retornar 422 ao tentar atualizar estado com sigla inexistente."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        prof_id = created["id"]
+
+        response = client.put(f"/api/professionals/{prof_id}", json={"state": "ZZ"})
+        assert response.status_code == 422
+
+    def test_update_professional_invalid_email_format(self, client: TestClient):
+        """Deve retornar 422 ao tentar atualizar e-mail com formato inválido."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        prof_id = created["id"]
+
+        response = client.put(f"/api/professionals/{prof_id}", json={"email": "invalido@"})
+        assert response.status_code == 422
+
+    def test_update_professional_short_name(self, client: TestClient):
+        """Deve retornar 422 ao tentar atualizar nome com menos de 2 caracteres."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        prof_id = created["id"]
+
+        response = client.put(f"/api/professionals/{prof_id}", json={"name": "A"})
+        assert response.status_code == 422
+
+    # -----------------------------------------------------------------------
+    # Testes cruciais solicitados no code review: PUT com null explícito deve
+    # retornar HTTP 422 em vez de quebrar com 500 no banco / ResponseValidation
+    # -----------------------------------------------------------------------
+
+    def test_update_professional_rejects_null_name(self, client: TestClient):
+        """Deve retornar 422 ao enviar name=null explícito."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        raw_client = TestClient(client.app, raise_server_exceptions=False)
+        response = raw_client.put(f"/api/professionals/{created['id']}", json={"name": None})
+        assert response.status_code == 422
+
+    def test_update_professional_rejects_null_bio(self, client: TestClient):
+        """Deve retornar 422 ao enviar bio=null explícito."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        raw_client = TestClient(client.app, raise_server_exceptions=False)
+        response = raw_client.put(f"/api/professionals/{created['id']}", json={"bio": None})
+        assert response.status_code == 422
+
+    def test_update_professional_rejects_null_service_radius_km(self, client: TestClient):
+        """Deve retornar 422 ao enviar service_radius_km=null explícito."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        raw_client = TestClient(client.app, raise_server_exceptions=False)
+        response = raw_client.put(f"/api/professionals/{created['id']}", json={"service_radius_km": None})
+        assert response.status_code == 422
+
+    def test_update_professional_rejects_null_specialties(self, client: TestClient):
+        """Deve retornar 422 ao enviar specialties=null explícito."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        raw_client = TestClient(client.app, raise_server_exceptions=False)
+        response = raw_client.put(f"/api/professionals/{created['id']}", json={"specialties": None})
+        assert response.status_code == 422
+
+    def test_update_professional_rejects_null_email(self, client: TestClient):
+        """Deve retornar 422 ao enviar email=null explícito."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        raw_client = TestClient(client.app, raise_server_exceptions=False)
+        response = raw_client.put(f"/api/professionals/{created['id']}", json={"email": None})
+        assert response.status_code == 422
+
+    def test_update_professional_rejects_null_is_active(self, client: TestClient):
+        """Deve retornar 422 ao enviar is_active=null explícito."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        raw_client = TestClient(client.app, raise_server_exceptions=False)
+        response = raw_client.put(f"/api/professionals/{created['id']}", json={"is_active": None})
+        assert response.status_code == 422
+
+    def test_delete_professional_success(self, client: TestClient):
+        """Deve remover profissional da base (HTTP 204) e não encontrá-lo depois (HTTP 404)."""
+        created = client.post("/api/professionals", json=SAMPLE_PROFESSIONAL).json()
+        prof_id = created["id"]
+
+        del_resp = client.delete(f"/api/professionals/{prof_id}")
+        assert del_resp.status_code == 204
+
+        get_resp = client.get(f"/api/professionals/{prof_id}")
+        assert get_resp.status_code == 404
+
+    def test_delete_professional_not_found(self, client: TestClient):
+        """Deve retornar 404 ao tentar remover profissional inexistente."""
+        response = client.delete("/api/professionals/99999")
+        assert response.status_code == 404
+        assert "não encontrado" in response.json()["detail"]
+
+    def test_professional_update_model_validate_empty(self):
+        """Valida que ProfessionalUpdate pode ser instanciado sem parâmetros."""
+        update = ProfessionalUpdate.model_validate({})
+        assert update.specialties is None
+        assert update.name is None
+        assert update.model_dump(exclude_unset=True) == {}
+
+    def test_create_professional_with_portuguese_aliases_and_nested_address(self, client: TestClient):
+        """Valida que o backend aceita o payload com nomes em pt-BR e endereço aninhado."""
+        payload = {
+            "nome": "Marcos Eletricista",
+            "email": "marcos.eletricista@email.com",
+            "telefone": "11987654321",
+            "bio": "Eletricista residencial com mais de 10 anos de experiência em reparos.",
+            "raio_atendimento_km": 25.0,
+            "especialidades": ["Elétrica", "Instalações"],
+            "senha": "senhaSegura123",
+            "confirmar_senha": "senhaSegura123",
+            "endereco": {
+                "cep": "01310100",
+                "logradouro": "Av Paulista",
+                "numero": "1000",
+                "bairro": "Bela Vista",
+                "cidade": "São Paulo",
+                "estado_uf": "SP",
+            },
+        }
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 201
+        data = response.json()
+        assert data["name"] == "Marcos Eletricista"
+        assert data["phone"] == "11987654321"
+        assert data["service_radius_km"] == 25.0
+        assert data["city"] == "São Paulo"
+        assert data["state"] == "SP"
+
+    def test_create_and_list_via_profissionais_alias_route(self, client: TestClient, db_session):
+        """Valida que a rota /api/profissionais funciona como alias para /api/professionals."""
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["email"] = "alias.route@teste.com"
+
+        post_resp = client.post("/api/profissionais", json=payload)
+        assert post_resp.status_code == 201
+        prof_id = post_resp.json()["id"]
+
+        get_resp = client.get(f"/api/profissionais/{prof_id}")
+        assert get_resp.status_code == 200
+        assert get_resp.json()["email"] == "al***e@teste.com"
+
+        db_session.query(models.Professional).filter_by(id=prof_id).update(
+            {models.Professional.approval_status: models.ProfessionalApprovalStatus.APPROVED.value}
+        )
+        db_session.commit()
+
+        list_resp = client.get("/api/profissionais")
+        assert list_resp.status_code == 200
+        assert any(p["id"] == prof_id for p in list_resp.json())
+
+    def test_create_professional_cross_table_email_conflict_with_user(self, client: TestClient, db_session):
+        """Valida que conflito de e-mail existente em users retorna 409 com mensagem apropriada."""
+        existing_user = models.User(
+            name="Usuário Existente",
+            email="conflito.user@teste.com",
+            hashed_password="dummy_password_hash",
+            role=models.UserRole.CLIENT.value,
+        )
+        db_session.add(existing_user)
+        db_session.commit()
+
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["email"] = "conflito.user@teste.com"
+        payload["password"] = "senhaSegura123"
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 409
+        assert "E-mail já cadastrado" in response.json()["detail"]
+
+    def test_create_professional_cross_table_email_conflict_with_cliente(self, client: TestClient, db_session):
+        """Valida que conflito de e-mail existente em clientes retorna 409 com mensagem apropriada."""
+        from datetime import date
+        cliente = models.Cliente(
+            nome="Cliente Existente",
+            email="conflito.cliente@teste.com",
+            cpf="12345678909",
+            data_nascimento=date(1995, 5, 20),
+            senha_hash="dummy_hash",
+            cep="01001000",
+            logradouro="Praça da Sé",
+            numero="100",
+            bairro="Sé",
+            cidade="São Paulo",
+            estado="SP",
+        )
+        db_session.add(cliente)
+        db_session.commit()
+
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["email"] = "conflito.cliente@teste.com"
+        payload["password"] = "senhaSegura123"
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 409
+        assert "E-mail já cadastrado" in response.json()["detail"]
+
+    def test_create_professional_dispatches_verification_email_and_confirms(
+        self, client: TestClient, caixa_de_entrada, db_session
+    ):
+        """Cadastro de profissional deve emitir token, disparar e-mail de verificação e permitir confirmação (#93)."""
+        import re
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["email"] = "prof.verificacao@teste.com"
+        payload["password"] = "SenhaForte@2026"
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 201
+        assert len(caixa_de_entrada) == 1
+        msg = caixa_de_entrada[0]
+        assert msg["To"] == "prof.verificacao@teste.com"
+        assert "Confirme seu e-mail" in msg["Subject"]
+
+        corpo_txt = msg.get_body(preferencelist=("plain",)).get_content()
+        achado = re.search(r"token=([A-Za-z0-9_\-]+)", corpo_txt)
+        assert achado is not None
+        token = achado.group(1)
+
+        prof_db = db_session.query(models.Professional).filter_by(email="prof.verificacao@teste.com").first()
+        user_db = db_session.query(models.User).filter_by(email="prof.verificacao@teste.com").first()
+        assert prof_db.email_verificado is False
+        assert user_db.email_verificado is False
+
+        # Confirma o token via /api/verificacao/confirmar
+        conf_resp = client.post("/api/verificacao/confirmar", json={"token": token})
+        assert conf_resp.status_code == 200
+        assert conf_resp.json()["email_verificado"] is True
+
+        db_session.expire_all()
+        assert prof_db.email_verificado is True
+        assert user_db.email_verificado is True
+
+
+
+class TestProfessionalReputationAndSorting:
+    """Valida a exposição de nota média, contagem de avaliações e ordenação por reputação na vitrine (issues #19 e #21)."""
+
+    def _criar_prof(self, db_session, email: str, name: str, specialties=None) -> models.Professional:
+        prof = models.Professional(
+            name=name,
+            email=email,
+            phone="(11) 99999-0000",
+            bio=f"Profissional qualificado para reparos residenciais e serviços gerais - {name}.",
+            service_radius_km=15.0,
+            specialties=specialties or ["Reparos Gerais", "Pintura"],
+            city="São Paulo",
+            state="SP",
+            approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+            is_active=True,
+        )
+        db_session.add(prof)
+        db_session.commit()
+        db_session.refresh(prof)
+        return prof
+
+    def _criar_cliente(self, db_session, email: str, cpf: str) -> models.Cliente:
+        cliente = models.Cliente(
+            nome="Cliente Avaliador",
+            email=email,
+            cpf=cpf,
+            data_nascimento=models.datetime(1990, 1, 1).date(),
+            senha_hash="hash_teste",
+            cep="01001000",
+            logradouro="Rua Teste",
+            numero="10",
+            bairro="Centro",
+            cidade="São Paulo",
+            estado="SP",
+            email_verificado=True,
+        )
+        db_session.add(cliente)
+        db_session.commit()
+        db_session.refresh(cliente)
+        return cliente
+
+    def test_get_professional_by_id_includes_reputation(self, client: TestClient, db_session):
+        prof = self._criar_prof(db_session, "prof.rep.id@teste.com", "Marcos Reparo")
+        c1 = self._criar_cliente(db_session, "cli.rep1@teste.com", "11122233301")
+        c2 = self._criar_cliente(db_session, "cli.rep2@teste.com", "11122233302")
+
+        db_session.add(models.Avaliacao(cliente_id=c1.id, professional_id=prof.id, nota=5, comentario="Ótimo"))
+        db_session.add(models.Avaliacao(cliente_id=c2.id, professional_id=prof.id, nota=4, comentario="Muito bom"))
+        db_session.commit()
+
+        resp = client.get(f"/api/professionals/{prof.id}")
+        assert resp.status_code == 200
+        dados = resp.json()
+        assert dados["id"] == prof.id
+        assert dados["reviews_count"] == 2
+        assert dados["average_rating"] == 4.5
+
+    def test_get_professional_by_id_without_reviews(self, client: TestClient, db_session):
+        prof = self._criar_prof(db_session, "prof.sem.rep@teste.com", "Lucia Reformas")
+        resp = client.get(f"/api/professionals/{prof.id}")
+        assert resp.status_code == 200
+        dados = resp.json()
+        assert dados["reviews_count"] == 0
+        assert dados["average_rating"] is None
+
+    def test_list_professionals_order_by_rating(self, client: TestClient, db_session):
+        prof_top = self._criar_prof(db_session, "prof.top@teste.com", "Top 5 Estrelas")
+        prof_mid = self._criar_prof(db_session, "prof.mid@teste.com", "Mid 3 Estrelas")
+        prof_zero = self._criar_prof(db_session, "prof.zero@teste.com", "Sem Avaliacao")
+
+        c1 = self._criar_cliente(db_session, "c.top1@teste.com", "22233344401")
+        c2 = self._criar_cliente(db_session, "c.top2@teste.com", "22233344402")
+        c3 = self._criar_cliente(db_session, "c.mid1@teste.com", "22233344403")
+
+        db_session.add(models.Avaliacao(cliente_id=c1.id, professional_id=prof_top.id, nota=5))
+        db_session.add(models.Avaliacao(cliente_id=c2.id, professional_id=prof_top.id, nota=5))
+        db_session.add(models.Avaliacao(cliente_id=c3.id, professional_id=prof_mid.id, nota=3))
+        db_session.commit()
+
+        resp = client.get("/api/professionals?order_by=avaliacao")
+        assert resp.status_code == 200
+        items = resp.json()
+        ids = [item["id"] for item in items]
+
+        idx_top = ids.index(prof_top.id)
+        idx_mid = ids.index(prof_mid.id)
+        idx_zero = ids.index(prof_zero.id)
+
+        assert idx_top < idx_mid < idx_zero
+
+    def test_search_professionals_order_by_rating_alias(self, client: TestClient, db_session):
+        prof_top = self._criar_prof(db_session, "prof.top.alias@teste.com", "Top Alias")
+        prof_mid = self._criar_prof(db_session, "prof.mid.alias@teste.com", "Mid Alias")
+
+        c1 = self._criar_cliente(db_session, "c.al1@teste.com", "33344455501")
+        c2 = self._criar_cliente(db_session, "c.al2@teste.com", "33344455502")
+
+        db_session.add(models.Avaliacao(cliente_id=c1.id, professional_id=prof_top.id, nota=5))
+        db_session.add(models.Avaliacao(cliente_id=c2.id, professional_id=prof_mid.id, nota=2))
+        db_session.commit()
+
+        resp = client.get("/api/professionals/search?sort=rating")
+        assert resp.status_code == 200
+        dados = resp.json()
+        ids = [item["id"] for item in dados["items"]]
+        assert ids.index(prof_top.id) < ids.index(prof_mid.id)
+
+
+class TestProfessionalRadiusAndCombinedFilters:
+    """Valida filtros de raio/distância e combinação com busca textual, cidade e ordenação (issue #96)."""
+
+    def _criar_prof(
+        self,
+        db_session,
+        email: str,
+        name: str,
+        radius_km: float,
+        city: str = "São Paulo",
+        state: str = "SP",
+        specialties=None,
+        bio: str = "Profissional qualificado para serviços residenciais completos.",
+    ) -> models.Professional:
+        prof = models.Professional(
+            name=name,
+            email=email,
+            phone="(11) 99999-0000",
+            bio=bio,
+            service_radius_km=radius_km,
+            specialties=specialties or ["Elétrica"],
+            city=city,
+            state=state,
+            approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+            is_active=True,
+        )
+        db_session.add(prof)
+        db_session.commit()
+        db_session.refresh(prof)
+        return prof
+
+    def test_filter_by_min_and_max_radius_km(self, client: TestClient, db_session):
+        p_local = self._criar_prof(db_session, "raio.local@teste.com", "Local 8km", 8.0)
+        p_medio = self._criar_prof(db_session, "raio.medio@teste.com", "Medio 25km", 25.0)
+        p_amplo = self._criar_prof(db_session, "raio.amplo@teste.com", "Amplo 60km", 60.0)
+
+        resp_ate_10 = client.get("/api/professionals?max_radius_km=10")
+        assert resp_ate_10.status_code == 200
+        ids_ate_10 = [item["id"] for item in resp_ate_10.json()]
+        assert p_local.id in ids_ate_10
+        assert p_medio.id not in ids_ate_10
+        assert p_amplo.id not in ids_ate_10
+
+        resp_25_mais = client.get("/api/professionals?min_radius_km=25")
+        assert resp_25_mais.status_code == 200
+        ids_25_mais = [item["id"] for item in resp_25_mais.json()]
+        assert p_local.id not in ids_25_mais
+        assert p_medio.id in ids_25_mais
+        assert p_amplo.id in ids_25_mais
+
+        resp_alias = client.get("/api/professionals/search?radius_km=50")
+        assert resp_alias.status_code == 200
+        ids_alias = [item["id"] for item in resp_alias.json()["items"]]
+        assert ids_alias == [p_amplo.id]
+
+    def test_combined_filters_q_city_specialty_radius_and_order_by(self, client: TestClient, db_session):
+        p_match = self._criar_prof(
+            db_session,
+            "combo.match@teste.com",
+            "Carlos Eletricista Campinas",
+            30.0,
+            city="Campinas",
+            specialties=["Elétrica", "Reparos Gerais"],
+            bio="Especialista em instalação de quadro elétrico residencial e tomadas.",
+        )
+        self._criar_prof(
+            db_session,
+            "combo.curto@teste.com",
+            "Carlos Raio Curto",
+            5.0,
+            city="Campinas",
+            specialties=["Elétrica"],
+            bio="Especialista em instalação de quadro elétrico residencial.",
+        )
+        self._criar_prof(
+            db_session,
+            "combo.outra@teste.com",
+            "Carlos Outra Cidade",
+            40.0,
+            city="Curitiba",
+            state="PR",
+            specialties=["Elétrica"],
+            bio="Especialista em instalação de quadro elétrico residencial.",
+        )
+
+        resp = client.get(
+            "/api/professionals",
+            params={
+                "q": "quadro eletrico",
+                "city": "Campinas",
+                "specialty": "Elétrica",
+                "min_radius_km": 25,
+                "order_by": "avaliacao",
+            },
+        )
+        assert resp.status_code == 200
+        items = resp.json()
+        assert [item["id"] for item in items] == [p_match.id]
+
+    def test_invalid_radius_range_returns_422(self, client: TestClient, db_session):
+        resp_inverted = client.get("/api/professionals?min_radius_km=50&max_radius_km=10")
+        assert resp_inverted.status_code == 422
+        assert "raio mínimo" in resp_inverted.json()["detail"].lower()
+
+        resp_zero = client.get("/api/professionals?min_radius_km=0")
+        assert resp_zero.status_code == 422
+
+    def test_max_distance_km_filters_and_sorts_and_seed_is_idempotent(
+        self, client: TestClient, db_session
+    ):
+        from routes.professionals import seed_demo_professionals
+
+        assert seed_demo_professionals(db_session) == 23
+        assert seed_demo_professionals(db_session) == 0
+
+        resp_20 = client.get("/api/professionals/search?max_distance_km=20&limit=50").json()
+        assert resp_20["total"] == 11
+        distances = [item["distance_km"] for item in resp_20["items"]]
+        assert all(d is not None and d <= 20.0 for d in distances)
+        assert distances == sorted(distances)
+
+        resp_100 = client.get("/api/professionals/search?max_distance_km=100&limit=50").json()
+        assert resp_100["total"] == 19
+
+
+
+

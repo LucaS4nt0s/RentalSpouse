@@ -1,0 +1,330 @@
+"""
+Módulo de migrações e retrocompatibilidade de esquema de banco de dados.
+Executa comandos ALTER TABLE defensivos e idempotentes para assegurar que
+volumes de banco de dados existentes (como postgres_data) recebam novas colunas e índices
+sem exigir Alembic ou recriação do container/volume.
+"""
+import logging
+from typing import Callable
+
+from sqlalchemy import inspect, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
+
+import models
+
+logger = logging.getLogger(__name__)
+
+
+def migrate_columns_and_indexes(engine: Engine) -> None:
+    """
+    Verifica a existência das colunas e índices nas tabelas `users`, `clientes`,
+    `professionals` e `orcamentos`. Caso não existam (banco legado / volume PostgreSQL
+    persistente), executa ALTER TABLE e CREATE INDEX de forma idempotente.
+    """
+    inspector = inspect(engine)
+
+    # 1. Migrações defensivas na tabela users (Issue #53 / #93)
+    if inspector.has_table("users"):
+        existing_user_cols = {col["name"] for col in inspector.get_columns("users")}
+        user_cols_to_add = [
+            ("role", "VARCHAR(50) DEFAULT 'client' NOT NULL"),
+            ("is_active", "BOOLEAN DEFAULT TRUE NOT NULL"),
+            ("email_verificado", "BOOLEAN DEFAULT TRUE NOT NULL"),
+            ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+        ]
+        with engine.begin() as conn:
+            for col_name, col_type in user_cols_to_add:
+                if col_name not in existing_user_cols:
+                    logger.info(
+                        "Migração RentalSpouse: adicionando coluna '%s' na tabela 'users'...",
+                        col_name,
+                    )
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
+
+    # 2. Migrações defensivas na tabela clientes (Issue #53 / #93)
+    if inspector.has_table("clientes"):
+        existing_cliente_cols = {col["name"] for col in inspector.get_columns("clientes")}
+        cliente_cols_to_add = [
+            ("email_verificado", "BOOLEAN DEFAULT FALSE NOT NULL"),
+            ("verificacao_token_hash", "VARCHAR(64)"),
+            ("verificacao_expira_em", "TIMESTAMP"),
+            ("verificacao_enviada_em", "TIMESTAMP"),
+            ("latitude", "FLOAT"),
+            ("longitude", "FLOAT"),
+        ]
+        with engine.begin() as conn:
+            for col_name, col_type in cliente_cols_to_add:
+                if col_name not in existing_cliente_cols:
+                    logger.info(
+                        "Migração RentalSpouse: adicionando coluna '%s' na tabela 'clientes'...",
+                        col_name,
+                    )
+                    conn.execute(text(f"ALTER TABLE clientes ADD COLUMN {col_name} {col_type}"))
+
+            existing_cliente_idxs = {idx["name"] for idx in inspector.get_indexes("clientes")}
+            for idx_name, col_name in [
+                ("ix_clientes_email_verificado", "email_verificado"),
+                ("ix_clientes_verificacao_token_hash", "verificacao_token_hash"),
+            ]:
+                if idx_name not in existing_cliente_idxs:
+                    conn.execute(
+                        text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON clientes ({col_name})")
+                    )
+
+    if not inspector.has_table("professionals"):
+        return
+
+    existing_columns = {col["name"] for col in inspector.get_columns("professionals")}
+
+    columns_to_add = [
+        ("senha_hash", "VARCHAR(255)"),
+        ("is_active", "BOOLEAN DEFAULT TRUE NOT NULL"),
+        ("email_verificado", "BOOLEAN DEFAULT FALSE NOT NULL"),
+        ("verificacao_token_hash", "VARCHAR(64)"),
+        ("verificacao_expira_em", "TIMESTAMP"),
+        ("verificacao_enviada_em", "TIMESTAMP"),
+        ("approval_status", "VARCHAR(50) DEFAULT 'pending_approval' NOT NULL"),
+        ("approval_notes", "TEXT"),
+        ("documents_submitted_at", "TIMESTAMP"),
+        ("approved_at", "TIMESTAMP"),
+        ("approved_by_id", "INTEGER"),
+        ("normalized_city", "VARCHAR(100)"),
+        ("normalized_specialties", "TEXT"),
+        ("normalized_search", "TEXT"),
+        ("cep", "VARCHAR(8)"),
+        ("logradouro", "VARCHAR(255)"),
+        ("numero", "VARCHAR(50)"),
+        ("complemento", "VARCHAR(255)"),
+        ("bairro", "VARCHAR(100)"),
+        ("latitude", "FLOAT"),
+        ("longitude", "FLOAT"),
+    ]
+
+    with engine.begin() as conn:
+        for col_name, col_type in columns_to_add:
+            if col_name not in existing_columns:
+                logger.info(
+                    "Migração RentalSpouse: adicionando coluna '%s' na tabela 'professionals' via ALTER TABLE...",
+                    col_name,
+                )
+                conn.execute(text(f"ALTER TABLE professionals ADD COLUMN {col_name} {col_type}"))
+
+        # Índices B-Tree
+        existing_indexes = {idx["name"] for idx in inspector.get_indexes("professionals")}
+        indexes_to_create = [
+            ("ix_professionals_email_verificado", "email_verificado"),
+            ("ix_professionals_verificacao_token_hash", "verificacao_token_hash"),
+            ("ix_professionals_approval_status", "approval_status"),
+            ("ix_professionals_normalized_city", "normalized_city"),
+            ("ix_professionals_normalized_specialties", "normalized_specialties"),
+            ("ix_professionals_normalized_search", "normalized_search"),
+        ]
+        for idx_name, col_name in indexes_to_create:
+            if idx_name not in existing_indexes:
+                logger.info("Migração RentalSpouse: criando índice '%s'...", idx_name)
+                conn.execute(
+                    text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON professionals ({col_name})")
+                )
+
+        # Trigram / GIN para PostgreSQL (para acelerar ILIKE com wildcard à esquerda)
+        if engine.dialect.name == "postgresql":
+            try:
+                conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_professionals_normalized_search_trgm "
+                        "ON professionals USING gin (normalized_search gin_trgm_ops);"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_professionals_normalized_city_trgm "
+                        "ON professionals USING gin (normalized_city gin_trgm_ops);"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_professionals_normalized_specs_trgm "
+                        "ON professionals USING gin (normalized_specialties gin_trgm_ops);"
+                    )
+                )
+                logger.info("Migração RentalSpouse: índices GIN/pg_trgm verificados com sucesso.")
+            except Exception as exc:
+                logger.warning(
+                    "Não foi possível criar índices pg_trgm (permissão ou extensão ausente): %s",
+                    exc,
+                )
+
+    # Migrações defensivas na tabela orcamentos (Issue #29)
+    if inspector.has_table("orcamentos"):
+        existing_orcamento_columns = {col["name"] for col in inspector.get_columns("orcamentos")}
+        orcamento_columns_to_add = [
+            ("motivo_recusa", "VARCHAR(150)"),
+            ("justificativa_recusa", "TEXT"),
+            ("data_prevista", "TIMESTAMP"),
+            ("decidido_em", "TIMESTAMP"),
+        ]
+        with engine.begin() as conn:
+            for col_name, col_type in orcamento_columns_to_add:
+                if col_name not in existing_orcamento_columns:
+                    logger.info(
+                        "Migração RentalSpouse: adicionando coluna '%s' na tabela 'orcamentos'...",
+                        col_name,
+                    )
+                    conn.execute(text(f"ALTER TABLE orcamentos ADD COLUMN {col_name} {col_type}"))
+
+
+def migrate_agenda_tables(engine: Engine) -> None:
+    """
+    Garante as tabelas da agenda de disponibilidade e de agendamentos (issue #78).
+
+    `Base.metadata.create_all(..., checkfirst=True)` é idempotente e reutiliza
+    exatamente o DDL declarado em `models.py` — inclusive o índice único parcial
+    que impede double-booking —, então não há risco de divergência entre modelo
+    e migração. Bancos legados (volumes existentes) recebem as tabelas sem
+    recriação do container/volume.
+    """
+    inspector = inspect(engine)
+    tabelas = [
+        models.DisponibilidadeProfissional.__table__,
+        models.Agendamento.__table__,
+        models.BloqueioAgendaProfissional.__table__,
+    ]
+    ausentes = [tabela.name for tabela in tabelas if not inspector.has_table(tabela.name)]
+    if ausentes:
+        logger.info(
+            "Migração RentalSpouse: criando tabela(s) da agenda %s...", ", ".join(ausentes)
+        )
+        models.Base.metadata.create_all(bind=engine, tables=tabelas)
+
+    if inspector.has_table("agendamentos"):
+        existing_agendamento_cols = {col["name"] for col in inspector.get_columns("agendamentos")}
+        agendamento_cols_to_add = [
+            ("motivo_cancelamento", "VARCHAR(500)"),
+            ("cancelado_em", "TIMESTAMP" if engine.dialect.name == "postgresql" else "DATETIME"),
+        ]
+        with engine.begin() as conn:
+            for col_name, col_type in agendamento_cols_to_add:
+                if col_name not in existing_agendamento_cols:
+                    logger.info(
+                        "Migração RentalSpouse: adicionando coluna '%s' na tabela 'agendamentos'...",
+                        col_name,
+                    )
+                    conn.execute(text(f"ALTER TABLE agendamentos ADD COLUMN {col_name} {col_type}"))
+
+
+def migrate_pagamentos_table(engine: Engine) -> None:
+    """
+    Garante as tabelas de pagamentos e de auditoria de webhooks (issue #18).
+
+    Usa o DDL declarado em `models.py` para não divergir do modelo e preserva
+    volumes existentes (create_all com checkfirst).
+    """
+    inspector = inspect(engine)
+    tabelas = [
+        models.Pagamento.__table__,
+        models.PagamentoEvento.__table__,
+    ]
+    ausentes = [tabela.name for tabela in tabelas if not inspector.has_table(tabela.name)]
+    if not ausentes:
+        return
+
+    logger.info(
+        "Migração RentalSpouse: criando tabela(s) de pagamentos %s...",
+        ", ".join(ausentes),
+    )
+    models.Base.metadata.create_all(
+        bind=engine,
+        tables=[tabela for tabela in tabelas if tabela.name in ausentes],
+    )
+
+
+def migrate_avaliacoes_tables(engine: Engine) -> None:
+    """
+    Garante a criação idempotente da tabela `avaliacoes` (issues #19 e #21) em
+    bancos de dados já inicializados.
+    """
+    inspector = inspect(engine)
+    tabela = models.Avaliacao.__table__
+    if inspector.has_table(tabela.name):
+        return
+
+    logger.info("Migração RentalSpouse: criando tabela '%s'...", tabela.name)
+    models.Base.metadata.create_all(bind=engine, tables=[tabela])
+
+
+def migrate_denuncias_table(engine: Engine) -> None:
+    """
+    Adiciona idempotentemente as colunas de decisão da moderação na tabela
+    `denuncias` (issue #99, Fatia 2) em volumes de banco já existentes.
+
+    Sem isso, um banco criado antes desta entrega continuaria com a tabela
+    antiga e o endpoint `PATCH /api/admin/denuncias/{id}/moderar` falharia ao
+    gravar o parecer/auditoria da decisão.
+    """
+    inspector = inspect(engine)
+    if not inspector.has_table("denuncias"):
+        return
+
+    existing_columns = {col["name"] for col in inspector.get_columns("denuncias")}
+    columns_to_add = [
+        ("moderacao_acao", "VARCHAR(30)"),
+        ("moderacao_parecer", "TEXT"),
+        ("moderado_em", "TIMESTAMP"),
+        ("moderado_por_id", "INTEGER"),
+    ]
+
+    with engine.begin() as conn:
+        for col_name, col_type in columns_to_add:
+            if col_name not in existing_columns:
+                logger.info(
+                    "Migração RentalSpouse: adicionando coluna '%s' na tabela 'denuncias' via ALTER TABLE...",
+                    col_name,
+                )
+                conn.execute(
+                    text(f"ALTER TABLE denuncias ADD COLUMN {col_name} {col_type}")
+                )
+
+
+def backfill_normalized_fields(session_factory: Callable[[], Session], batch_size: int = 200) -> int:
+    """
+    Percorre profissionais que possuem campos normalizados como NULL em lotes
+    e executa a rotina update_normalized_fields() para preencher os dados sem sobrecarregar a memória.
+    """
+    total_updated = 0
+    with session_factory() as db:
+        while True:
+            profs = (
+                db.query(models.Professional)
+                .filter(
+                    (models.Professional.normalized_search.is_(None))
+                    | (models.Professional.normalized_search == "")
+                    | (models.Professional.normalized_city.is_(None))
+                    | (models.Professional.normalized_specialties.is_(None))
+                    | (models.Professional.normalized_specialties == "")
+                )
+                .limit(batch_size)
+                .all()
+            )
+            if not profs:
+                break
+
+            for prof in profs:
+                prof.update_normalized_fields()
+            db.commit()
+            total_updated += len(profs)
+
+        if total_updated > 0:
+            logger.info("Migração RentalSpouse: backfill de normalização concluído para %d registros.", total_updated)
+        return total_updated
+
+
+def run_all_migrations(engine: Engine, session_factory: Callable[[], Session]) -> None:
+    """Executa a verificação/adição de colunas, índices, tabelas novas e o backfill de dados."""
+    migrate_columns_and_indexes(engine)
+    migrate_agenda_tables(engine)
+    migrate_pagamentos_table(engine)
+    migrate_avaliacoes_tables(engine)
+    migrate_denuncias_table(engine)
+    backfill_normalized_fields(session_factory)

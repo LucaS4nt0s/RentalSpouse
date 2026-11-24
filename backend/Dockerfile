@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Instala dependências primeiro (camada cacheável)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --disable-pip-version-check -r requirements.txt
 
 # Copia o restante do código
 COPY . .

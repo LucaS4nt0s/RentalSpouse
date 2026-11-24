@@ -1,5 +1,7 @@
 import os
 
+import env_loader  # noqa: F401
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -24,3 +26,4 @@ def get_db():
         yield db
     finally:
         db.close()
+

@@ -1,17 +1,40 @@
+## 🔗 Issue Relacionada
+Closes #<numero-da-issue>
+
+## 🏷️ Tipo de Mudança
+- [ ] `feat`: Nova funcionalidade
+- [ ] `fix`: Correção de bug
+- [ ] `refactor` / `perf`: Melhoria técnica sem quebrar contratos
+- [ ] `docs` / `chore` / `ci` / `test`: Documentação, infraestrutura ou testes
+- [ ] `BREAKING CHANGE`: Mudança incompatível com versões anteriores (detalhar abaixo)
+
 ## 📌 O que foi feito
-- [Item 1 detalhando o que foi desenvolvido ou alterado]
-- [Item 2 detalhando arquivos criados ou modificados]
+- [Resumo objetivo por camada modificada: `backend`, `web`, `mobile`, `shared-search`]
+- [Lista clara dos principais arquivos criados ou alterados]
 
-## 🎯 Motivação e Contexto
-[Breve explicação do porquê a mudança foi necessária e qual problema ela resolve]
+## 🎯 Motivação e Decisões Técnicas
+[Breve explicação do porquê a abordagem foi escolhida e qual problema ela resolve]
 
-## 🧪 Como testar
-1. Subir os serviços necessários (`docker compose up -d` ou comando equivalente).
-2. Executar a suíte de testes: `pytest backend/tests/ -v`.
-3. Navegar até a interface ou rota correspondente e verificar o comportamento esperado.
+## 🗄️ Impacto em Banco de Dados e Ambiente
+- [ ] Não altera schema de banco nem variáveis de ambiente.
+- [ ] Altera `backend/models.py` E inclui migração defensiva idempotente em `backend/migrations.py`.
+- [ ] Adiciona/altera variáveis de ambiente E atualiza `.env.example` e `docs/`.
 
-## 📋 Checklist de Qualidade
-- [ ] O código segue os padrões do `AI_RULES.md`.
-- [ ] Não há credenciais, segredos ou arquivos temporários expostos.
-- [ ] Todos os novos endpoints possuem testes automatizados com SQLite em memória ou mock.
-- [ ] A branch alvo não é a `main` direta (integração via branch de feature -> `dev`).
+## 🧪 Como Testar Localmente
+1. Executar suíte isolada do backend:
+   `cd backend && DATABASE_URL="sqlite:///:memory:" pytest tests/ -v`
+2. Executar testes compartilhados e build do frontend web:
+   `cd web && npm test && npm run build`
+3. Validação funcional (rotas/telas):
+   - [Descrever rota ou fluxo de interface a verificar]
+
+## 📸 Evidências (Obrigatório para mudanças em `web/` ou `mobile/`)
+[Anexar capturas de tela ou GIF demonstrando os estados Loading, Error, Empty e Success]
+
+## 📋 Checklist de Qualidade (Definition of Done)
+- [ ] O código segue integralmente os padrões do `AI_RULES.md`.
+- [ ] Não há credenciais, segredos, `print()`/`console.log()` de debug ou arquivos temporários expostos.
+- [ ] Novos endpoints e regras possuem testes em `backend/tests/` (sucesso, `401/403`, `404`, `422`) usando SQLite em memória.
+- [ ] Sem uso de `any` no TypeScript; contratos `schemas.py` e interfaces TS estão sincronizados.
+- [ ] A branch alvo é `dev` (integração via `feat/*` ou `fix/*` -> `dev`, nunca `main` direta).
+- [ ] Metadados da PR preenchidos no GitHub (**Assignee**, **Labels**, **Reviewers** e **Issue/Project** vinculados).
