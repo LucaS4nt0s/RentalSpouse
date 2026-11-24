@@ -61,7 +61,14 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
     ? `Raio de ${Math.round(professional.service_radius_km)} km`
     : null;
 
-  const fullLocation = [locationText, radiusText].filter(Boolean).join(' • ');
+  const distanceText =
+    typeof professional.distance_km === 'number'
+      ? professional.distance_km < 1
+        ? 'A menos de 1 km de você'
+        : `A ${professional.distance_km.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} km de você`
+      : null;
+
+  const fullLocation = [locationText, distanceText, radiusText].filter(Boolean).join(' • ');
 
   // Specialties
   const specialties = professional.specialties || [];

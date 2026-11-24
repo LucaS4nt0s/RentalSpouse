@@ -1,3 +1,4 @@
+import os
 import logging
 from contextlib import asynccontextmanager
 
@@ -24,6 +25,7 @@ from routes.professional_documents_me import (
 from routes.professionals import (
     profissionais_router,
     router as professionals_router,
+    seed_demo_professionals,
 )
 from routes.verificacao import router as verificacao_router
 from routes.orcamentos import router as orcamentos_router
@@ -52,6 +54,8 @@ async def lifespan(app: FastAPI):
     db = database.SessionLocal()
     try:
         seed_initial_admin(db)
+        if not os.getenv("PYTEST_CURRENT_TEST"):
+            seed_demo_professionals(db)
     except Exception:
         db.rollback()
         logger.exception("Falha ao semear o administrador inicial durante o startup da aplicação.")

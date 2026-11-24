@@ -251,6 +251,16 @@ export function ProfessionalProfileModal({
                   <span>{locationText}</span>
                 </span>
               )}
+              {typeof professional.distance_km === 'number' && (
+                <span className="inline-flex items-center gap-1.5 font-semibold text-rental-primary">
+                  <MapPin className="h-4 w-4 shrink-0" />
+                  <span>
+                    {professional.distance_km < 1
+                      ? 'A menos de 1 km de você'
+                      : `A ${professional.distance_km.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} km de você`}
+                  </span>
+                </span>
+              )}
               {typeof professional.service_radius_km === 'number' && (
                 <span className="inline-flex items-center gap-1.5">
                   <Radar className="h-4 w-4 text-rental-primary shrink-0" />

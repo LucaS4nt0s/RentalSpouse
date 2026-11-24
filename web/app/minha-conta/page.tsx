@@ -219,6 +219,19 @@ export default function MinhaContaPage() {
       payload.bio = bio.trim();
       payload.service_radius_km = Number(serviceRadiusKm) || 10;
       payload.specialties = specialties;
+      const cleanProfCep = cleanDigits(cep);
+      if (cleanProfCep && cleanProfCep.length !== 8) {
+        setFeedbackBanner({
+          type: 'error',
+          message: 'O CEP deve conter exatamente 8 dígitos numéricos.',
+        });
+        return;
+      }
+      if (cleanProfCep) payload.cep = cleanProfCep;
+      if (logradouro.trim()) payload.logradouro = logradouro.trim();
+      if (numero.trim()) payload.numero = numero.trim();
+      payload.complemento = complemento.trim() || null;
+      if (bairro.trim()) payload.bairro = bairro.trim();
       if (city.trim()) payload.city = city.trim();
       if (stateUf.trim()) payload.state = stateUf.trim().toUpperCase();
     }
@@ -760,6 +773,55 @@ export default function MinhaContaPage() {
                         max={100}
                         value={String(serviceRadiusKm)}
                         onChange={(e) => setServiceRadiusKm(Number(e.target.value) || 1)}
+                        disabled={isSavingProfile}
+                      />
+                    </FormFieldWrapper>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <FormFieldWrapper id="conta-prof-cep" label="CEP">
+                      <TextInput
+                        id="conta-prof-cep"
+                        value={cep}
+                        onChange={(e) => setCep(maskCEP(e.target.value))}
+                        placeholder="00000-000"
+                        maxLength={9}
+                        disabled={isSavingProfile}
+                      />
+                    </FormFieldWrapper>
+                  </div>
+
+                  <div className="sm:col-span-4">
+                    <FormFieldWrapper id="conta-prof-logradouro" label="Logradouro">
+                      <TextInput
+                        id="conta-prof-logradouro"
+                        value={logradouro}
+                        onChange={(e) => setLogradouro(e.target.value)}
+                        placeholder="Rua, Avenida..."
+                        disabled={isSavingProfile}
+                      />
+                    </FormFieldWrapper>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <FormFieldWrapper id="conta-prof-numero" label="Número">
+                      <TextInput
+                        id="conta-prof-numero"
+                        value={numero}
+                        onChange={(e) => setNumero(e.target.value)}
+                        placeholder="123"
+                        disabled={isSavingProfile}
+                      />
+                    </FormFieldWrapper>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <FormFieldWrapper id="conta-prof-bairro" label="Bairro">
+                      <TextInput
+                        id="conta-prof-bairro"
+                        value={bairro}
+                        onChange={(e) => setBairro(e.target.value)}
+                        placeholder="Bairro"
                         disabled={isSavingProfile}
                       />
                     </FormFieldWrapper>
