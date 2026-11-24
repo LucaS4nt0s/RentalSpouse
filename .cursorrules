@@ -80,7 +80,7 @@ O diretório `backend/` deve respeitar rigorosamente a divisão modular:
    - Queries SQL/ORM devem rodar tanto em **PostgreSQL 15** quanto em **SQLite em memória** (`sqlite:///:memory:`). Recursos exclusivos do PostgreSQL (ex: extensão `pg_trgm`, índices `GIN`) devem ficar protegidos sob `if engine.dialect.name == "postgresql":`.
 6. **Datas, Moeda e Semântica HTTP**:
    - **Timezone UTC**: Proibido usar `datetime.utcnow()` (depreciado no Python 3.12+). Utilize sempre `datetime.now(timezone.utc)`.
-   - **Valores Monetários**: Proibido usar `float` para valores financeiros/orçamentos. Utilize `Decimal` / `Numeric` ou inteiros em centavos (`int`).
+   - **Valores Monetários**: Para **novos** contratos e colunas financeiras, proibido usar `float` — utilize `Decimal` / `Numeric` ou inteiros em centavos (`int`). **Ressalva de retrocompatibilidade**: colunas e schemas legados já existentes (como `Orcamento.valor_estimado` e `Pagamento.valor`, atualmente tipados como `Float`) **não** devem ter seus tipos alterados por conta própria sem uma Issue e migração dedicadas, preservando os contratos atuais.
    - **Lifespan**: Proibido usar `@app.on_event("startup")` ou `@app.on_event("shutdown")`; utilize exclusivamente `lifespan`.
    - **Códigos HTTP e Mensagens**: Retorne códigos semânticos (`200`, `201`, `204`, `400`, `401`, `403`, `404`, `409`, `422`, `429`) com mensagens de `detail` claras em **Português (PT-BR)**, sem jamais expor stacktraces ou erros internos de SQL ao cliente.
 
@@ -145,61 +145,14 @@ Cada commit deve ser **atômico** (representar uma única mudança lógica coesa
 
 ## 4. Templates Oficiais de Issues (Planejamento e Rastreabilidade)
 
-Toda tarefa criada, refinada ou executada por agentes deve seguir um dos 3 templates abaixo (espelhados em `.github/ISSUE_TEMPLATE/`).
+Os arquivos em **`.github/ISSUE_TEMPLATE/`** constituem a **fonte única da verdade** para abertura, refinamento e execução de Issues. Antes de criar uma Issue (via interface web ou `gh issue create`), leia e preencha integralmente o arquivo correspondente para evitar divergências de escopo ou checklist:
 
-### 4.1 Template de Issue — Nova Funcionalidade (`Feature / User Story`)
-```markdown
-## 📖 História de Usuário / Contexto
-Como **[cliente | profissional | administrador]**, quero **[ação clara]**, para que **[valor de negócio entregue]**.
-
-## 🎯 Escopo Técnico Afetado
-- [ ] `backend/` (Rotas, Schemas, Models, Migrations, Services)
-- [ ] `web/` (Next.js App Router / Componentes / Estados de UI)
-- [ ] `mobile/` (React Native / Expo)
-- [ ] `packages/shared-search/` (Lógica compartilhada)
-- [ ] `infra/` / `docs/` (Docker, `.env.example`, Documentação em `docs/`)
-
-## ✅ Critérios de Aceite
-- [ ] **Dado que** [pré-condição], **quando** [ação executada], **então** [resultado observável].
-- [ ] Erros de validação e permissão retornam códigos HTTP semânticos (`400/401/403/404/409/422`) e mensagens em PT-BR.
-- [ ] Testes automatizados cobrindo caminho feliz, validações inválidas e permissões (RBAC).
-
-## 🚫 Fora de Escopo
-- [Listar explicitamente o que NÃO faz parte desta entrega para evitar escopo extra]
-```
-
-### 4.2 Template de Issue — Correção de Bug (`Bug Report`)
-```markdown
-## 🐛 Descrição do Problema
-[Resumo objetivo da falha encontrada e seu impacto no usuário ou sistema]
-
-## 🔁 Passos para Reproduzir
-1. Configurar ambiente / autenticar como `[client | professional | admin]`
-2. Chamar rota ou acessar tela `...` enviando `...`
-3. Observar falha `...`
-
-## 🤔 Comportamento Esperado vs. Comportamento Atual
-- **Esperado**: [Comportamento correto segundo a regra de negócio]
-- **Atual**: [Erro retornado, status HTTP incorreto, falha visual ou log]
-
-## 🔍 Hipótese Técnica e Arquivos Envolvidos
-- Arquivos prováveis: `backend/...`, `web/...`
-- Teste de regressão necessário: [Descrever o teste que provará que o bug não voltará]
-```
-
-### 4.3 Template de Issue — Tarefa Técnica (`Tech Task / Refactor / Infra`)
-```markdown
-## 🛠️ Objetivo Técnico
-[Descrição clara da melhoria arquitetural, migração, performance, segurança ou CI/CD]
-
-## 📐 Requisitos de Implementação
-- [ ] Manter 100% de retrocompatibilidade nos contratos públicos da API (ou documentar `BREAKING CHANGE`).
-- [ ] Garantir execução limpa da CI (`pytest` em memória + `npm test && npm run build`).
-
-## ✅ Critérios de Conclusão
-- [ ] [Critério mensurável 1]
-- [ ] [Critério mensurável 2]
-```
+- **4.1 Nova Funcionalidade (`Feature / User Story`)** → `.github/ISSUE_TEMPLATE/feature_request.md`
+  - Prefixo `[FEAT] `, label padrão `enhancement`, história de usuário (*Como / quero / para que*), camadas técnicas afetadas, critérios de aceite (incluindo códigos HTTP semânticos em PT-BR, tratamento dos 4 estados de UI quando aplicável e testes automatizados) e itens fora de escopo.
+- **4.2 Correção de Bug (`Bug Report`)** → `.github/ISSUE_TEMPLATE/bug_report.md`
+  - Prefixo `[BUG] `, label padrão `bug`, descrição objetiva do impacto, passos reproduzíveis, comportamento esperado vs. atual, arquivos prováveis e teste automatizado de regressão obrigatório.
+- **4.3 Tarefa Técnica (`Tech Task / Refactor / Infra`)** → `.github/ISSUE_TEMPLATE/tech_task.md`
+  - Prefixo `[TECH] `, label padrão `tech-debt`, objetivo arquitetural/infraestrutura, preservação de retrocompatibilidade, idempotência de `backend/migrations.py` (PostgreSQL 15 + SQLite em memória), aprovação integral na CI e critérios mensuráveis de conclusão.
 
 ---
 
@@ -208,7 +161,7 @@ Como **[cliente | profissional | administrador]**, quero **[ação clara]**, par
 ### 5.1 Metadados Obrigatórios do Pull Request (SEMPRE preencher)
 Nenhum Pull Request pode ser aberto "pelado" (sem metadados). Ao criar ou editar um PR (via interface do GitHub ou `gh pr create`), o agente ou desenvolvedor **SEMPRE DEVE** preencher obrigatoriamente:
 - **Assignee (`--assignee`)**: Atribuir ao autor/responsável pela entrega (ex.: `@me`).
-- **Labels (`--label`)**: Aplicar obrigatoriamente ao menos 1 label de tipo (`enhancement`, `bug`, `documentation`, `accessibility`) e, quando aplicável, a label de prioridade (`essencial`, `importante`, `desejável`) ou status (`frontend-done`, `blocked`).
+- **Labels (`--label`)**: Aplicar obrigatoriamente ao menos 1 label de tipo (`enhancement`, `bug`, `documentation`, `accessibility`, `tech-debt`) e, quando aplicável, a label de prioridade (`essencial`, `importante`, `desejável`) ou status (`frontend-done`, `blocked`).
 - **Reviewers (`--reviewer`)**: Solicitar revisão de pelo menos **1 a 2 colaboradores** do time antes do merge.
 - **Linked Issue (`Closes #<id>`) / Milestone / Projects**: Vincular sempre a Issue correspondente no corpo do PR e associar ao Project/Milestone ativo quando disponível.
 
