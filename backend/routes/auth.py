@@ -414,13 +414,13 @@ def update_me(
             prof.specialties = payload.specialties
         if payload.cep is not None:
             prof.cep = payload.cep
-        if payload.logradouro is not None:
+        if "logradouro" in payload.model_fields_set:
             prof.logradouro = payload.logradouro
-        if payload.numero is not None:
+        if "numero" in payload.model_fields_set:
             prof.numero = payload.numero
         if "complemento" in payload.model_fields_set:
             prof.complemento = payload.complemento
-        if payload.bairro is not None:
+        if "bairro" in payload.model_fields_set:
             prof.bairro = payload.bairro
         if payload.city is not None:
             prof.city = payload.city

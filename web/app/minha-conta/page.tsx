@@ -202,21 +202,35 @@ export default function MinhaContaPage() {
 
     if (role === 'client') {
       const cleanCepDigits = cleanDigits(cep);
-      if (cleanCepDigits && cleanCepDigits.length !== 8) {
+      if (cleanCepDigits.length !== 8) {
         setFeedbackBanner({
           type: 'error',
           message: 'O CEP deve conter exatamente 8 dígitos numéricos.',
         });
         return;
       }
-      if (cleanCepDigits) payload.cep = cleanCepDigits;
+      if (
+        !logradouro.trim() ||
+        !numero.trim() ||
+        !bairro.trim() ||
+        !cidade.trim() ||
+        !estado.trim()
+      ) {
+        setFeedbackBanner({
+          type: 'error',
+          message:
+            'Preencha todos os campos obrigatórios de endereço (CEP, logradouro, número, bairro, cidade e UF).',
+        });
+        return;
+      }
+      payload.cep = cleanCepDigits;
       if (dataNascimento) payload.data_nascimento = dataNascimento;
-      if (logradouro.trim()) payload.logradouro = logradouro.trim();
-      if (numero.trim()) payload.numero = numero.trim();
+      payload.logradouro = logradouro.trim();
+      payload.numero = numero.trim();
       payload.complemento = complemento.trim() || null;
-      if (bairro.trim()) payload.bairro = bairro.trim();
-      if (cidade.trim()) payload.cidade = cidade.trim();
-      if (estado.trim()) payload.estado = estado.trim().toUpperCase();
+      payload.bairro = bairro.trim();
+      payload.cidade = cidade.trim();
+      payload.estado = estado.trim().toUpperCase();
     } else if (role === 'professional') {
       if (bio.trim().length < 10) {
         setFeedbackBanner({
@@ -245,10 +259,10 @@ export default function MinhaContaPage() {
         return;
       }
       if (cleanProfCep) payload.cep = cleanProfCep;
-      if (logradouro.trim()) payload.logradouro = logradouro.trim();
-      if (numero.trim()) payload.numero = numero.trim();
+      payload.logradouro = logradouro.trim() || null;
+      payload.numero = numero.trim() || null;
       payload.complemento = complemento.trim() || null;
-      if (bairro.trim()) payload.bairro = bairro.trim();
+      payload.bairro = bairro.trim() || null;
       if (city.trim()) payload.city = city.trim();
       if (stateUf.trim()) payload.state = stateUf.trim().toUpperCase();
     }

@@ -415,6 +415,23 @@ def _resolve_client_location(
                 "latitude": cliente.latitude,
                 "longitude": cliente.longitude,
             }
+    elif current_user and current_user.role == models.UserRole.PROFESSIONAL.value:
+        prof_user = (
+            db.query(models.Professional)
+            .filter(models.Professional.email == current_user.email)
+            .first()
+        )
+        if prof_user is not None:
+            location = {
+                "cep": prof_user.cep,
+                "logradouro": prof_user.logradouro,
+                "numero": prof_user.numero,
+                "bairro": prof_user.bairro,
+                "cidade": prof_user.city,
+                "estado": prof_user.state,
+                "latitude": prof_user.latitude,
+                "longitude": prof_user.longitude,
+            }
 
     overrides = {
         "cep": client_cep,
@@ -1254,6 +1271,14 @@ def update_professional(
     for field_name, value in update_fields.items():
         setattr(professional, field_name, value)
 
+    if (
+        "latitude" not in update_fields
+        and "longitude" not in update_fields
+        and (set(update_fields.keys()) & {"cep", "logradouro", "numero", "bairro", "city", "state"})
+    ):
+        professional.latitude = None
+        professional.longitude = None
+
     if payload.email and payload.email != old_email:
         linked_user = db.query(models.User).filter(models.User.email == old_email).first()
         if linked_user is not None and linked_user.role == models.UserRole.PROFESSIONAL.value:
@@ -1812,6 +1837,134 @@ DEMO_PROFESSIONALS = [
         "state": "SP",
         "latitude": -22.9099,
         "longitude": -47.0626,
+    },
+    {
+        "name": "André Vasconcelos",
+        "email": "seed.andre.vasconcelos@rentalspouse.local",
+        "phone": "(11) 99101-1016",
+        "bio": "Mestre de obras e marido de aluguel com atendimento em raio máximo (100 km) cobrindo Grande SP, Campinas, Baixada e Interior.",
+        "service_radius_km": 100.0,
+        "specialties": ["Elétrica", "Hidráulica", "Reparos Gerais"],
+        "cep": "01001000",
+        "logradouro": "Praça da Sé",
+        "numero": "100",
+        "bairro": "Sé",
+        "city": "São Paulo",
+        "state": "SP",
+        "latitude": -23.5505,
+        "longitude": -46.6333,
+    },
+    {
+        "name": "Vanessa Monteiro",
+        "email": "seed.vanessa.monteiro@rentalspouse.local",
+        "phone": "(12) 99101-1017",
+        "bio": "Especialista em ar-condicionado, elétrica e limpeza pós-obra com raio máximo de 100 km no Vale do Paraíba e Grande SP.",
+        "service_radius_km": 100.0,
+        "specialties": ["Ar-condicionado", "Elétrica", "Limpeza"],
+        "cep": "12210000",
+        "logradouro": "Av. São José",
+        "numero": "500",
+        "bairro": "Centro",
+        "city": "São José dos Campos",
+        "state": "SP",
+        "latitude": -23.2237,
+        "longitude": -45.9009,
+    },
+    {
+        "name": "Leonardo Silveira",
+        "email": "seed.leonardo.silveira@rentalspouse.local",
+        "phone": "(15) 99101-1018",
+        "bio": "Pintura, marcenaria e montagem de móveis com raio máximo de 100 km atendendo Sorocaba, Itu, Campinas e Grande SP.",
+        "service_radius_km": 100.0,
+        "specialties": ["Pintura", "Marcenaria", "Montagem de Móveis"],
+        "cep": "18010000",
+        "logradouro": "Rua São Bento",
+        "numero": "210",
+        "bairro": "Centro",
+        "city": "Sorocaba",
+        "state": "SP",
+        "latitude": -23.5015,
+        "longitude": -47.4526,
+    },
+    {
+        "name": "Bianca Tavares",
+        "email": "seed.bianca.tavares@rentalspouse.local",
+        "phone": "(13) 99101-1019",
+        "bio": "Hidráulica, jardinagem e reparos gerais com atendimento regional de raio máximo (100 km) na Baixada Santista, ABC e Capital.",
+        "service_radius_km": 100.0,
+        "specialties": ["Hidráulica", "Jardinagem", "Reparos Gerais"],
+        "cep": "11010000",
+        "logradouro": "Av. Ana Costa",
+        "numero": "320",
+        "bairro": "Gonzaga",
+        "city": "Santos",
+        "state": "SP",
+        "latitude": -23.9608,
+        "longitude": -46.3336,
+    },
+    {
+        "name": "Gabriel Rezende",
+        "email": "seed.gabriel.rezende@rentalspouse.local",
+        "phone": "(35) 99101-1020",
+        "bio": "Eletricista, encanador e técnico de climatização com raio máximo de 100 km em Poços de Caldas, Sul de Minas e Leste Paulista.",
+        "service_radius_km": 100.0,
+        "specialties": ["Elétrica", "Hidráulica", "Reparos Gerais", "Ar-condicionado"],
+        "cep": "37701000",
+        "logradouro": "Rua Assis Figueiredo",
+        "numero": "450",
+        "bairro": "Centro",
+        "city": "Poços de Caldas",
+        "state": "MG",
+        "latitude": -21.7878,
+        "longitude": -46.5614,
+    },
+    {
+        "name": "Larissa Paiva",
+        "email": "seed.larissa.paiva@rentalspouse.local",
+        "phone": "(35) 99101-1021",
+        "bio": "Pintura, montagem de móveis, marcenaria, limpeza e jardinagem com raio máximo de 100 km em Poços de Caldas e região.",
+        "service_radius_km": 100.0,
+        "specialties": ["Pintura", "Montagem de Móveis", "Marcenaria", "Limpeza", "Jardinagem"],
+        "cep": "37704032",
+        "logradouro": "Rua Nova Esperança",
+        "numero": "120",
+        "bairro": "Jardim Nova Aparecida",
+        "city": "Poços de Caldas",
+        "state": "MG",
+        "latitude": -21.8020,
+        "longitude": -46.5480,
+    },
+    {
+        "name": "Felipe Azevedo",
+        "email": "seed.felipe.azevedo@rentalspouse.local",
+        "phone": "(21) 99101-1022",
+        "bio": "Atendimento técnico em elétrica, hidráulica e ar-condicionado com raio máximo de 100 km no Rio de Janeiro, Niterói e Baixada.",
+        "service_radius_km": 100.0,
+        "specialties": ["Elétrica", "Hidráulica", "Ar-condicionado", "Reparos Gerais"],
+        "cep": "20040020",
+        "logradouro": "Rua da Assembleia",
+        "numero": "10",
+        "bairro": "Centro",
+        "city": "Rio de Janeiro",
+        "state": "RJ",
+        "latitude": -22.9068,
+        "longitude": -43.1729,
+    },
+    {
+        "name": "Aline Drumond",
+        "email": "seed.aline.drumond@rentalspouse.local",
+        "phone": "(31) 99101-1023",
+        "bio": "Marcenaria, montagem de móveis, pintura e limpeza residencial com raio máximo de 100 km na Grande Belo Horizonte.",
+        "service_radius_km": 100.0,
+        "specialties": ["Marcenaria", "Montagem de Móveis", "Pintura", "Limpeza"],
+        "cep": "30140071",
+        "logradouro": "Rua dos Aimorés",
+        "numero": "1200",
+        "bairro": "Funcionários",
+        "city": "Belo Horizonte",
+        "state": "MG",
+        "latitude": -19.9167,
+        "longitude": -43.9345,
     },
 ]
 
