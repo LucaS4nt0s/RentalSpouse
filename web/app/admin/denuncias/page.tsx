@@ -167,6 +167,7 @@ export default function AdminDenunciasPage() {
   const [isModerando, setIsModerando] = useState<boolean>(false);
   const [confirmarBanimento, setConfirmarBanimento] = useState<boolean>(false);
   const modalRef = useRef<HTMLDivElement | null>(null);
+  const appendAbortRef = useRef<AbortController | null>(null);
 
   // Toasts
   const [toasts, setToasts] = useState<ToastData[]>([]);
@@ -206,6 +207,8 @@ export default function AdminDenunciasPage() {
 
   // Limpa apenas o estado local da tela admin sem derrubar sessões de cliente/profissional no AuthContext
   const clearAdminLocalState = useCallback((clearLegacyAdminToken = false) => {
+    appendAbortRef.current?.abort();
+    appendAbortRef.current = null;
     if (clearLegacyAdminToken && typeof window !== 'undefined') {
       localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
     }
@@ -214,6 +217,7 @@ export default function AdminDenunciasPage() {
     setDenuncias([]);
     setResumo(RESUMO_INICIAL);
     setHasMore(false);
+    setIsLoadingMore(false);
   }, []);
 
   // Encerramento explícito de sessão admin autenticada (botão Sair ou token admin expirado 401/403)
@@ -405,6 +409,9 @@ export default function AdminDenunciasPage() {
 
   const loadDenuncias = useCallback(
     async (token: string) => {
+      appendAbortRef.current?.abort();
+      appendAbortRef.current = null;
+      setIsLoadingMore(false);
       await Promise.all([
         carregarDenuncias(token, { skip: 0, append: false }),
         carregarResumo(token),
@@ -412,6 +419,18 @@ export default function AdminDenunciasPage() {
     },
     [carregarDenuncias, carregarResumo],
   );
+
+  const handleLoadMore = useCallback(() => {
+    if (!adminToken || isLoadingMore) return;
+    appendAbortRef.current?.abort();
+    const controller = new AbortController();
+    appendAbortRef.current = controller;
+    carregarDenuncias(adminToken, {
+      skip: denuncias.length,
+      append: true,
+      signal: controller.signal,
+    });
+  }, [adminToken, isLoadingMore, denuncias.length, carregarDenuncias]);
 
   useEffect(() => {
     if (!adminToken) return;
@@ -421,10 +440,17 @@ export default function AdminDenunciasPage() {
   }, [adminToken, carregarResumo]);
 
   useEffect(() => {
+    appendAbortRef.current?.abort();
+    appendAbortRef.current = null;
+    setIsLoadingMore(false);
     if (!adminToken) return;
     const controller = new AbortController();
     carregarDenuncias(adminToken, { skip: 0, append: false, signal: controller.signal });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      appendAbortRef.current?.abort();
+      appendAbortRef.current = null;
+    };
   }, [adminToken, carregarDenuncias]);
 
   useEffect(() => {
@@ -480,7 +506,7 @@ export default function AdminDenunciasPage() {
       releaseScrollLock();
       previouslyFocused?.focus();
     };
-  }, [selectedDenuncia]);
+  }, [selectedDenuncia, fecharModal]);
 
   const handleModerar = useCallback(
     async (acao: DenunciaModeracaoAcao) => {
@@ -509,12 +535,16 @@ export default function AdminDenunciasPage() {
           acao === 'banimento'
             ? 'Profissional suspenso'
             : acao === 'reativacao'
-              ? 'Profissional reativado'
+              ? atualizada.professional_is_active
+                ? 'Profissional reativado'
+                : 'Banimento revertido nesta denúncia'
               : 'Denúncia arquivada',
           acao === 'banimento'
             ? `#${atualizada.id}: profissional removido da busca pública e login bloqueado.`
             : acao === 'reativacao'
-              ? `#${atualizada.id}: conta reabilitada e denúncia devolvida para análise.`
+              ? atualizada.professional_is_active
+                ? `#${atualizada.id}: conta reabilitada e denúncia devolvida para análise.`
+                : `#${atualizada.id}: denúncia devolvida para análise; profissional segue suspenso por outro banimento ativo.`
               : `#${atualizada.id}: decidida como improcedente; profissional mantido ativo.`,
         );
 
@@ -1016,12 +1046,7 @@ export default function AdminDenunciasPage() {
                       size="sm"
                       isLoading={isLoadingMore}
                       loadingText="Carregando mais..."
-                      onClick={() =>
-                        carregarDenuncias(adminToken, {
-                          skip: denuncias.length,
-                          append: true,
-                        })
-                      }
+                      onClick={handleLoadMore}
                     >
                       Carregar mais denúncias
                     </Button>

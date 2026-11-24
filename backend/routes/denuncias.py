@@ -589,6 +589,7 @@ def moderar_denuncia(
 
     acao = payload.acao
     agora = datetime.now(timezone.utc)
+    conta_efetivamente_reativada = False
 
     if acao == models.DenunciaModeracaoAcao.BANIMENTO.value:
         _garantir_denuncia_em_aberto(denuncia)
@@ -621,10 +622,32 @@ def moderar_denuncia(
                     "resolvida por banimento ainda não revertido."
                 ),
             )
-        professional.is_active = True
-        _sincronizar_conta_do_profissional(db, professional, ativa=True)
-        # A decisão foi revertida: a denúncia volta para a fila de análise.
+
+        outro_banimento_ativo = (
+            db.query(models.Denuncia.id)
+            .filter(
+                models.Denuncia.professional_id == denuncia.professional_id,
+                models.Denuncia.id != denuncia.id,
+                models.Denuncia.status == models.DenunciaStatus.RESOLVIDA.value,
+                models.Denuncia.moderacao_acao
+                == models.DenunciaModeracaoAcao.BANIMENTO.value,
+            )
+            .first()
+            is not None
+        )
+
+        # A decisão desta denúncia foi revertida e volta para análise; porém a
+        # conta só é reabilitada quando não restar nenhum outro banimento ativo
+        # contra o mesmo profissional (evitando tanto desbloqueio indevido quanto
+        # deadlock circular 409 entre duas denúncias banidas).
         denuncia.status = models.DenunciaStatus.EM_ANALISE.value
+        if outro_banimento_ativo:
+            professional.is_active = False
+            _sincronizar_conta_do_profissional(db, professional, ativa=False)
+        else:
+            professional.is_active = True
+            _sincronizar_conta_do_profissional(db, professional, ativa=True)
+            conta_efetivamente_reativada = True
 
     denuncia.moderacao_acao = acao
     denuncia.moderacao_parecer = payload.parecer
@@ -635,18 +658,19 @@ def moderar_denuncia(
     db.refresh(denuncia)
 
     if acao == models.DenunciaModeracaoAcao.REATIVACAO.value:
-        _notificar_moderacao(
-            db,
-            denuncia,
-            professional.email,
-            "Conta reativada na RentalSpouse",
-            (
-                "A suspensão da sua conta foi revertida pela equipe de "
-                f"moderação após revisão da denúncia #{denuncia.id}. Seu perfil "
-                "voltou a ficar visível na busca de profissionais."
-            ),
-            "conta_reativada",
-        )
+        if conta_efetivamente_reativada:
+            _notificar_moderacao(
+                db,
+                denuncia,
+                professional.email,
+                "Conta reativada na RentalSpouse",
+                (
+                    "A suspensão da sua conta foi revertida pela equipe de "
+                    f"moderação após revisão da denúncia #{denuncia.id}. Seu perfil "
+                    "voltou a ficar visível na busca de profissionais."
+                ),
+                "conta_reativada",
+            )
     else:
         _notificar_moderacao(
             db,

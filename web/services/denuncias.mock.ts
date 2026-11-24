@@ -237,7 +237,8 @@ export async function moderarDenunciaMock(
 ): Promise<DenunciaAdminItem> {
   await delay(350);
 
-  const item = getAdminDenunciasBase().find((d) => d.id === denunciaId);
+  const baseItems = getAdminDenunciasBase();
+  const item = baseItems.find((d) => d.id === denunciaId);
   if (!item) {
     throw new Error('Denúncia não encontrada.');
   }
@@ -250,15 +251,31 @@ export async function moderarDenunciaMock(
         'Só é possível reativar o profissional de uma denúncia resolvida por banimento ainda não revertido.',
       );
     }
+    const outroBanimentoAtivo = baseItems.some(
+      (d) =>
+        d.professional_id === item.professional_id &&
+        d.id !== denunciaId &&
+        d.status === 'resolvida' &&
+        d.moderacao_acao === 'banimento',
+    );
+    const contaAtiva = !outroBanimentoAtivo;
     const reativacao: ModeracaoMockOverride = {
       status: 'em_analise',
       moderacao_acao: 'reativacao',
       moderacao_parecer: payload.parecer,
       moderado_em: agora,
       moderado_por_nome: 'Moderador (mock)',
-      professional_is_active: true,
+      professional_is_active: contaAtiva,
     };
     moderacaoOverrides.set(denunciaId, reativacao);
+    baseItems.forEach((d) => {
+      if (d.professional_id === item.professional_id && d.id !== denunciaId) {
+        const atual = moderacaoOverrides.get(d.id);
+        if (atual) {
+          moderacaoOverrides.set(d.id, { ...atual, professional_is_active: contaAtiva });
+        }
+      }
+    });
     return { ...item, ...reativacao };
   }
 
@@ -276,5 +293,15 @@ export async function moderarDenunciaMock(
     professional_is_active: banimento ? false : item.professional_is_active,
   };
   moderacaoOverrides.set(denunciaId, decisao);
+  if (banimento) {
+    baseItems.forEach((d) => {
+      if (d.professional_id === item.professional_id && d.id !== denunciaId) {
+        const atual = moderacaoOverrides.get(d.id);
+        if (atual) {
+          moderacaoOverrides.set(d.id, { ...atual, professional_is_active: false });
+        }
+      }
+    });
+  }
   return { ...item, ...decisao };
 }

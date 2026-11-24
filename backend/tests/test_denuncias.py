@@ -1202,3 +1202,104 @@ class TestModeracaoDenuncias:
         item = next(x for x in listagem.json() if x["id"] == denuncia["id"])
         assert item["moderado_por_nome"] == admin.name
         assert item["moderacao_acao"] == models.DenunciaModeracaoAcao.BANIMENTO.value
+
+    def test_reativacao_mantem_banimento_enquanto_houver_outra_denuncia_procedente(
+        self, client: TestClient, db_session
+    ):
+        """
+        Com duas denúncias resolvidas por banimento contra o mesmo profissional:
+        - reverter apenas a primeira devolve essa denúncia para `em_analise`, mas
+          mantém `is_active=False` (busca e login seguem bloqueados) sem deadlock 409;
+        - somente ao reverter também a segunda denúncia a conta volta a ficar ativa.
+        """
+        admin, cliente1, profissional, d1 = montar_cenario(
+            client, db_session, sufixo="duplo"
+        )
+        cliente2 = criar_cliente(
+            client, db_session, "cliente2.duplo@exemplo.com", "123987456"
+        )
+        resp_d2 = client.post(
+            URL_DENUNCIAS,
+            json=payload_denuncia(
+                profissional["id"],
+                motivo=models.DenunciaMotivo.COBRANCA_INDEVIDA.value,
+            ),
+            headers=cabecalho(cliente2.email),
+        )
+        assert resp_d2.status_code == 201, resp_d2.text
+        d2 = resp_d2.json()
+
+        ban1 = moderar(client, d1["id"], admin.email, acao="banimento")
+        ban2 = moderar(client, d2["id"], admin.email, acao="banimento")
+        assert ban1.status_code == 200 and ban2.status_code == 200
+
+        # Reverte apenas d1: d2 segue resolvida/banimento, logo o profissional continua suspenso
+        rev1 = moderar(
+            client,
+            d1["id"],
+            admin.email,
+            acao="reativacao",
+            parecer="Recurso aceito apenas quanto ao primeiro relato analisado.",
+        )
+        assert rev1.status_code == 200, rev1.text
+        assert rev1.json()["status"] == models.DenunciaStatus.EM_ANALISE.value
+        assert rev1.json()["moderacao_acao"] == models.DenunciaModeracaoAcao.REATIVACAO.value
+        assert rev1.json()["professional_is_active"] is False
+
+        db_session.expire_all()
+        prof_db = db_session.get(models.Professional, profissional["id"])
+        assert prof_db.is_active is False
+        d2_db = db_session.get(models.Denuncia, d2["id"])
+        assert d2_db.status == models.DenunciaStatus.RESOLVIDA.value
+        assert d2_db.moderacao_acao == models.DenunciaModeracaoAcao.BANIMENTO.value
+
+        busca_ainda_bloqueada = client.get("/api/professionals")
+        assert profissional["id"] not in [
+            item["id"] for item in busca_ainda_bloqueada.json()
+        ]
+        login_ainda_bloqueado = client.post(
+            "/api/auth/login",
+            json={"email": profissional["email"], "password": SENHA_PROFISSIONAL},
+        )
+        assert login_ainda_bloqueado.status_code == 401
+
+        notif_prematura = (
+            db_session.query(models.Notificacao)
+            .filter(
+                models.Notificacao.user_email == profissional["email"],
+                models.Notificacao.tipo == "conta_reativada",
+            )
+            .first()
+        )
+        assert notif_prematura is None
+
+        # Agora reverte também d2: sem banimentos restantes, a conta é reabilitada
+        rev2 = moderar(
+            client,
+            d2["id"],
+            admin.email,
+            acao="reativacao",
+            parecer="Segundo relato também revisto após comprovação documental.",
+        )
+        assert rev2.status_code == 200, rev2.text
+        assert rev2.json()["status"] == models.DenunciaStatus.EM_ANALISE.value
+        assert rev2.json()["professional_is_active"] is True
+
+        busca_liberada = client.get("/api/professionals")
+        assert profissional["id"] in [item["id"] for item in busca_liberada.json()]
+        login_liberado = client.post(
+            "/api/auth/login",
+            json={"email": profissional["email"], "password": SENHA_PROFISSIONAL},
+        )
+        assert login_liberado.status_code == 200, login_liberado.text
+
+        notif_final = (
+            db_session.query(models.Notificacao)
+            .filter(
+                models.Notificacao.user_email == profissional["email"],
+                models.Notificacao.tipo == "conta_reativada",
+                models.Notificacao.referencia_id == d2["id"],
+            )
+            .first()
+        )
+        assert notif_final is not None
