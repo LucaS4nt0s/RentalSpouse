@@ -12,6 +12,7 @@ import models
 from migrations import (
     backfill_normalized_fields,
     migrate_columns_and_indexes,
+    migrate_denuncias_table,
     run_all_migrations,
 )
 
@@ -133,8 +134,64 @@ def test_migrations_alter_table_and_backfill():
     assert re_updated == 0
 
 
-def test_migrations_on_nonexistent_table():
+def test_migrations_on_nonexistent_table() -> None:
     """Valida que a migração não falha se a tabela 'professionals' ainda não existe."""
     engine = create_engine("sqlite:///:memory:")
     # Não deve levantar exceção
     migrate_columns_and_indexes(engine)
+
+
+def test_migrate_denuncias_table_adiciona_colunas_de_moderacao() -> None:
+    """
+    Simula um banco legado com a tabela `denuncias` anterior à issue #99 e
+    confirma que as colunas de decisão da moderação são adicionadas (e que a
+    migração é idempotente).
+    """
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE denuncias (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cliente_id INTEGER NOT NULL,
+                    professional_id INTEGER NOT NULL,
+                    motivo VARCHAR(50) NOT NULL,
+                    descricao TEXT NOT NULL,
+                    status VARCHAR(30) NOT NULL,
+                    created_at DATETIME,
+                    updated_at DATETIME
+                )
+                """
+            )
+        )
+
+    cols_before = {c["name"] for c in inspect(engine).get_columns("denuncias")}
+    assert "moderacao_acao" not in cols_before
+    assert "moderacao_parecer" not in cols_before
+    assert "moderado_em" not in cols_before
+    assert "moderado_por_id" not in cols_before
+
+    migrate_denuncias_table(engine)
+
+    cols_after = {c["name"] for c in inspect(engine).get_columns("denuncias")}
+    assert {
+        "moderacao_acao",
+        "moderacao_parecer",
+        "moderado_em",
+        "moderado_por_id",
+    } <= cols_after
+
+    # Idempotência: rodar de novo não deve tentar recriar as colunas.
+    migrate_denuncias_table(engine)
+
+
+def test_migrate_denuncias_table_ignora_banco_sem_tabela() -> None:
+    """A migração de denúncias não deve falhar em bancos que ainda não têm a tabela."""
+    engine = create_engine("sqlite:///:memory:")
+    migrate_denuncias_table(engine)

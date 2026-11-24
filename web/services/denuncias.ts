@@ -3,6 +3,7 @@ import {
   DenunciaAdminItem,
   DenunciaAdminResumo,
   DenunciaCreatePayload,
+  DenunciaModerarPayload,
 } from '../types/denuncias';
 import { ApiError, parseErrorMessage } from './apiError';
 import * as mockService from './denuncias.mock';
@@ -156,6 +157,47 @@ export async function getAdminDenunciasResumo(
     throw new ApiError(
       response.status,
       parseErrorMessage(errorBody, 'Não foi possível carregar o resumo de denúncias.'),
+      errorBody,
+    );
+  }
+
+  return response.json();
+}
+
+/**
+ * Registra a decisão do moderador sobre uma denúncia (issue #99, Fatia 2).
+ *
+ * `acao` aceita `banimento` (suspende profissional e conta), `arquivamento`
+ * (improcedente) ou `reativacao` (reverte o banimento). O parecer é
+ * obrigatório e fica registrado na trilha de auditoria da denúncia.
+ */
+export async function moderarDenuncia(
+  token: string,
+  denunciaId: number,
+  payload: DenunciaModerarPayload,
+): Promise<DenunciaAdminItem> {
+  if (IS_MOCK_ENABLED) {
+    return mockService.moderarDenunciaMock(denunciaId, payload);
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/admin/denuncias/${denunciaId}/moderar`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => null);
+    throw new ApiError(
+      response.status,
+      parseErrorMessage(errorBody, 'Não foi possível registrar a decisão da moderação.'),
       errorBody,
     );
   }

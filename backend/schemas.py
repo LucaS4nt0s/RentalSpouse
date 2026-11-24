@@ -565,6 +565,7 @@ class ProfessionalUpdate(BaseModel):
 
 from models import (
     AgendamentoStatus as AgendamentoStatusEnum,
+    DenunciaModeracaoAcao as DenunciaModeracaoAcaoEnum,
     DenunciaMotivo as DenunciaMotivoEnum,
     DenunciaStatus as DenunciaStatusEnum,
     DocumentType as DocumentTypeEnum,
@@ -1206,6 +1207,13 @@ class DenunciaAdminRead(BaseModel):
     professional_is_active: bool = True
     professional_total_denuncias: int = 0
     total_denuncias_profissional: int = 0
+    # Trilha de auditoria da decisão de moderação (issue #99, Fatia 2). Fica
+    # nula enquanto a denúncia não recebe decisão administrativa.
+    moderacao_acao: Optional[str] = None
+    moderacao_parecer: Optional[str] = None
+    moderado_em: Optional[datetime] = None
+    moderado_por_id: Optional[int] = None
+    moderado_por_nome: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -1219,6 +1227,85 @@ class DenunciaAdminResumoRead(BaseModel):
     resolvidas_banimento: int = 0
     rejeitadas: int = 0
     arquivadas: int = 0
+
+
+# Aliases aceitos pelo payload de moderação, mapeados para a ação canônica
+# gravada em `denuncias.moderacao_acao`. O cliente HTTP pode usar o nome que
+# aparece na issue ("aprovar_banimento", "suspender_profissional", "rejeitar",
+# "arquivar", ...) sem acoplar o frontend ao valor persistido.
+DENUNCIA_MODERACAO_ALIASES = {
+    "banimento": DenunciaModeracaoAcaoEnum.BANIMENTO.value,
+    "banir": DenunciaModeracaoAcaoEnum.BANIMENTO.value,
+    "banir_profissional": DenunciaModeracaoAcaoEnum.BANIMENTO.value,
+    "aprovar_banimento": DenunciaModeracaoAcaoEnum.BANIMENTO.value,
+    "suspender": DenunciaModeracaoAcaoEnum.BANIMENTO.value,
+    "suspender_profissional": DenunciaModeracaoAcaoEnum.BANIMENTO.value,
+    "arquivamento": DenunciaModeracaoAcaoEnum.ARQUIVAMENTO.value,
+    "arquivar": DenunciaModeracaoAcaoEnum.ARQUIVAMENTO.value,
+    "arquivar_denuncia": DenunciaModeracaoAcaoEnum.ARQUIVAMENTO.value,
+    "arquivar_denúncia": DenunciaModeracaoAcaoEnum.ARQUIVAMENTO.value,
+    "improcedente": DenunciaModeracaoAcaoEnum.ARQUIVAMENTO.value,
+    "rejeitar": DenunciaModeracaoAcaoEnum.ARQUIVAMENTO.value,
+    "rejeitada": DenunciaModeracaoAcaoEnum.ARQUIVAMENTO.value,
+    "reativacao": DenunciaModeracaoAcaoEnum.REATIVACAO.value,
+    "reativar": DenunciaModeracaoAcaoEnum.REATIVACAO.value,
+    "reativar_profissional": DenunciaModeracaoAcaoEnum.REATIVACAO.value,
+    "reverter_banimento": DenunciaModeracaoAcaoEnum.REATIVACAO.value,
+}
+
+# Limites do parecer do moderador (auditoria da decisão).
+DENUNCIA_PARECER_MIN_CARACTERES = 10
+DENUNCIA_PARECER_MAX_CARACTERES = 2000
+
+
+class DenunciaModerarPayload(BaseModel):
+    """Payload de decisão do moderador sobre uma denúncia (issue #99, Fatia 2)."""
+
+    acao: str = Field(
+        ...,
+        description=(
+            "Decisão administrativa. Aceita banimento ("
+            "aprovar_banimento/suspender_profissional), arquivamento "
+            "(rejeitar/arquivar) ou reativacao (reativar_profissional)."
+        ),
+    )
+    parecer: str = Field(
+        ...,
+        description=(
+            "Justificativa da decisão, entre "
+            f"{DENUNCIA_PARECER_MIN_CARACTERES} e "
+            f"{DENUNCIA_PARECER_MAX_CARACTERES} caracteres. Fica registrada na "
+            "trilha de auditoria da denúncia."
+        ),
+    )
+
+    @field_validator("acao")
+    @classmethod
+    def validar_acao(cls, v: str) -> str:
+        """Normaliza o alias recebido para a ação canônica persistida."""
+        chave = (v or "").strip().lower()
+        acao = DENUNCIA_MODERACAO_ALIASES.get(chave)
+        if acao is None:
+            aceitas = ", ".join(sorted(set(DENUNCIA_MODERACAO_ALIASES)))
+            raise ValueError(f"Ação '{v}' inválida. Valores aceitos: {aceitas}.")
+        return acao
+
+    @field_validator("parecer")
+    @classmethod
+    def validar_parecer(cls, v: str) -> str:
+        """Exige justificativa minimamente descritiva e limita o tamanho."""
+        texto = (v or "").strip()
+        if len(texto) < DENUNCIA_PARECER_MIN_CARACTERES:
+            raise ValueError(
+                "Descreva o parecer da moderação com pelo menos "
+                f"{DENUNCIA_PARECER_MIN_CARACTERES} caracteres."
+            )
+        if len(texto) > DENUNCIA_PARECER_MAX_CARACTERES:
+            raise ValueError(
+                "O parecer da moderação deve ter no máximo "
+                f"{DENUNCIA_PARECER_MAX_CARACTERES} caracteres."
+            )
+        return texto
 
 
 # ---------------------------------------------------------------------------

@@ -189,6 +189,39 @@ def migrate_avaliacoes_tables(engine: Engine) -> None:
     models.Base.metadata.create_all(bind=engine, tables=[tabela])
 
 
+def migrate_denuncias_table(engine: Engine) -> None:
+    """
+    Adiciona idempotentemente as colunas de decisão da moderação na tabela
+    `denuncias` (issue #99, Fatia 2) em volumes de banco já existentes.
+
+    Sem isso, um banco criado antes desta entrega continuaria com a tabela
+    antiga e o endpoint `PATCH /api/admin/denuncias/{id}/moderar` falharia ao
+    gravar o parecer/auditoria da decisão.
+    """
+    inspector = inspect(engine)
+    if not inspector.has_table("denuncias"):
+        return
+
+    existing_columns = {col["name"] for col in inspector.get_columns("denuncias")}
+    columns_to_add = [
+        ("moderacao_acao", "VARCHAR(30)"),
+        ("moderacao_parecer", "TEXT"),
+        ("moderado_em", "TIMESTAMP"),
+        ("moderado_por_id", "INTEGER"),
+    ]
+
+    with engine.begin() as conn:
+        for col_name, col_type in columns_to_add:
+            if col_name not in existing_columns:
+                logger.info(
+                    "Migração RentalSpouse: adicionando coluna '%s' na tabela 'denuncias' via ALTER TABLE...",
+                    col_name,
+                )
+                conn.execute(
+                    text(f"ALTER TABLE denuncias ADD COLUMN {col_name} {col_type}")
+                )
+
+
 def backfill_normalized_fields(session_factory: Callable[[], Session], batch_size: int = 200) -> int:
     """
     Percorre profissionais que possuem campos normalizados como NULL em lotes
@@ -226,4 +259,5 @@ def run_all_migrations(engine: Engine, session_factory: Callable[[], Session]) -
     migrate_agenda_tables(engine)
     migrate_pagamentos_table(engine)
     migrate_avaliacoes_tables(engine)
+    migrate_denuncias_table(engine)
     backfill_normalized_fields(session_factory)

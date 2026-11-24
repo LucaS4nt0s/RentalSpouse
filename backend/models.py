@@ -359,6 +359,14 @@ class DenunciaStatus(str, enum.Enum):
     ARQUIVADA = "arquivada"
 
 
+class DenunciaModeracaoAcao(str, enum.Enum):
+    """Decisão administrativa aplicada a uma denúncia (issue #99, Fatia 2)."""
+
+    BANIMENTO = "banimento"          # procedente: suspende profissional e conta
+    ARQUIVAMENTO = "arquivamento"    # improcedente: mantém o profissional ativo
+    REATIVACAO = "reativacao"        # reverte um banimento anterior
+
+
 # Status que mantêm a denúncia "em aberto". Enquanto existir uma denúncia do
 # mesmo cliente contra o mesmo profissional nesses estados, uma nova denúncia
 # idêntica é recusada (anti-spam); após resolvida/arquivada, o cliente pode
@@ -374,8 +382,9 @@ class Denuncia(Base):
     Denúncia registrada por um cliente contra um profissional (issue #68).
 
     O autor (`cliente_id`) é sempre derivado do token de acesso do cliente; o
-    alvo (`professional_id`) vem do payload. A moderação pelo administrador
-    (issue #23) apenas muda `status` — nenhuma transição é exposta ao cliente.
+    alvo (`professional_id`) vem do payload. O cliente apenas registra e lê as
+    próprias denúncias; a decisão (arquivar ou banir/reativar o profissional) é
+    exclusiva do administrador no painel de moderação (issues #23 / #99).
     """
 
     __tablename__ = "denuncias"
@@ -404,6 +413,23 @@ class Denuncia(Base):
         nullable=False,
         index=True,
     )
+
+    # ---------------------------------------------------------------------
+    # Decisão da moderação (issue #99, Fatia 2)
+    # ---------------------------------------------------------------------
+    # `moderacao_acao` guarda a decisão canônica ("banimento", "arquivamento"
+    # ou "reativacao"); `moderacao_parecer` é a justificativa obrigatória do
+    # administrador e `moderado_em`/`moderado_por_id` formam a trilha de
+    # auditoria da decisão.
+    moderacao_acao = Column(String(30), nullable=True)
+    moderacao_parecer = Column(Text, nullable=True)
+    moderado_em = Column(DateTime, nullable=True)
+    moderado_por_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(
         DateTime,

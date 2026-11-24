@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   AlertCircle,
-  AlertTriangle,
   Archive,
   Ban,
   Clock,
@@ -32,12 +31,20 @@ import {
   DenunciaAdminItem,
   DenunciaAdminResumo,
   DenunciaAdminStatusFilter,
+  DenunciaModeracaoAcao,
+  PARECER_MAX_CARACTERES,
+  PARECER_MIN_CARACTERES,
+  acaoModeracaoLabel,
+  denunciaAguardaDecisao,
   motivoDenunciaLabel,
+  podeReativarProfissional,
   statusDenunciaLabel,
+  validarParecerModeracao,
 } from '../../../types/denuncias';
 import {
   getAdminDenunciasResumo,
   listAdminDenuncias,
+  moderarDenuncia,
 } from '../../../services/denuncias';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
@@ -123,14 +130,47 @@ export default function AdminDenunciasPage() {
   const [motivoFilter, setMotivoFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Modal de Análise (ponto de extensão para ações da Fatia 2)
+  // Modal de Análise e Decisão (Fatia 2 da issue #99)
   const [selectedDenuncia, setSelectedDenuncia] = useState<DenunciaAdminItem | null>(null);
+  const [parecerDecisao, setParecerDecisao] = useState<string>('');
+  const [erroDecisao, setErroDecisao] = useState<string | null>(null);
+  const [isModerando, setIsModerando] = useState<boolean>(false);
+  const [confirmarBanimento, setConfirmarBanimento] = useState<boolean>(false);
 
   // Toasts
   const [toasts, setToasts] = useState<ToastData[]>([]);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const pushToast = useCallback(
+    (type: ToastData['type'], title: string, message?: string) => {
+      setToasts((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          type,
+          title,
+          message,
+        },
+      ]);
+    },
+    [],
+  );
+
+  const abrirDenuncia = useCallback((denuncia: DenunciaAdminItem) => {
+    setSelectedDenuncia(denuncia);
+    setParecerDecisao('');
+    setErroDecisao(null);
+    setConfirmarBanimento(false);
+  }, []);
+
+  const fecharModal = useCallback(() => {
+    setSelectedDenuncia(null);
+    setParecerDecisao('');
+    setErroDecisao(null);
+    setConfirmarBanimento(false);
   }, []);
 
   const handleLogout = useCallback(() => {
@@ -236,6 +276,56 @@ export default function AdminDenunciasPage() {
       loadDenuncias(adminToken);
     }
   }, [adminToken, loadDenuncias]);
+
+  const handleModerar = useCallback(
+    async (acao: DenunciaModeracaoAcao) => {
+      if (!adminToken || !selectedDenuncia) return;
+
+      const erroValidacao = validarParecerModeracao(parecerDecisao);
+      if (erroValidacao) {
+        setErroDecisao(erroValidacao);
+        return;
+      }
+
+      setErroDecisao(null);
+      setIsModerando(true);
+      try {
+        const atualizada = await moderarDenuncia(adminToken, selectedDenuncia.id, {
+          acao,
+          parecer: parecerDecisao.trim(),
+        });
+
+        setSelectedDenuncia(atualizada);
+        setParecerDecisao('');
+        setConfirmarBanimento(false);
+
+        pushToast(
+          'success',
+          acao === 'banimento'
+            ? 'Profissional suspenso'
+            : acao === 'reativacao'
+              ? 'Profissional reativado'
+              : 'Denúncia arquivada',
+          acao === 'banimento'
+            ? `#${atualizada.id}: profissional removido da busca pública e login bloqueado.`
+            : acao === 'reativacao'
+              ? `#${atualizada.id}: conta reabilitada e denúncia devolvida para análise.`
+              : `#${atualizada.id}: decidida como improcedente; profissional mantido ativo.`,
+        );
+
+        await loadDenuncias(adminToken);
+      } catch (err) {
+        setErroDecisao(
+          err instanceof Error
+            ? err.message
+            : 'Não foi possível registrar a decisão da moderação.',
+        );
+      } finally {
+        setIsModerando(false);
+      }
+    },
+    [adminToken, selectedDenuncia, parecerDecisao, pushToast, loadDenuncias],
+  );
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -691,7 +781,7 @@ export default function AdminDenunciasPage() {
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => setSelectedDenuncia(denuncia)}
+                              onClick={() => abrirDenuncia(denuncia)}
                               leftIcon={<Eye className="h-3.5 w-3.5" />}
                             >
                               Analisar Denúncia
@@ -734,7 +824,7 @@ export default function AdminDenunciasPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedDenuncia(null)}
+                onClick={fecharModal}
                 className="rounded-xl p-2 text-rental-muted hover:bg-rental-surface2 hover:text-rental-ink transition-colors"
                 aria-label="Fechar modal"
               >
@@ -788,21 +878,186 @@ export default function AdminDenunciasPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl border border-dashed border-amber-500/30 bg-amber-500/5 p-3.5 flex items-start gap-2.5 text-xs text-rental-muted">
-              <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-              <span>
-                As ações de decisão administrativa (arquivar denúncia ou banir/suspender conta via{' '}
-                <code>PATCH /api/admin/denuncias/{'{id}'}/moderar</code>) serão acopladas a este
-                modal na Fatia 2 da Issue #99.
-              </span>
-            </div>
+            {denunciaAguardaDecisao(selectedDenuncia) ? (
+              <div className="rounded-2xl border border-rental-border bg-rental-surface2/40 p-4 space-y-3">
+                <div>
+                  <label
+                    htmlFor="parecer-moderacao"
+                    className="text-[11px] font-bold uppercase tracking-wider text-rental-muted"
+                  >
+                    Parecer da moderação (obrigatório)
+                  </label>
+                  <textarea
+                    id="parecer-moderacao"
+                    value={parecerDecisao}
+                    onChange={(e) => {
+                      setParecerDecisao(e.target.value);
+                      if (erroDecisao) setErroDecisao(null);
+                    }}
+                    rows={3}
+                    maxLength={PARECER_MAX_CARACTERES}
+                    placeholder="Descreva o que foi verificado no relato/histórico e a justificativa da decisão."
+                    className="mt-2 w-full rounded-2xl border border-rental-border bg-rental-surface px-3.5 py-2.5 text-sm text-rental-ink focus:outline-none focus:ring-2 focus:ring-rental-primary"
+                  />
+                  <div className="mt-1 flex flex-wrap justify-between gap-2 text-[11px] text-rental-muted">
+                    <span>Mínimo de {PARECER_MIN_CARACTERES} caracteres — o parecer fica registrado na auditoria.</span>
+                    <span>
+                      {parecerDecisao.length}/{PARECER_MAX_CARACTERES}
+                    </span>
+                  </div>
+                </div>
+
+                {erroDecisao && (
+                  <p
+                    role="alert"
+                    className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/5 p-2.5 text-xs text-red-600 dark:text-red-400"
+                  >
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>{erroDecisao}</span>
+                  </p>
+                )}
+
+                {confirmarBanimento ? (
+                  <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-3.5 space-y-2.5">
+                    <p className="text-xs font-semibold text-red-700 dark:text-red-300">
+                      Confirmar banimento? O profissional sai imediatamente da busca pública e
+                      não consegue mais autenticar na plataforma.
+                    </p>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setConfirmarBanimento(false)}
+                        disabled={isModerando}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        size="sm"
+                        isLoading={isModerando}
+                        loadingText="Banindo..."
+                        leftIcon={<Ban className="h-3.5 w-3.5" />}
+                        onClick={() => handleModerar('banimento')}
+                      >
+                        Confirmar banimento
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      leftIcon={<Archive className="h-3.5 w-3.5" />}
+                      isLoading={isModerando}
+                      loadingText="Arquivando..."
+                      onClick={() => handleModerar('arquivamento')}
+                    >
+                      Arquivar / Improcedente
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      leftIcon={<Ban className="h-3.5 w-3.5" />}
+                      disabled={isModerando}
+                      onClick={() => setConfirmarBanimento(true)}
+                    >
+                      Banir / Suspender Profissional
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-rental-border bg-rental-surface2/40 p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-rental-muted">
+                    Decisão registrada
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                      selectedDenuncia.moderacao_acao === 'banimento'
+                        ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+                        : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    }`}
+                  >
+                    {acaoModeracaoLabel(selectedDenuncia.moderacao_acao)}
+                  </span>
+                </div>
+
+                {selectedDenuncia.moderado_em && (
+                  <p className="text-[11px] text-rental-muted">
+                    Decidida em {formatarDataPtBr(selectedDenuncia.moderado_em)}
+                    {selectedDenuncia.moderado_por_nome
+                      ? ` por ${selectedDenuncia.moderado_por_nome}`
+                      : ''}
+                  </p>
+                )}
+
+                {selectedDenuncia.moderacao_parecer && (
+                  <p className="text-sm text-rental-ink leading-relaxed whitespace-pre-wrap">
+                    {selectedDenuncia.moderacao_parecer}
+                  </p>
+                )}
+
+                {erroDecisao && (
+                  <p
+                    role="alert"
+                    className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/5 p-2.5 text-xs text-red-600 dark:text-red-400"
+                  >
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>{erroDecisao}</span>
+                  </p>
+                )}
+
+                {podeReativarProfissional(selectedDenuncia) && (
+                  <div className="space-y-2 border-t border-rental-border pt-3">
+                    <label
+                      htmlFor="parecer-reativacao"
+                      className="text-[11px] font-bold uppercase tracking-wider text-rental-muted"
+                    >
+                      Parecer da reversão (obrigatório)
+                    </label>
+                    <textarea
+                      id="parecer-reativacao"
+                      value={parecerDecisao}
+                      onChange={(e) => {
+                        setParecerDecisao(e.target.value);
+                        if (erroDecisao) setErroDecisao(null);
+                      }}
+                      rows={2}
+                      maxLength={PARECER_MAX_CARACTERES}
+                      placeholder="Justifique por que o banimento está sendo revertido."
+                      className="w-full rounded-2xl border border-rental-border bg-rental-surface px-3.5 py-2.5 text-sm text-rental-ink focus:outline-none focus:ring-2 focus:ring-rental-primary"
+                    />
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        isLoading={isModerando}
+                        loadingText="Reativando..."
+                        leftIcon={<UserCheck className="h-3.5 w-3.5" />}
+                        onClick={() => handleModerar('reativacao')}
+                      >
+                        Reativar profissional
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex justify-end pt-2 border-t border-rental-border">
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => setSelectedDenuncia(null)}
+                onClick={fecharModal}
               >
                 Fechar
               </Button>
