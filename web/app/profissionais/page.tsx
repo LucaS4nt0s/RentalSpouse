@@ -10,6 +10,7 @@ import { useProfessionalsSearch } from '../../hooks/useProfessionalsSearch';
 import { SearchHeader } from '../../components/profissionais/SearchHeader';
 import { CategoryChipsBar } from '../../components/profissionais/CategoryChipsBar';
 import { FilterActionBar } from '../../components/profissionais/FilterActionBar';
+import { ActiveFilterChips, ActiveFilter } from '../../components/profissionais/ActiveFilterChips';
 import {
   ProfessionalCard,
   ProfessionalRatingSummary,
@@ -92,6 +93,13 @@ function ProfissionaisSearchContent() {
     clearFilters();
   };
 
+  const activeFilters: ActiveFilter[] = [
+    q && { key: 'q', label: `"${q}"`, onRemove: () => { setSearchInput(''); setQ(''); } },
+    specialty && specialty !== 'Todas' && { key: 'specialty', label: specialty, onRemove: () => setSpecialty('') },
+    city && { key: 'city', label: city, onRemove: () => setCity('') },
+    radius && { key: 'radius', label: `Até ${radius} km`, onRemove: () => setRadius('') },
+  ].filter(Boolean) as ActiveFilter[];
+
   const handleOpenProfileModal = useCallback((prof: Professional) => {
     setProfileTarget(prof);
   }, []);
@@ -173,11 +181,12 @@ function ProfissionaisSearchContent() {
           onClearAllFilters={handleClearAll}
         />
 
+        <ActiveFilterChips filters={activeFilters} />
+
         {/* Banner de Busca Inteligente / Sugestão de Aproximação (Estilo YouTube / Spotify) */}
         {!isLoading && !error && searchInput.trim() && detectedSuggestion && (
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-rental-primary/30 bg-rental-primary/5 p-4 text-xs sm:text-sm animate-fadeIn">
             <div className="flex items-center gap-2.5 text-rental-ink flex-wrap">
-              <Sparkles className="h-4 w-4 text-rental-primary shrink-0" />
               <span>
                 Mostrando resultados para <strong className="text-rental-primary font-semibold">"{searchInput}"</strong>
                 {detectedSuggestion.toLowerCase() !== searchInput.trim().toLowerCase() && (

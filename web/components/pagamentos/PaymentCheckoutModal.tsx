@@ -272,9 +272,6 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-rental-border bg-rental-surface2/50 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-500">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
             <div>
               <h3 id="checkout-modal-title" className="text-sm sm:text-base font-black text-rental-ink">
                 Checkout Seguro • Mercado Pago
@@ -300,7 +297,7 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
           {/* Resumo bloqueado do valor */}
           <div className="rounded-2xl border border-rental-border bg-rental-surface2/40 px-4 py-3 flex items-center justify-between">
             <div className="min-w-0">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-rental-muted block">
+              <span className="text-[11px] font-bold text-rental-muted block">
                 Valor Total do Serviço
               </span>
               <span className="text-xs text-rental-muted line-clamp-1">
@@ -312,14 +309,13 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
                 R$ {valorTotal.toFixed(2)}
               </span>
               <span className="text-[10px] text-rental-muted flex items-center justify-end gap-1">
-                <Lock className="h-3 w-3" /> Valor garantido
+ Valor garantido
               </span>
             </div>
           </div>
 
           {error && (
             <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-500 flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
@@ -327,9 +323,6 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
           {/* Comprovante Digital quando aprovado */}
           {pagamento?.status === 'aprovado' ? (
             <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-5 space-y-4 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white">
-                <CheckCircle2 className="h-7 w-7" />
-              </div>
               <div className="space-y-1">
                 <h4 className="text-base font-black text-emerald-500">
                   Pagamento Confirmado!
@@ -380,7 +373,6 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
                       : 'border-rental-border bg-rental-surface text-rental-muted hover:text-rental-ink'
                   }`}
                 >
-                  <QrCode className="h-4 w-4" />
                   <span>PIX Instantâneo</span>
                 </button>
                 <button
@@ -395,7 +387,6 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
                       : 'border-rental-border bg-rental-surface text-rental-muted hover:text-rental-ink'
                   }`}
                 >
-                  <CreditCard className="h-4 w-4" />
                   <span>Cartão de Crédito</span>
                 </button>
               </div>
@@ -406,7 +397,6 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
                   {pagamento && pagamento.metodo === 'pix' && pagamento.status === 'pendente' ? (
                     <div className="rounded-2xl border border-rental-border bg-rental-surface2/30 p-4 space-y-4 text-center">
                       <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-amber-500">
-                        <Clock className="h-4 w-4 animate-pulse" />
                         <span>Aguardando pagamento do QR Code PIX...</span>
                       </div>
 
@@ -450,7 +440,6 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
                             size="sm"
                             onClick={handleSimularPix}
                             disabled={isLoading}
-                            leftIcon={<Sparkles className="h-4 w-4" />}
                             className="w-full"
                           >
                             {isLoading ? 'Confirmando...' : 'Simular Pagamento PIX no App do Banco (Sandbox)'}
@@ -572,7 +561,6 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
                   </div>
 
                   <p className="text-[11px] text-rental-muted flex items-center gap-1.5 pt-1">
-                    <Lock className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                     <span>
                       Seus dados de cartão são tokenizados diretamente no Mercado Pago (PCI-DSS) e jamais são salvos no servidor.
                     </span>
@@ -583,7 +571,6 @@ export const PaymentCheckoutModal: React.FC<PaymentCheckoutModalProps> = ({
                     variant="primary"
                     disabled={isLoading}
                     className="w-full"
-                    leftIcon={<CreditCard className="h-4 w-4" />}
                   >
                     {isLoading
                       ? 'Processando no Mercado Pago...'

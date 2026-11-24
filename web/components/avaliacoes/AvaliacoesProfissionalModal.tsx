@@ -252,9 +252,6 @@ export function AvaliacoesProfissionalModal({
           role="alert"
           className="rounded-2xl border border-[var(--rs-error)]/40 bg-[var(--rs-error)]/10 p-6 text-center space-y-4 my-2"
         >
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--rs-error)]/15 text-[var(--rs-error)]">
-            <AlertTriangle className="h-6 w-6" />
-          </div>
           <div className="space-y-1">
             <h3 className="text-sm sm:text-base font-bold text-rental-ink">
               Não foi possível carregar as avaliações
@@ -457,7 +454,6 @@ export function AvaliacoesProfissionalModal({
                           className="inline-flex items-center gap-0.5 rounded-full bg-rental-success/10 px-1.5 py-0.5 text-[10px] font-semibold text-rental-success"
                           title="Cliente com atendimento verificado na plataforma"
                         >
-                          <UserCheck className="h-2.5 w-2.5" />
                           <span>Cliente</span>
                         </span>
                       </div>
@@ -471,7 +467,6 @@ export function AvaliacoesProfissionalModal({
                     dateTime={avaliacao.created_at}
                     className="inline-flex items-center gap-1 text-[11px] text-rental-muted shrink-0"
                   >
-                    <Calendar className="h-3 w-3" />
                     <span>{formatarDataAvaliacao(avaliacao.created_at)}</span>
                   </time>
                 </div>
@@ -555,7 +550,6 @@ export function AvaliacoesProfissionalModal({
               </h2>
               {professional.approval_status === 'approved' && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-rental-success/10 px-2 py-0.5 text-[11px] font-semibold text-rental-success">
-                  <ShieldCheck className="h-3 w-3" />
                   <span>Verificado</span>
                 </span>
               )}
@@ -600,7 +594,6 @@ export function AvaliacoesProfissionalModal({
               }}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-rental-primary px-4 py-2.5 text-xs font-bold text-white shadow-primary transition-all hover:bg-[var(--rs-primary-hover)] active:scale-[0.98]"
             >
-              <MessageSquare className="h-4 w-4" />
               <span>Solicitar Orçamento com {professional.name.split(' ')[0]}</span>
             </button>
           )}

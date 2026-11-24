@@ -326,9 +326,6 @@ export default function AdminModerationPage() {
           <div className="max-w-md mx-auto my-12 animate-fadeIn">
             <div className="glass-panel-elevated rounded-3xl p-6 sm:p-8 border border-rental-border shadow-xl">
               <div className="flex items-center gap-3 text-rental-primary mb-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rental-primary/10 border border-rental-primary/20">
-                  <Lock className="h-6 w-6" />
-                </div>
                 <div>
                   <h2 className="text-xl font-bold">Moderação Restrita</h2>
                   <p className="text-xs text-rental-muted">Acesso exclusivo para administradores</p>
@@ -342,7 +339,6 @@ export default function AdminModerationPage() {
 
               {loginError && (
                 <div className="mb-5 flex items-start gap-2.5 rounded-2xl bg-red-500/10 border border-red-500/20 p-3.5 text-xs text-rental-error animate-shake">
-                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                   <span>{loginError}</span>
                 </div>
               )}
@@ -355,7 +351,6 @@ export default function AdminModerationPage() {
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     placeholder="admin@rentalspouse.com"
-                    leftIcon={<Mail className="h-4 w-4" />}
                     required
                   />
                 </FormFieldWrapper>
@@ -378,7 +373,6 @@ export default function AdminModerationPage() {
                     className="w-full"
                     isLoading={isLoggingIn}
                     loadingText="Autenticando..."
-                    leftIcon={<KeyRound className="h-4 w-4" />}
                   >
                     Acessar Fila de Moderação
                   </Button>
@@ -389,7 +383,6 @@ export default function AdminModerationPage() {
               {isDevEnvironment && (
                 <div className="mt-6 rounded-2xl border border-dashed border-rental-border bg-rental-surface2/60 p-4 text-xs">
                   <div className="flex items-center gap-1.5 font-bold text-rental-primary mb-1">
-                    <Sparkles className="h-3.5 w-3.5" />
                     Atalho de Desenvolvimento
                   </div>
                   <p className="text-rental-muted text-[11px] mb-3">
@@ -420,7 +413,6 @@ export default function AdminModerationPage() {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-rental-border pb-6">
               <div>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-rental-border bg-rental-surface px-3 py-1 text-xs font-semibold text-rental-muted">
-                  <ShieldCheck className="h-3.5 w-3.5 text-rental-primary" />
                   Moderação de Documentos • Issue #64 &amp; #17
                 </span>
                 <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
@@ -444,7 +436,6 @@ export default function AdminModerationPage() {
                   href="/cadastro/admin"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-rental-border bg-rental-surface hover:bg-rental-surface2 text-xs font-bold text-rental-ink transition-colors shadow-sm"
                 >
-                  <Users className="h-4 w-4 text-rental-primary" />
                   Cadastrar Admins
                 </Link>
               </div>
@@ -462,12 +453,9 @@ export default function AdminModerationPage() {
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                  <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
                     Aguardando Moderação
                   </span>
-                  <div className="h-8 w-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-                    <Clock className="h-4 w-4" />
-                  </div>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
                   <span className="text-3xl font-extrabold font-mono text-rental-ink">
@@ -489,12 +477,9 @@ export default function AdminModerationPage() {
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
                     Aprovados e Ativos
                   </span>
-                  <div className="h-8 w-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
-                    <CheckCircle2 className="h-4 w-4" />
-                  </div>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
                   <span className="text-3xl font-extrabold font-mono text-rental-ink">
@@ -514,12 +499,9 @@ export default function AdminModerationPage() {
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
+                  <span className="text-xs font-bold text-red-600 dark:text-red-400">
                     Rejeitados / Ajustes
                   </span>
-                  <div className="h-8 w-8 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center">
-                    <AlertTriangle className="h-4 w-4" />
-                  </div>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
                   <span className="text-3xl font-extrabold font-mono text-rental-ink">
@@ -539,12 +521,9 @@ export default function AdminModerationPage() {
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-rental-primary">
+                  <span className="text-xs font-bold text-rental-primary">
                     Total Registrado
                   </span>
-                  <div className="h-8 w-8 rounded-xl bg-rental-primary/10 text-rental-primary flex items-center justify-center">
-                    <FileCheck2 className="h-4 w-4" />
-                  </div>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
                   <span className="text-3xl font-extrabold font-mono text-rental-ink">

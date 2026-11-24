@@ -28,7 +28,7 @@ export const FormFieldWrapper: React.FC<FormFieldWrapperProps> = ({
         <div className="flex items-center justify-between">
           <label
             htmlFor={id}
-            className="text-xs font-bold uppercase tracking-wide text-rental-muted select-none"
+            className="text-xs font-bold text-rental-muted select-none"
           >
             {label}
             {required && <span className="text-[var(--rs-error)] ml-1 font-bold">*</span>}
@@ -47,7 +47,6 @@ export const FormFieldWrapper: React.FC<FormFieldWrapperProps> = ({
           className="flex items-center gap-1.5 mt-0.5 text-xs text-[var(--rs-error)] animate-fadeIn"
           role="alert"
         >
-          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
           <span className="font-medium leading-tight">{error}</span>
         </div>
       )}

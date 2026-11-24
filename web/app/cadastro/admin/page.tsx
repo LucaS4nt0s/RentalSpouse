@@ -326,7 +326,6 @@ export default function CadastroAdminPage() {
         <div className="mb-8 text-center sm:text-left sm:flex sm:items-center sm:justify-between border-b border-rental-border pb-6">
           <div>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-rental-border bg-rental-surface px-3 py-1 text-xs font-semibold text-rental-muted">
-              <ShieldCheck className="h-3.5 w-3.5 text-rental-primary" />
               Camada de Segurança • Issue #37
             </span>
             <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
@@ -353,9 +352,6 @@ export default function CadastroAdminPage() {
         {!isValidatingSession && !authToken && (
           <div className="glass-panel-elevated rounded-3xl p-6 sm:p-10 max-w-xl mx-auto animate-fadeIn border border-rental-border">
             <div className="flex items-center gap-3 text-rental-primary mb-2">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rental-primary/10 border border-rental-primary/20">
-                <Lock className="h-6 w-6" />
-              </div>
               <div>
                 <h2 className="text-xl font-bold">Autenticação Obrigatória</h2>
                 <p className="text-xs text-rental-muted">Acesso restrito a administradores</p>
@@ -369,7 +365,6 @@ export default function CadastroAdminPage() {
 
             {loginError && (
               <div className="mb-5 flex items-start gap-2.5 rounded-2xl bg-red-500/10 border border-red-500/20 p-3.5 text-xs text-rental-error animate-shake">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>{loginError}</span>
               </div>
             )}
@@ -382,7 +377,6 @@ export default function CadastroAdminPage() {
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
                   placeholder="admin@empresa.com"
-                  leftIcon={<Mail className="h-4 w-4" />}
                   required
                 />
               </FormFieldWrapper>
@@ -405,7 +399,6 @@ export default function CadastroAdminPage() {
                   className="w-full"
                   isLoading={isLoggingIn}
                   loadingText="Autenticando..."
-                  leftIcon={<KeyRound className="h-4 w-4" />}
                 >
                   Entrar como Administrador
                 </Button>
@@ -416,7 +409,6 @@ export default function CadastroAdminPage() {
             {isDevEnvironment && (
               <div className="mt-6 rounded-2xl border border-dashed border-rental-border bg-rental-surface2/60 p-4 text-xs">
                 <div className="flex items-center gap-1.5 font-bold text-rental-primary mb-1">
-                  <Sparkles className="h-3.5 w-3.5" />
                   Atalho de Desenvolvimento
                 </div>
                 <p className="text-rental-muted text-[11px] leading-relaxed mb-3">
@@ -445,9 +437,6 @@ export default function CadastroAdminPage() {
             {/* Banner de Sessão Ativa */}
             <div className="glass-card-subtle rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border border-rental-border">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500">
-                  <ShieldCheck className="h-5 w-5" />
-                </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-rental-muted">Sessão Ativa:</span>
@@ -467,7 +456,6 @@ export default function CadastroAdminPage() {
                 variant="secondary"
                 size="sm"
                 onClick={handleLogout}
-                leftIcon={<LogOut className="h-3.5 w-3.5" />}
               >
                 Encerrar Sessão
               </Button>
@@ -478,9 +466,6 @@ export default function CadastroAdminPage() {
               <div className="lg:col-span-7">
                 <div className="glass-panel-elevated rounded-3xl p-6 sm:p-8 border border-rental-border">
                   <div className="flex items-center gap-2.5 mb-6">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rental-primary/10 text-rental-primary">
-                      <UserPlus className="h-5 w-5" />
-                    </div>
                     <div>
                       <h2 className="text-lg font-bold">Novo Administrador</h2>
                       <p className="text-xs text-rental-muted">Preencha as credenciais de acesso</p>
@@ -491,7 +476,6 @@ export default function CadastroAdminPage() {
                   {createdAdmin && (
                     <div className="mb-6 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 p-4 text-xs animate-fadeIn">
                       <div className="flex items-center gap-2 font-bold text-emerald-600 dark:text-emerald-400 text-sm mb-1">
-                        <CheckCircle2 className="h-5 w-5" />
                         Administrador cadastrado com sucesso!
                       </div>
                       <p className="text-rental-muted mb-2">
@@ -517,7 +501,6 @@ export default function CadastroAdminPage() {
                   {/* Feedback de Erro */}
                   {formError && (
                     <div className="mb-6 flex items-start gap-2.5 rounded-2xl bg-red-500/10 border border-red-500/20 p-4 text-xs text-rental-error animate-shake">
-                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                       <span>{formError}</span>
                     </div>
                   )}
@@ -537,7 +520,6 @@ export default function CadastroAdminPage() {
                           if (fieldErrors.name) setFieldErrors((prev) => ({ ...prev, name: undefined }));
                         }}
                         placeholder="Ex: Carlos Oliveira"
-                        leftIcon={<User className="h-4 w-4" />}
                         hasError={!!fieldErrors.name}
                         required
                       />
@@ -558,7 +540,6 @@ export default function CadastroAdminPage() {
                           if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: undefined }));
                         }}
                         placeholder="carlos.admin@rentalspouse.com"
-                        leftIcon={<Mail className="h-4 w-4" />}
                         hasError={!!fieldErrors.email}
                         required
                       />
@@ -616,7 +597,6 @@ export default function CadastroAdminPage() {
                         className="w-full"
                         isLoading={isSubmitting}
                         loadingText="Gravando administrador..."
-                        leftIcon={<UserPlus className="h-4 w-4" />}
                       >
                         Cadastrar Novo Administrador
                       </Button>

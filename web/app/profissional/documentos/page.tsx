@@ -77,9 +77,6 @@ export default function ProfessionalDocumentsPage() {
     return (
       <main className="min-h-screen bg-rental-bg text-rental-ink flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full rounded-3xl border border-rental-border bg-rental-surface p-8 text-center space-y-5 shadow-panel animate-fadeIn">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-            <Lock className="h-7 w-7" />
-          </div>
           <div className="space-y-2">
             <h1 className="text-xl font-extrabold text-rental-ink">
               Autenticação Necessária
@@ -110,9 +107,6 @@ export default function ProfessionalDocumentsPage() {
     return (
       <main className="min-h-screen bg-rental-bg text-rental-ink flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full rounded-3xl border border-rental-border bg-rental-surface p-8 text-center space-y-5 shadow-panel animate-fadeIn">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-rental-primary/10 text-rental-primary flex items-center justify-center">
-            <UserX className="h-7 w-7" />
-          </div>
           <div className="space-y-2">
             <h1 className="text-xl font-extrabold text-rental-ink">
               Área Restrita a Profissionais
@@ -143,9 +137,6 @@ export default function ProfessionalDocumentsPage() {
     return (
       <main className="min-h-screen bg-rental-bg text-rental-ink flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full rounded-3xl border border-[var(--rs-error)]/30 bg-rental-surface p-8 text-center space-y-5 shadow-panel animate-fadeIn">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-[var(--rs-error)]/10 text-[var(--rs-error)] flex items-center justify-center">
-            <ShieldAlert className="h-7 w-7" />
-          </div>
           <div className="space-y-2">
             <h1 className="text-xl font-extrabold text-rental-ink">
               Falha ao Carregar Documentos
@@ -157,7 +148,6 @@ export default function ProfessionalDocumentsPage() {
           <Button
             variant="primary"
             onClick={fetchSummary}
-            leftIcon={<RefreshCw className="h-4 w-4" />}
             className="w-full"
           >
             Tentar Novamente
@@ -205,7 +195,6 @@ export default function ProfessionalDocumentsPage() {
         {actionSuccessMessage && (
           <div className="rounded-2xl border border-[var(--rs-success)]/40 bg-[var(--rs-success)]/10 p-4 text-sm text-[var(--rs-success)] flex items-center justify-between gap-3 animate-fadeIn">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 shrink-0" />
               <span>{actionSuccessMessage}</span>
             </div>
             <button
@@ -220,7 +209,6 @@ export default function ProfessionalDocumentsPage() {
         {/* Alerta de Erro Geral */}
         {error && (
           <div className="rounded-2xl border border-[var(--rs-error)]/40 bg-[var(--rs-error)]/10 p-4 text-sm text-[var(--rs-error)] flex items-center gap-2 animate-fadeIn">
-            <AlertTriangle className="h-5 w-5 shrink-0" />
             <span>{error}</span>
           </div>
         )}
@@ -266,7 +254,6 @@ export default function ProfessionalDocumentsPage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="space-y-1">
                 <h3 className="text-base sm:text-lg font-bold text-rental-ink flex items-center gap-2">
-                  <FileCheck2 className="h-5 w-5 text-rental-primary" />
                   <span>Submissão dos Documentos</span>
                 </h3>
                 <p className="text-xs sm:text-sm text-rental-muted leading-relaxed max-w-2xl">
@@ -287,7 +274,6 @@ export default function ProfessionalDocumentsPage() {
                     isLoading={isSubmitting}
                     loadingText="Enviando para análise..."
                     onClick={handleSubmitForReview}
-                    leftIcon={<Send className="h-4 w-4" />}
                     className="w-full sm:w-auto"
                   >
                     Enviar para Análise
@@ -298,7 +284,6 @@ export default function ProfessionalDocumentsPage() {
 
             {!isLocked && !summary.can_submit && (
               <div className="pt-2 border-t border-rental-border/60 flex items-center gap-2 text-xs text-amber-500">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span>
                   O botão permanecerá desabilitado até que todos os documentos obrigatórios tenham sido enviados.
                 </span>

@@ -400,9 +400,6 @@ export default function MinhaContaPage() {
         <AppHeader />
         <main className="flex flex-1 items-center justify-center p-4 sm:p-6">
           <div className="max-w-md w-full rounded-3xl border border-rental-border bg-rental-surface p-8 text-center space-y-5 shadow-panel animate-fadeIn">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rental-primary/10 text-rental-primary">
-              <Lock className="h-7 w-7" />
-            </div>
             <div className="space-y-2">
               <h1 className="text-xl font-extrabold text-rental-ink">
                 Acesse sua Conta
@@ -436,9 +433,6 @@ export default function MinhaContaPage() {
         <AppHeader />
         <main className="flex flex-1 items-center justify-center p-4 sm:p-6">
           <div className="max-w-md w-full rounded-3xl border border-[var(--rs-error)]/30 bg-rental-surface p-8 text-center space-y-5 shadow-panel">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--rs-error)]/10 text-[var(--rs-error)]">
-              <AlertCircle className="h-7 w-7" />
-            </div>
             <div className="space-y-2">
               <h1 className="text-xl font-extrabold text-rental-ink">
                 Erro ao carregar perfil
@@ -448,7 +442,6 @@ export default function MinhaContaPage() {
             <Button
               variant="primary"
               onClick={fetchProfile}
-              leftIcon={<RefreshCw className="h-4 w-4" />}
               className="w-full"
             >
               Tentar Novamente
@@ -487,12 +480,10 @@ export default function MinhaContaPage() {
                 </span>
                 {profile?.email_verificado ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-500">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
                     E-mail verificado
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-500">
-                    <AlertCircle className="h-3.5 w-3.5" />
                     Verificação pendente
                   </span>
                 )}
@@ -508,7 +499,6 @@ export default function MinhaContaPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                leftIcon={<FileCheck2 className="h-4 w-4 text-rental-primary" />}
               >
                 Meus Documentos
               </Button>
@@ -536,7 +526,6 @@ export default function MinhaContaPage() {
                 : 'text-rental-muted hover:text-rental-ink'
             }`}
           >
-            <User className="h-4 w-4" />
             <span>
               {role === 'professional'
                 ? 'Dados & Perfil Profissional'
@@ -557,7 +546,6 @@ export default function MinhaContaPage() {
                 : 'text-rental-muted hover:text-rental-ink'
             }`}
           >
-            <ShieldCheck className="h-4 w-4" />
             <span>Preferências & Segurança</span>
           </button>
         </div>
@@ -598,7 +586,6 @@ export default function MinhaContaPage() {
           >
             <div className="border-b border-rental-border pb-4">
               <h2 className="text-base sm:text-lg font-extrabold text-rental-ink flex items-center gap-2">
-                <User className="h-5 w-5 text-rental-primary" />
                 <span>Informações Principais</span>
               </h2>
               <p className="text-xs text-rental-muted mt-0.5">
@@ -629,7 +616,6 @@ export default function MinhaContaPage() {
                     id="conta-email"
                     value={profile?.email || user.email}
                     disabled
-                    leftIcon={<Mail className="h-4 w-4" />}
                   />
                 </FormFieldWrapper>
               </div>
@@ -670,7 +656,6 @@ export default function MinhaContaPage() {
               <div className="space-y-4 pt-4 border-t border-rental-border">
                 <div>
                   <h3 className="text-sm sm:text-base font-bold text-rental-ink flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-rental-primary" />
                     <span>Endereço Principal</span>
                   </h3>
                   <p className="text-xs text-rental-muted">
@@ -785,7 +770,6 @@ export default function MinhaContaPage() {
               <div className="space-y-4 pt-4 border-t border-rental-border">
                 <div>
                   <h3 className="text-sm sm:text-base font-bold text-rental-ink flex items-center gap-2">
-                    <Wrench className="h-4 w-4 text-rental-primary" />
                     <span>Atuação & Perfil Público</span>
                   </h3>
                   <p className="text-xs text-rental-muted">
@@ -950,7 +934,6 @@ export default function MinhaContaPage() {
                 size="lg"
                 isLoading={isSavingProfile}
                 loadingText="Salvando alterações..."
-                leftIcon={<Save className="h-4 w-4" />}
               >
                 Salvar Alterações
               </Button>
@@ -1018,7 +1001,6 @@ export default function MinhaContaPage() {
             >
               <div className="border-b border-rental-border pb-4">
                 <h2 className="text-base sm:text-lg font-extrabold text-rental-ink flex items-center gap-2">
-                  <KeyRound className="h-5 w-5 text-rental-primary" />
                   <span>Alterar Senha de Acesso</span>
                 </h2>
                 <p className="text-xs text-rental-muted mt-0.5">
@@ -1074,7 +1056,6 @@ export default function MinhaContaPage() {
                   size="md"
                   isLoading={isSavingPassword}
                   loadingText="Atualizando senha..."
-                  leftIcon={<Lock className="h-4 w-4" />}
                 >
                   Atualizar Senha
                 </Button>

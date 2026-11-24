@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 196 32" width="196" height="32" role="img" aria-label="RentalSpouse">
+  <!-- Logo completa: símbolo Esquadro-Casa + wordmark em peso 800, tracking justo.
+       Para peças impressas, converter o texto em contornos no editor vetorial. -->
+  <g transform="translate(2 3) scale(1.083)">
+    <path fill="#F8FAFC" fill-rule="evenodd" d="M12 1.5 22.5 12v10.5h-21V12L12 1.5Zm-3 21V15l3-3 3 3v7.5H9Z"/>
+    <rect x="12.75" y="19.5" width="2.25" height="3" fill="#3B82F6"/>
+  </g>
+  <text x="36" y="23.5" fill="#F8FAFC" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="20" font-weight="800" letter-spacing="-0.7">RentalSpouse</text>
+</svg>

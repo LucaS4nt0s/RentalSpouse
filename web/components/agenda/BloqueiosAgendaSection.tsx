@@ -175,9 +175,6 @@ export const BloqueiosAgendaSection: React.FC<BloqueiosAgendaSectionProps> = ({
       {/* Card de Cadastro de Novo Bloqueio */}
       <div className="rounded-3xl border border-rental-border bg-rental-surface p-6 shadow-panel space-y-5">
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rental-primary/10 text-rental-primary">
-            <CalendarOff className="h-5 w-5" />
-          </div>
           <div>
             <h2
               id="bloqueios-agenda-heading"
@@ -197,7 +194,6 @@ export const BloqueiosAgendaSection: React.FC<BloqueiosAgendaSectionProps> = ({
             role="status"
             className="flex items-start gap-2.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs sm:text-sm text-emerald-700 dark:text-emerald-300 animate-fadeIn"
           >
-            <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-500" />
             <span>{successMessage}</span>
           </div>
         )}
@@ -207,7 +203,6 @@ export const BloqueiosAgendaSection: React.FC<BloqueiosAgendaSectionProps> = ({
             role="alert"
             className="flex items-start gap-2.5 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-xs sm:text-sm text-rose-700 dark:text-rose-300 animate-fadeIn"
           >
-            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-500" />
             <span>{formError}</span>
           </div>
         )}
@@ -355,7 +350,6 @@ export const BloqueiosAgendaSection: React.FC<BloqueiosAgendaSectionProps> = ({
                 </>
               ) : (
                 <>
-                  <Plus className="h-4 w-4" />
                   <span>Adicionar bloqueio</span>
                 </>
               )}
@@ -474,7 +468,6 @@ export const BloqueiosAgendaSection: React.FC<BloqueiosAgendaSectionProps> = ({
                       </>
                     ) : (
                       <>
-                        <Trash2 className="h-3.5 w-3.5" />
                         <span>Remover</span>
                       </>
                     )}

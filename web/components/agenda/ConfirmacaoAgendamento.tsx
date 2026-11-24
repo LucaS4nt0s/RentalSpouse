@@ -71,11 +71,8 @@ export const ConfirmacaoAgendamento: React.FC<ConfirmacaoAgendamentoProps> = ({
         className="rounded-2xl border border-rental-success/40 bg-rental-surface p-6 shadow-sm animate-fadeIn"
       >
         <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rental-success/15 text-rental-success">
-            <CheckCircle2 className="h-7 w-7" />
-          </div>
           <div>
-            <span className="inline-block rounded-full bg-rental-success/15 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-rental-success">
+            <span className="inline-block rounded-full bg-rental-success/15 px-2.5 py-0.5 text-[11px] font-bold text-rental-success">
               Reserva confirmada #{agendamentoCriado.id}
             </span>
             <h2 className="mt-1 text-lg font-extrabold text-rental-ink">
@@ -127,7 +124,6 @@ export const ConfirmacaoAgendamento: React.FC<ConfirmacaoAgendamentoProps> = ({
             }}
             className="inline-flex items-center gap-2 rounded-xl bg-rental-primary px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-primary transition-all hover:bg-[var(--rs-primary-hover)]"
           >
-            <ListChecks className="h-4 w-4" />
             <span>Meus agendamentos</span>
           </a>
 
@@ -199,7 +195,6 @@ export const ConfirmacaoAgendamento: React.FC<ConfirmacaoAgendamentoProps> = ({
           className="mt-4 flex flex-col gap-2 rounded-xl border border-[var(--rs-error)]/40 bg-[var(--rs-error)]/10 p-3.5 text-xs text-rental-ink sm:flex-row sm:items-center sm:justify-between"
         >
           <div className="flex items-start gap-2.5">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-[var(--rs-error)] mt-0.5" />
             <span>{submitError}</span>
           </div>
           {slotSelecionado && isAuthenticated && ehCliente && (
@@ -209,7 +204,6 @@ export const ConfirmacaoAgendamento: React.FC<ConfirmacaoAgendamentoProps> = ({
               disabled={isSubmitting}
               className="inline-flex items-center gap-1.5 self-start rounded-lg border border-rental-border bg-rental-surface px-3 py-1.5 text-xs font-bold text-rental-ink hover:border-rental-primary/40 sm:self-auto"
             >
-              <RefreshCw className="h-3.5 w-3.5" />
               <span>Tentar novamente</span>
             </button>
           )}
@@ -273,7 +267,6 @@ export const ConfirmacaoAgendamento: React.FC<ConfirmacaoAgendamentoProps> = ({
               href="/entrar"
               className="inline-flex items-center gap-2 rounded-xl bg-rental-primary px-4 py-2.5 text-xs sm:text-sm font-bold text-white shadow-primary transition-colors hover:bg-[var(--rs-primary-hover)]"
             >
-              <LogIn className="h-4 w-4" />
               <span>Entrar para agendar</span>
             </Link>
           </div>

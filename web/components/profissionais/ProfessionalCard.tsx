@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ShieldCheck, MapPin, MessageSquare, Calendar, Flag, Star } from 'lucide-react';
 import { Professional } from '../../types/professional';
 import { formatarMediaNotas } from '../../types/avaliacoes';
+import { VerifiedBadge, WeeklyRuler } from './TrustSeals';
 
 export interface ProfessionalRatingSummary {
   media_notas: number;
@@ -119,23 +120,15 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
           >
             <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rental-primary/10 text-rental-primary font-bold text-base transition-transform duration-300 group-hover:scale-105">
               <span>{initials}</span>
-              {professional.approval_status === 'approved' && (
-                <span
-                  className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-rental-surface text-rental-success ring-1 ring-rental-border"
-                  title="Profissional Verificado pelo RentalSpouse"
-                >
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                </span>
-              )}
             </div>
 
             <div className="min-w-0 flex-1">
               <h3 className="font-bold text-rental-ink text-base truncate group-hover:text-rental-primary transition-colors">
                 {professional.name}
               </h3>
+              {professional.approval_status === 'approved' && <VerifiedBadge className="mt-1" />}
               {fullLocation && (
                 <div className="mt-0.5 flex items-center gap-1 text-xs text-rental-muted">
-                  <MapPin className="h-3.5 w-3.5 shrink-0 text-rental-primary/80" />
                   <span className="truncate">{fullLocation}</span>
                 </div>
               )}
@@ -149,7 +142,7 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
                 onClick={() => onViewReviews(professional)}
                 title={`Ver avaliações e comentários de ${professional.name}`}
                 aria-label={`Ver avaliações e comentários de ${professional.name}`}
-                className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-600 transition-all hover:bg-amber-500/20 active:scale-[0.98]"
+                className="inline-flex items-center gap-1 rounded-full border border-rental-border bg-rental-surface px-2.5 py-1 text-[11px] font-bold text-rental-ink transition-colors hover:border-rental-primary/40"
               >
                 <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
                 {temAvaliacoes ? (
@@ -178,6 +171,12 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
             )}
           </div>
         </div>
+
+        {/* Disponibilidade da semana: responde "quando?" antes do clique */}
+        <WeeklyRuler
+          professionalId={professional.id}
+          className="mt-3.5 rounded-xl bg-rental-surface2/60 px-3 py-2"
+        />
 
         {/* Chips de Especialidades */}
         <div className="mt-3.5 flex flex-wrap gap-1.5" aria-label="Especialidades do profissional">
@@ -245,7 +244,6 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
           aria-label={`Agendar atendimento com ${professional.name}`}
           className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rental-primary/40 bg-rental-primary/10 px-3.5 py-2.5 text-xs font-bold text-rental-primary transition-all hover:bg-rental-primary hover:text-white active:scale-[0.98]"
         >
-          <Calendar className="h-4 w-4 shrink-0" />
           <span>Agendar</span>
         </Link>
 
@@ -254,8 +252,7 @@ export const ProfessionalCard: React.FC<ProfessionalCardProps> = ({
           onClick={() => onRequestQuote && onRequestQuote(professional)}
           className="min-w-0 inline-flex items-center justify-center gap-1.5 rounded-xl bg-rental-primary px-3.5 py-2.5 text-xs font-bold text-white shadow-primary transition-all hover:bg-[var(--rs-primary-hover)] active:scale-[0.98]"
         >
-          <MessageSquare className="h-4 w-4 shrink-0" />
-          <span className="truncate">Solicitar Orçamento</span>
+          <span className="truncate">Pedir orçamento</span>
         </button>
       </div>
     </article>
