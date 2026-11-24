@@ -1608,6 +1608,19 @@ class AgendamentoRead(BaseModel):
     criado_em: datetime
 
 
+class AgendamentoRecebidoRead(AgendamentoRead):
+    """Agendamento recebido pelo profissional autenticado, incluindo dados de contato do cliente (issue #95)."""
+
+    cliente_nome: Optional[str] = Field(
+        None,
+        description="Nome do cliente que realizou o agendamento.",
+    )
+    cliente_email: Optional[str] = Field(
+        None,
+        description="E-mail do cliente que realizou o agendamento.",
+    )
+
+
 class AgendamentoCancelarRequest(BaseModel):
     """Payload opcional para cancelamento de agendamento (issue #24)."""
 

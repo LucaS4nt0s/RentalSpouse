@@ -35,6 +35,8 @@ import {
 } from '../../../services/agenda';
 import { Button } from '../../../components/ui/Button';
 import { AppHeader } from '../../../components/layout/AppHeader';
+import { AgendamentosRecebidosSection } from '../../../components/agenda/AgendamentosRecebidosSection';
+import { BloqueiosAgendaSection } from '../../../components/agenda/BloqueiosAgendaSection';
 
 interface JanelaEditor {
   localId: string;
@@ -399,6 +401,9 @@ export default function ProfissionalAgendaPage() {
             </div>
           </div>
 
+        {/* Agendamentos recebidos e conclusão de atendimentos (issue #95) */}
+        {token && <AgendamentosRecebidosSection token={token} />}
+
         {/* Estado de erro de carregamento */}
         {loadError ? (
           <section
@@ -434,7 +439,7 @@ export default function ProfissionalAgendaPage() {
             ))}
           </div>
         ) : (
-          <>
+          <div className="space-y-6">
             {/* Resumo do status atual da agenda */}
             <section className="rounded-2xl border border-rental-border bg-rental-surface p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-start gap-3.5">
@@ -732,8 +737,11 @@ export default function ProfissionalAgendaPage() {
                 </Button>
               </div>
             </div>
-          </>
+          </div>
         )}
+
+        {/* Bloqueios pontuais de folgas e horários (issue #16 / #95) */}
+        {token && <BloqueiosAgendaSection token={token} />}
         </div>
       </main>
     </div>
