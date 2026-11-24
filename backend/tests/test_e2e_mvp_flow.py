@@ -388,39 +388,28 @@ class TestFluxoCompletoMVPE2E:
         assert resp_minhas_den.status_code == 200, resp_minhas_den.text
         assert any(d["id"] == denuncia_id for d in resp_minhas_den.json())
 
-        # Valida o painel administrativo de denúncias quando a rota da Issue #99 estiver ativa na branch
+        # Painel administrativo de denúncias (#99/#107) — valida incondicionalmente
         resp_admin_den = client.get("/api/admin/denuncias", headers=headers_admin)
-        if resp_admin_den.status_code != 404:
-            assert resp_admin_den.status_code == 200, resp_admin_den.text
-            denuncias_admin = resp_admin_den.json()
-            alvo = next((d for d in denuncias_admin if d["id"] == denuncia_id), None)
-            assert alvo is not None
-            assert alvo["status"] == "pendente"
-            assert alvo["cliente_email"] == email_cliente
-            assert alvo["professional_email"] == email_prof
-            assert alvo["professional_is_active"] is True
-            assert alvo["professional_total_denuncias"] == 1
+        assert resp_admin_den.status_code == 200, resp_admin_den.text
+        denuncias_admin = resp_admin_den.json()
+        alvo = next((d for d in denuncias_admin if d["id"] == denuncia_id), None)
+        assert alvo is not None
+        assert alvo["status"] == "pendente"
+        assert alvo["cliente_email"] == email_cliente
+        assert alvo["professional_email"] == email_prof
+        assert alvo["professional_is_active"] is True
+        assert alvo["professional_total_denuncias"] == 1
 
-            resp_resumo = client.get("/api/admin/denuncias/resumo", headers=headers_admin)
-            assert resp_resumo.status_code == 200, resp_resumo.text
-            assert resp_resumo.json()["pendentes"] >= 1
-            assert resp_resumo.json()["total"] >= 1
-        else:
-            denuncia_db = (
-                db_session.query(models.Denuncia)
-                .filter(models.Denuncia.id == denuncia_id)
-                .one()
-            )
-            assert denuncia_db.status == models.DenunciaStatus.PENDENTE.value
+        resp_resumo = client.get("/api/admin/denuncias/resumo", headers=headers_admin)
+        assert resp_resumo.status_code == 200, resp_resumo.text
+        assert resp_resumo.json()["pendentes"] >= 1
+        assert resp_resumo.json()["total"] >= 1
 
     def test_painel_admin_denuncias_disponivel_no_fluxo(
         self, client: TestClient, db_session: Session
     ):
         """
         Verifica as rotas administrativas de denúncias (#99/#107).
-
-        Enquanto o PR #107 não entra na dev, sinaliza skip explícito no pytest
-        para não mascarar ausência da rota após o merge.
         """
         admin_email = f"admin.painel.{uuid.uuid4().hex[:8]}@rentalspouse.com"
         admin_senha = "AdminPainel@2026"
@@ -442,9 +431,6 @@ class TestFluxoCompletoMVPE2E:
         headers_admin = {"Authorization": f"Bearer {resp_login.json()['access_token']}"}
 
         resp_admin_den = client.get("/api/admin/denuncias", headers=headers_admin)
-        if resp_admin_den.status_code == 404:
-            pytest.skip("Rotas administrativas de denúncias (#99/#107) ainda não mergeadas na dev.")
-
         assert resp_admin_den.status_code == 200, resp_admin_den.text
         resp_resumo = client.get("/api/admin/denuncias/resumo", headers=headers_admin)
         assert resp_resumo.status_code == 200, resp_resumo.text
