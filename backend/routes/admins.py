@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 import models
 from schemas import AdminCreate, AdminRead
-from security import get_current_admin, hash_senha
+from security import get_current_admin, hash_senha, verificar_email_disponivel
 
 router = APIRouter(prefix="/api/admins", tags=["Administradores"])
 
@@ -29,13 +29,11 @@ def create_admin(
     - Exige token Bearer válido de um usuário que seja Administrador (`role='admin'`).
     - Caso contrário, a requisição é rejeitada com 401 ou 403.
     """
-    email_normalizado = payload.email.strip().lower()
-    existing_user = db.query(models.User).filter(models.User.email == email_normalizado).first()
-    if existing_user is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Já existe um usuário cadastrado com este e-mail",
-        )
+    email_normalizado = verificar_email_disponivel(
+        db,
+        payload.email,
+        detail="Já existe um usuário cadastrado com este e-mail",
+    )
 
     new_admin = models.User(
         name=payload.name.strip(),

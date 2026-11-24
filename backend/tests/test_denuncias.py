@@ -821,6 +821,43 @@ class TestDenunciasAdminListagemEResumo:
         assert resp_pag.status_code == 200
         assert len(resp_pag.json()) == 1
 
+    def test_busca_textual_escapa_curingas_like(self, client: TestClient, db_session):
+        """Caracteres '%' e '_' em `q` são tratados literalmente e não como curinga."""
+        admin = criar_admin_usuario(db_session, "admin.like@rentalspouse.com")
+        headers_admin = cabecalho(admin.email, models.UserRole.ADMIN.value)
+
+        cli = criar_cliente(client, db_session, "cli.like@exemplo.com", "321654987")
+        prof = criar_profissional(client, "prof.like@exemplo.com")
+
+        d_normal = models.Denuncia(
+            cliente_id=cli.id,
+            professional_id=prof["id"],
+            motivo=models.DenunciaMotivo.SERVICO_NAO_REALIZADO.value,
+            descricao="Relato comum sem símbolos especiais no texto.",
+            status=models.DenunciaStatus.PENDENTE.value,
+        )
+        d_literal = models.Denuncia(
+            cliente_id=cli.id,
+            professional_id=prof["id"],
+            motivo=models.DenunciaMotivo.COBRANCA_INDEVIDA.value,
+            descricao="Cobrou taxa extra de 50% acima do combinado.",
+            status=models.DenunciaStatus.PENDENTE.value,
+        )
+        db_session.add_all([d_normal, d_literal])
+        db_session.commit()
+
+        resp_pct = client.get(
+            URL_ADMIN_DENUNCIAS, params={"q": "%"}, headers=headers_admin
+        )
+        assert resp_pct.status_code == 200
+        assert [x["id"] for x in resp_pct.json()] == [d_literal.id]
+
+        resp_sub = client.get(
+            URL_ADMIN_DENUNCIAS, params={"q": "_"}, headers=headers_admin
+        )
+        assert resp_sub.status_code == 200
+        assert resp_sub.json() == []
+
 
 # ---------------------------------------------------------------------------
 # Decisão de moderação (issue #99, Fatia 2)

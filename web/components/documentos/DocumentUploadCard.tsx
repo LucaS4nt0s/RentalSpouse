@@ -16,6 +16,7 @@ import {
   ProfessionalDocument,
 } from '../../types/professionalDocuments';
 import { resolveApiUrl } from '../../services/professionalDocuments';
+import { mensagemErro } from '../../services/apiError';
 import { Button } from '../ui/Button';
 
 interface DocumentUploadCardProps {
@@ -87,7 +88,7 @@ export const DocumentUploadCard: React.FC<DocumentUploadCardProps> = ({
       await onUpload(file);
     } catch (err: unknown) {
       const message =
-        err instanceof Error ? err.message : 'Falha ao realizar upload do documento.';
+        mensagemErro(err, 'Falha ao realizar upload do documento.');
       setValidationError(message);
     } finally {
       setIsLoading(false);
@@ -141,7 +142,7 @@ export const DocumentUploadCard: React.FC<DocumentUploadCardProps> = ({
       await onDelete(document.id);
     } catch (err: unknown) {
       const message =
-        err instanceof Error ? err.message : 'Falha ao excluir o documento.';
+        mensagemErro(err, 'Falha ao excluir o documento.');
       setValidationError(message);
     } finally {
       setIsLoading(false);

@@ -91,6 +91,10 @@ def test_migrations_alter_table_and_backfill():
     # Verifica que as colunas foram criadas com sucesso
     inspector_after = inspect(engine)
     cols_after = {c["name"] for c in inspector_after.get_columns("professionals")}
+    assert "email_verificado" in cols_after
+    assert "verificacao_token_hash" in cols_after
+    assert "verificacao_expira_em" in cols_after
+    assert "verificacao_enviada_em" in cols_after
     assert "approval_status" in cols_after
     assert "approval_notes" in cols_after
     assert "documents_submitted_at" in cols_after
@@ -139,6 +143,53 @@ def test_migrations_on_nonexistent_table() -> None:
     engine = create_engine("sqlite:///:memory:")
     # Não deve levantar exceção
     migrate_columns_and_indexes(engine)
+
+
+def test_migrations_users_and_clientes_legacy_tables():
+    """Valida adição idempotente de colunas de verificação e role em tabelas legadas users e clientes (#53/#93)."""
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(255) NOT NULL,
+                    email VARCHAR(255) NOT NULL,
+                    hashed_password VARCHAR(255) NOT NULL
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE clientes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nome VARCHAR(255) NOT NULL,
+                    email VARCHAR(255) NOT NULL,
+                    cpf VARCHAR(11) NOT NULL
+                )
+                """
+            )
+        )
+
+    migrate_columns_and_indexes(engine)
+    inspector = inspect(engine)
+    user_cols = {c["name"] for c in inspector.get_columns("users")}
+    cliente_cols = {c["name"] for c in inspector.get_columns("clientes")}
+
+    assert {"role", "is_active", "email_verificado", "created_at"}.issubset(user_cols)
+    assert {
+        "email_verificado",
+        "verificacao_token_hash",
+        "verificacao_expira_em",
+        "verificacao_enviada_em",
+    }.issubset(cliente_cols)
 
 
 def test_migrate_denuncias_table_adiciona_colunas_de_moderacao() -> None:

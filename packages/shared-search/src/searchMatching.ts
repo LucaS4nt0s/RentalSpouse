@@ -238,6 +238,14 @@ export const SPECIALTY_SYNONYMS: Record<string, string[]> = {
   ],
 };
 
+const SYNONYMS_BY_NORMALIZED: Record<string, string[]> = Object.fromEntries(
+  Object.entries(SPECIALTY_SYNONYMS).map(([category, syns]) => [cleanText(category), syns])
+);
+
+export function synonymsFor(specialty: string | null | undefined): string[] {
+  return SYNONYMS_BY_NORMALIZED[cleanText(specialty)] || [];
+}
+
 function escapeRegExp(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -443,17 +451,10 @@ export function filterProfessionalsIntelligent<T extends ProfessionalData = Prof
       if (!hasSpec) continue;
     }
 
-    // 2. Filtro estrito de Cidade Selecionada (com insensibilidade a acentos)
+    // 2. Filtro estrito de Cidade Selecionada (insensível a acentos e caixa)
     if (cleanCity) {
       const profCity = cleanText(prof.city);
-      const isCityMatch =
-        profCity === cleanCity ||
-        profCity.includes(cleanCity) ||
-        cleanCity.includes(profCity);
-      if (!isCityMatch) {
-        const sim = calculateSimilarity(profCity, cleanCity);
-        if (sim < 0.75) continue;
-      }
+      if (!profCity || !profCity.includes(cleanCity)) continue;
     }
 
     // 3. Se não houver busca textual livre (q), inclui diretamente
@@ -483,8 +484,8 @@ export function filterProfessionalsIntelligent<T extends ProfessionalData = Prof
           : `Especialidade: ${spec}`;
       }
 
-      // Casamento com os sinônimos da especialidade
-      const syns = SPECIALTY_SYNONYMS[spec] || [];
+      // Casamento com os sinônimos da especialidade (tolerante a acento/caixa)
+      const syns = synonymsFor(spec);
       for (const syn of syns) {
         const synMatch = matchSynonymOrTerm(syn, cleanQ, qTokens);
         if (synMatch.isMatch && synMatch.score > bestScore) {

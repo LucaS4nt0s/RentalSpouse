@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { traduzirMensagemErro } from '../../../services/apiError';
 import {
   PersonalInfoSection,
   PersonalInfoData,
@@ -181,7 +182,7 @@ export default function CadastroProfissionalPage() {
     detail.forEach((item) => {
       const loc = item.loc ?? [];
       const field = loc[loc.length - 1];
-      const message = item.msg || 'Valor inválido.';
+      const message = traduzirMensagemErro(item.msg || 'Valor inválido.');
       switch (field) {
         case 'nome_completo':
         case 'nome':
@@ -378,6 +379,11 @@ export default function CadastroProfissionalPage() {
       bio: skillsData.bio.trim(),
       service_radius_km: skillsData.raioAtendimento,
       specialties: skillsData.especialidades,
+      cep: cleanDigits(addressData.cep) || undefined,
+      logradouro: addressData.logradouro.trim() || undefined,
+      numero: addressData.numero.trim() || undefined,
+      complemento: addressData.complemento.trim() || undefined,
+      bairro: addressData.bairro.trim() || undefined,
       city: addressData.cidade.trim() || undefined,
       state: addressData.estado_uf.trim().toUpperCase() || undefined,
       password: passwordData.senha,

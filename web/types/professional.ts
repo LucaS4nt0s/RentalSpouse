@@ -11,8 +11,10 @@ export interface Professional {
   bio: string;
   service_radius_km: number;
   specialties: string[];
+  bairro?: string | null;
   city?: string | null;
   state?: string | null;
+  distance_km?: number | null;
   is_active: boolean;
   approval_status?: string;
   average_rating?: number | null;

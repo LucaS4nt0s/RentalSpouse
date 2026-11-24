@@ -89,6 +89,7 @@ export interface ListAdminDenunciasParams {
 export async function listAdminDenuncias(
   token: string,
   params: ListAdminDenunciasParams = {},
+  signal?: AbortSignal,
 ): Promise<DenunciaAdminItem[]> {
   if (IS_MOCK_ENABLED) {
     return mockService.listAdminDenunciasMock(params);
@@ -121,6 +122,7 @@ export async function listAdminDenuncias(
       Accept: 'application/json',
     },
     cache: 'no-store',
+    signal,
   });
 
   if (!response.ok) {
@@ -138,6 +140,7 @@ export async function listAdminDenuncias(
 /** Obtém os contadores resumidos de denúncias para os cards do painel admin. */
 export async function getAdminDenunciasResumo(
   token: string,
+  signal?: AbortSignal,
 ): Promise<DenunciaAdminResumo> {
   if (IS_MOCK_ENABLED) {
     return mockService.getAdminDenunciasResumoMock();
@@ -150,6 +153,7 @@ export async function getAdminDenunciasResumo(
       Accept: 'application/json',
     },
     cache: 'no-store',
+    signal,
   });
 
   if (!response.ok) {

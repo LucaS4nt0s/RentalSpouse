@@ -2,10 +2,12 @@ import { Professional } from '../types/professional';
 import { ApiError, parseErrorMessage } from './apiError';
 import {
   cancelarAgendamentoMock,
+  concluirAgendamentoMock,
   consultarMinhaDisponibilidadeMock,
   criarAgendamentoMock,
   definirMinhaDisponibilidadeMock,
   gerarAgendaMock,
+  listarAgendamentosRecebidosMock,
   listarMeusAgendamentosMock,
   obterProfissionalPorIdMock,
 } from './agenda.mock';
@@ -62,6 +64,11 @@ export interface Agendamento {
   criado_em: string;
   motivo_cancelamento?: string | null;
   cancelado_em?: string | null;
+}
+
+export interface AgendamentoRecebido extends Agendamento {
+  cliente_nome?: string | null;
+  cliente_email?: string | null;
 }
 
 export interface DisponibilidadeJanela {
@@ -282,6 +289,10 @@ export async function concluirAgendamento(
   token: string,
   agendamentoId: number,
 ): Promise<Agendamento> {
+  if (IS_MOCK_ENABLED) {
+    return concluirAgendamentoMock(agendamentoId);
+  }
+
   const response = await fetch(
     `${API_BASE_URL}/api/agendamentos/${agendamentoId}/concluir`,
     {
@@ -377,6 +388,61 @@ export async function definirMinhaDisponibilidade(
       parseErrorMessage(
         errorBody,
         'Não foi possível salvar sua grade de disponibilidade.',
+      ),
+      errorBody,
+    );
+  }
+
+  return response.json();
+}
+
+/**
+ * Lista os agendamentos recebidos pelo profissional autenticado:
+ * `GET /api/agendamentos/recebidos`.
+ */
+export async function listarAgendamentosRecebidos(
+  token: string,
+  statusFiltro?: AgendamentoStatus,
+  opcoes?: {
+    dataInicio?: string;
+    dataFim?: string;
+    skip?: number;
+    limit?: number;
+  },
+): Promise<AgendamentoRecebido[]> {
+  if (IS_MOCK_ENABLED) {
+    return listarAgendamentosRecebidosMock(statusFiltro, opcoes);
+  }
+
+  const params = new URLSearchParams();
+  if (statusFiltro) params.set('status', statusFiltro);
+  if (opcoes?.dataInicio) params.set('data_inicio', opcoes.dataInicio);
+  if (opcoes?.dataFim) params.set('data_fim', opcoes.dataFim);
+  if (typeof opcoes?.skip === 'number') params.set('skip', String(opcoes.skip));
+  if (typeof opcoes?.limit === 'number') {
+    params.set('limit', String(opcoes.limit));
+  }
+  const query = params.toString();
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/agendamentos/recebidos${query ? `?${query}` : ''}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+      cache: 'no-store',
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => null);
+    throw new ApiError(
+      response.status,
+      parseErrorMessage(
+        errorBody,
+        'Não foi possível carregar os agendamentos recebidos.',
       ),
       errorBody,
     );

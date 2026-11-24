@@ -55,14 +55,46 @@ class UserBase(BaseModel):
     email: EmailStr = Field(..., description="E-mail do usuário")
 
 
+def mascarar_cpf_leitura(cpf: Optional[str]) -> Optional[str]:
+    """Formata e mascara parcialmente o CPF para exibição segura em Minha Conta (***.456.789-**)."""
+    if not cpf:
+        return None
+    digitos = "".join(filter(str.isdigit, str(cpf)))
+    if len(digitos) != 11:
+        return "***.***.***-**"
+    return f"***.{digitos[3:6]}.{digitos[6:9]}-**"
+
+
+
 class UserRead(UserBase):
-    """Schema de resposta para exibição de dados do usuário."""
+    """Schema de resposta para exibição de dados do usuário e perfil completo (Minha Conta)."""
 
     id: Optional[int] = None
     role: str
     is_active: bool
     email_verificado: bool = True
     created_at: Optional[datetime] = None
+
+    # Campos de Cliente (quando role == "client")
+    cpf: Optional[str] = None
+    data_nascimento: Optional[date] = None
+    cep: Optional[str] = None
+    logradouro: Optional[str] = None
+    numero: Optional[str] = None
+    complemento: Optional[str] = None
+    bairro: Optional[str] = None
+    cidade: Optional[str] = None
+    estado: Optional[str] = None
+    endereco: Optional[Any] = None
+
+    # Campos de Profissional (quando role == "professional")
+    phone: Optional[str] = None
+    bio: Optional[str] = None
+    service_radius_km: Optional[float] = None
+    specialties: Optional[List[str]] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    approval_status: Optional[str] = None
 
     @computed_field
     @property
@@ -80,6 +112,169 @@ class UserRead(UserBase):
         return role_map.get(self.role, self.role)
 
     model_config = {"from_attributes": True}
+
+
+class ContaUpdateRequest(BaseModel):
+    """Schema para atualização de dados cadastrais, preferências e senha na página Minha Conta (#94)."""
+
+    name: Optional[str] = Field(None, max_length=255, description="Nome completo")
+    data_nascimento: Optional[date] = None
+
+    # Endereço do cliente
+    cep: Optional[str] = Field(None, max_length=9)
+    logradouro: Optional[str] = Field(None, max_length=255)
+    numero: Optional[str] = Field(None, max_length=50)
+    complemento: Optional[str] = Field(None, max_length=255)
+    bairro: Optional[str] = Field(None, max_length=100)
+    cidade: Optional[str] = Field(None, max_length=100)
+    estado: Optional[str] = Field(None, min_length=2, max_length=2)
+
+    # Dados do profissional
+    phone: Optional[str] = Field(None, max_length=20)
+    bio: Optional[str] = Field(None, max_length=2000)
+    service_radius_km: Optional[float] = Field(None, ge=1.0, le=100.0)
+    specialties: Optional[List[str]] = None
+    city: Optional[str] = Field(None, max_length=100)
+    state: Optional[str] = Field(None, min_length=2, max_length=2)
+    latitude: Optional[float] = Field(None, ge=-90.0, le=90.0)
+    longitude: Optional[float] = Field(None, ge=-180.0, le=180.0)
+
+    # Alteração opcional de senha
+    senha_atual: Optional[str] = Field(None, max_length=128)
+    nova_senha: Optional[str] = Field(None, max_length=128)
+    confirmar_nova_senha: Optional[str] = Field(None, max_length=128)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalizar_aliases(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        payload = dict(data)
+        if "name" not in payload and "nome" in payload:
+            payload["name"] = payload["nome"]
+        if "phone" not in payload and "telefone" in payload:
+            payload["phone"] = payload["telefone"]
+        if "specialties" not in payload and "especialidades" in payload:
+            payload["specialties"] = payload["especialidades"]
+        if "service_radius_km" not in payload and "raio_atendimento_km" in payload:
+            payload["service_radius_km"] = payload["raio_atendimento_km"]
+        if "senha_atual" not in payload and "current_password" in payload:
+            payload["senha_atual"] = payload["current_password"]
+        if "nova_senha" not in payload and "new_password" in payload:
+            payload["nova_senha"] = payload["new_password"]
+        if "confirmar_nova_senha" not in payload and "confirm_password" in payload:
+            payload["confirmar_nova_senha"] = payload["confirm_password"]
+
+        if isinstance(payload.get("endereco"), dict):
+            end = payload["endereco"]
+            for campo in ("cep", "logradouro", "numero", "complemento", "bairro", "cidade"):
+                if campo not in payload and campo in end:
+                    payload[campo] = end[campo]
+            if "estado" not in payload:
+                if "estado" in end:
+                    payload["estado"] = end["estado"]
+                elif "estado_uf" in end:
+                    payload["estado"] = end["estado_uf"]
+        return payload
+
+    @field_validator("name")
+    @classmethod
+    def validar_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        limpo = v.strip()
+        if len(limpo) < 2:
+            raise ValueError("O nome deve ter no mínimo 2 caracteres.")
+        if not any(c.isalpha() for c in limpo):
+            raise ValueError("O nome deve conter letras.")
+        return limpo
+
+    @field_validator("cep")
+    @classmethod
+    def validar_cep_opcional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        digitos = "".join(filter(str.isdigit, v))
+        if len(digitos) != 8:
+            raise ValueError("O CEP deve conter exatamente 8 dígitos numéricos.")
+        return digitos
+
+    @field_validator("logradouro", "numero", "bairro", "cidade", "city")
+    @classmethod
+    def validar_texto_nao_vazio(cls, v: Optional[str], info) -> Optional[str]:
+        if v is None:
+            return None
+        limpo = v.strip()
+        if not limpo:
+            raise ValueError(f"O campo '{info.field_name}' não pode ser vazio.")
+        return limpo
+
+    @field_validator("complemento")
+    @classmethod
+    def validar_complemento_opcional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        limpo = v.strip()
+        return limpo if limpo else None
+
+    @field_validator("estado", "state")
+    @classmethod
+    def validar_uf_opcional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        uf = v.strip().upper()
+        if uf not in UFS_VALIDAS:
+            raise ValueError(f"Estado '{v}' inválido. Deve ser uma sigla de UF brasileira válida.")
+        return uf
+
+    @field_validator("bio")
+    @classmethod
+    def validar_bio_opcional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        limpo = v.strip()
+        if len(limpo) < 10:
+            raise ValueError("A biografia deve ter no mínimo 10 caracteres.")
+        return limpo
+
+    @field_validator("specialties")
+    @classmethod
+    def validar_specialties_opcional(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return None
+        limpas = [s.strip() for s in v if isinstance(s, str) and s.strip()]
+        if not limpas:
+            raise ValueError("Informe ao menos uma especialidade válida.")
+        return limpas
+
+    @field_validator("data_nascimento")
+    @classmethod
+    def validar_data_nascimento_opcional(cls, v: Optional[date]) -> Optional[date]:
+        if v is None:
+            return None
+        hoje = date.today()
+        if v > hoje:
+            raise ValueError("A data de nascimento não pode ser no futuro.")
+        idade = hoje.year - v.year - ((hoje.month, hoje.day) < (v.month, v.day))
+        if idade < 18:
+            raise ValueError("O usuário deve ter no mínimo 18 anos.")
+        if idade > 120:
+            raise ValueError("Data de nascimento inválida.")
+        return v
+
+    @model_validator(mode="after")
+    def validar_alteracao_senha(self):
+        if self.nova_senha is not None:
+            if len(self.nova_senha) < 8:
+                raise ValueError("A nova senha deve conter no mínimo 8 caracteres.")
+            if not any(c.isalpha() for c in self.nova_senha):
+                raise ValueError("A nova senha deve conter pelo menos uma letra.")
+            if not any(c.isdigit() for c in self.nova_senha):
+                raise ValueError("A nova senha deve conter pelo menos um número.")
+            if self.confirmar_nova_senha is not None and self.nova_senha != self.confirmar_nova_senha:
+                raise ValueError("A confirmação de senha não confere com a nova senha informada.")
+        return self
+
 
 
 class AdminBase(UserBase):
@@ -415,8 +610,27 @@ class ProfessionalBase(BaseModel):
     bio: str = Field(..., min_length=10, max_length=2000, description="Biografia detalhada e apresentação aos clientes")
     service_radius_km: float = Field(..., ge=1.0, description="Raio de atendimento em km (mínimo 1 km)")
     specialties: List[str] = Field(..., min_length=1, description="Lista de especialidades do profissional")
+    cep: Optional[str] = Field(None, max_length=9, description="CEP do profissional")
+    logradouro: Optional[str] = Field(None, max_length=255, description="Logradouro do profissional")
+    numero: Optional[str] = Field(None, max_length=50, description="Número do endereço")
+    complemento: Optional[str] = Field(None, max_length=255, description="Complemento do endereço")
+    bairro: Optional[str] = Field(None, max_length=100, description="Bairro do profissional")
     city: Optional[str] = Field(None, max_length=100, description="Cidade base do profissional")
     state: Optional[str] = Field(None, min_length=2, max_length=2, description="Sigla do estado (ex: SP)")
+    latitude: Optional[float] = Field(None, ge=-90.0, le=90.0, description="Latitude opcional")
+    longitude: Optional[float] = Field(None, ge=-180.0, le=180.0, description="Longitude opcional")
+
+    @field_validator("cep")
+    @classmethod
+    def validate_cep_optional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        digits = "".join(filter(str.isdigit, str(v)))
+        if not digits:
+            return None
+        if len(digits) != 8:
+            raise ValueError("O CEP deve conter exatamente 8 dígitos numéricos.")
+        return digits
 
     @field_validator("name")
     @classmethod
@@ -477,9 +691,12 @@ class ProfessionalCreate(ProfessionalBase):
                     data["service_radius_km"] = data["raio_atendimento_km"]
                 elif "raio_atendimento" in data:
                     data["service_radius_km"] = data["raio_atendimento"]
-            # endereco -> city / state
+            # endereco -> cep / logradouro / numero / complemento / bairro / city / state
             if "endereco" in data and isinstance(data["endereco"], dict):
                 end = data["endereco"]
+                for campo in ("cep", "logradouro", "numero", "complemento", "bairro"):
+                    if campo not in data and campo in end:
+                        data[campo] = end[campo]
                 if "city" not in data and "cidade" in end:
                     data["city"] = end["cidade"]
                 if "state" not in data:
@@ -511,9 +728,28 @@ class ProfessionalUpdate(BaseModel):
     bio: Optional[str] = Field(None, min_length=10, max_length=2000)
     service_radius_km: Optional[float] = Field(None, ge=1.0)
     specialties: Optional[List[str]] = Field(None, min_length=1)
+    cep: Optional[str] = Field(None, max_length=9)
+    logradouro: Optional[str] = Field(None, max_length=255)
+    numero: Optional[str] = Field(None, max_length=50)
+    complemento: Optional[str] = Field(None, max_length=255)
+    bairro: Optional[str] = Field(None, max_length=100)
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, min_length=2, max_length=2)
+    latitude: Optional[float] = Field(None, ge=-90.0, le=90.0)
+    longitude: Optional[float] = Field(None, ge=-180.0, le=180.0)
     is_active: Optional[bool] = None
+
+    @field_validator("cep")
+    @classmethod
+    def validate_cep_optional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        digits = "".join(filter(str.isdigit, str(v)))
+        if not digits:
+            return None
+        if len(digits) != 8:
+            raise ValueError("O CEP deve conter exatamente 8 dígitos numéricos.")
+        return digits
 
     @field_validator("name", "email", "bio", "service_radius_km", "specialties", "is_active", mode="before")
     @classmethod
@@ -583,6 +819,7 @@ class ProfessionalRead(ProfessionalBase):
     approved_at: Optional[datetime] = None
     average_rating: Optional[float] = Field(None, description="Nota média de avaliações (1.0 a 5.0) ou None se não avaliado")
     reviews_count: int = Field(0, description="Total de avaliações recebidas")
+    distance_km: Optional[float] = Field(None, description="Distância em km entre o endereço do cliente e o profissional")
     created_at: datetime
     updated_at: datetime
 
@@ -606,12 +843,14 @@ class ProfessionalPublicRead(BaseModel):
     bio: str
     service_radius_km: float
     specialties: List[str]
+    bairro: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
     is_active: bool
     approval_status: str
     average_rating: Optional[float] = Field(None, description="Nota média de avaliações (1.0 a 5.0) ou None se não avaliado")
     reviews_count: int = Field(0, description="Total de avaliações recebidas")
+    distance_km: Optional[float] = Field(None, description="Distância em km entre o endereço do cliente e o profissional")
     created_at: datetime
     updated_at: datetime
 
@@ -846,6 +1085,7 @@ class ProfessionalModerationReviewRead(BaseModel):
     bio: str
     service_radius_km: float
     specialties: List[str]
+    bairro: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
     is_active: bool
@@ -1083,6 +1323,26 @@ class OrcamentoResumoCapacidade(BaseModel):
     aceitos: int = 0
     recusados: int = 0
     respondidos: int = 0
+
+
+class OrcamentoAprovarEstimativaCliente(BaseModel):
+    """Payload opcional para o cliente aprovar a estimativa enviada pelo profissional (Issue #98)."""
+
+    mensagem: Optional[str] = Field(
+        None,
+        max_length=1000,
+        description="Mensagem ou observação opcional do cliente ao aprovar a estimativa",
+    )
+
+
+class OrcamentoCancelarCliente(BaseModel):
+    """Payload para o cliente cancelar solicitação ou recusar estimativa (Issue #98)."""
+
+    motivo: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="Motivo do cancelamento ou recusa da estimativa pelo cliente",
+    )
 
 
 class NotificacaoRead(BaseModel):
@@ -1515,6 +1775,19 @@ class AgendamentoRead(BaseModel):
     criado_em: datetime
 
 
+class AgendamentoRecebidoRead(AgendamentoRead):
+    """Agendamento recebido pelo profissional autenticado, incluindo dados de contato do cliente (issue #95)."""
+
+    cliente_nome: Optional[str] = Field(
+        None,
+        description="Nome do cliente que realizou o agendamento.",
+    )
+    cliente_email: Optional[str] = Field(
+        None,
+        description="E-mail do cliente que realizou o agendamento.",
+    )
+
+
 class AgendamentoCancelarRequest(BaseModel):
     """Payload opcional para cancelamento de agendamento (issue #24)."""
 
@@ -1714,6 +1987,37 @@ class PagamentoRead(BaseModel):
     _utc = field_validator(
         "pix_expira_em", "pago_em", "criado_em", "atualizado_em", mode="after"
     )(_garantir_utc_pagamento)
+
+
+class PagamentoRecenteResumo(BaseModel):
+    """Resumo de um pagamento aprovado para o extrato do profissional (Issue #27)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    orcamento_id: int
+    agendamento_id: Optional[int] = None
+    cliente_nome: Optional[str] = None
+    valor: float
+    metodo: str
+    status: str
+    pago_em: Optional[datetime] = None
+    gateway_txid: str
+
+
+class GanhosProfissionalResumoRead(BaseModel):
+    """Métricas consolidadas de faturamento e ganhos do profissional (Issue #27)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    total_acumulado: float = 0.0
+    ganhos_mes_atual: float = 0.0
+    ganhos_semana_atual: float = 0.0
+    total_atendimentos_pagos: int = 0
+    ticket_medio: float = 0.0
+    mes_referencia: str
+    semana_referencia: str
+    pagamentos_recentes: List[PagamentoRecenteResumo] = []
 
 
 # ---------------------------------------------------------------------------

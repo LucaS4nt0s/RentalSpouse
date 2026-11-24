@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { cleanDigits } from '../utils/formatters';
 
 export function useAddressLookup(cepValue = '', options = {}) {
@@ -19,6 +19,9 @@ export function useAddressLookup(cepValue = '', options = {}) {
 
     if (digits.length !== 8) {
       setError(null);
+      if (lastSearchedCep !== '') {
+        setLastSearchedCep('');
+      }
       return;
     }
 
@@ -68,9 +71,14 @@ export function useAddressLookup(cepValue = '', options = {}) {
     return () => clearTimeout(timer);
   }, [cepValue, lastSearchedCep]);
 
+  const syncCep = useCallback((knownCep = '') => {
+    setLastSearchedCep(cleanDigits(knownCep));
+  }, []);
+
   return {
     isLoading,
     error,
     resetError: () => setError(null),
+    syncCep,
   };
 }
