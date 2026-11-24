@@ -86,7 +86,7 @@ export default function ClienteOrcamentosPage() {
       setFeedbackBanner('Estimativa aprovada com sucesso! O serviço foi confirmado e o profissional notificado.');
       await carregarOrcamentos();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao aprovar estimativa do orçamento.';
+      const msg = mensagemErro(err, 'Falha ao aprovar estimativa do orçamento.');
       setError(msg);
     } finally {
       setApprovingId(null);

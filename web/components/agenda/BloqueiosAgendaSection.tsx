@@ -21,6 +21,7 @@ import {
   removerBloqueioAgenda,
   somarDiasDataIso,
 } from '../../services/bloqueios';
+import { mensagemErro } from '../../services/apiError';
 
 export interface BloqueiosAgendaSectionProps {
   token: string;
@@ -83,10 +84,7 @@ export const BloqueiosAgendaSection: React.FC<BloqueiosAgendaSectionProps> = ({
       setBloqueios(lista);
       onBloqueiosAtualizados?.(lista);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : 'Não foi possível carregar seus bloqueios de agenda.';
+      const msg = mensagemErro(err, 'Não foi possível carregar seus bloqueios de agenda.');
       setLoadError(msg);
     } finally {
       setIsLoading(false);
@@ -134,10 +132,7 @@ export const BloqueiosAgendaSection: React.FC<BloqueiosAgendaSectionProps> = ({
         'Bloqueio registrado! Os horários selecionados já foram ocultados da sua agenda pública.',
       );
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : 'Não foi possível criar o bloqueio de agenda.';
+      const msg = mensagemErro(err, 'Não foi possível criar o bloqueio de agenda.');
       setFormError(msg);
     } finally {
       setIsSubmitting(false);
@@ -157,10 +152,7 @@ export const BloqueiosAgendaSection: React.FC<BloqueiosAgendaSectionProps> = ({
         'Bloqueio removido! Os horários correspondentes voltaram a ficar disponíveis conforme sua grade semanal.',
       );
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : 'Não foi possível remover o bloqueio.';
+      const msg = mensagemErro(err, 'Não foi possível remover o bloqueio.');
       setFormError(msg);
     } finally {
       setRemovingId(null);

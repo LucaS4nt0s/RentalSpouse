@@ -33,6 +33,7 @@ import {
   normalizarHoraCurta,
   validarGradeDisponibilidade,
 } from '../../../services/agenda';
+import { mensagemErro } from '../../../services/apiError';
 import { Button } from '../../../components/ui/Button';
 import { AppHeader } from '../../../components/layout/AppHeader';
 import { AgendamentosRecebidosSection } from '../../../components/agenda/AgendamentosRecebidosSection';
@@ -118,10 +119,7 @@ export default function ProfissionalAgendaPage() {
       setAssinaturaSalva(serializarGrade(editaveis));
       setTotalSalvo(editaveis.length);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : 'Não foi possível carregar sua grade de disponibilidade.';
+      const msg = mensagemErro(err, 'Não foi possível carregar sua grade de disponibilidade.');
       setLoadError(msg);
     } finally {
       setIsLoading(false);
@@ -318,10 +316,7 @@ export default function ProfissionalAgendaPage() {
           : 'Agenda fechada com sucesso. Nenhum horário está aberto para novos agendamentos.',
       );
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : 'Não foi possível salvar sua grade de disponibilidade.';
+      const msg = mensagemErro(err, 'Não foi possível salvar sua grade de disponibilidade.');
       setSaveError(msg);
     } finally {
       setIsSaving(false);

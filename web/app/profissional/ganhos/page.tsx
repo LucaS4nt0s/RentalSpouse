@@ -23,6 +23,7 @@ import {
   GanhosProfissionalResumo,
   obterResumoGanhos,
 } from '../../../services/pagamentos';
+import { mensagemErro } from '../../../services/apiError';
 import { Button } from '../../../components/ui/Button';
 import { ThemeToggle } from '../../../components/ui/ThemeToggle';
 import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
@@ -68,7 +69,7 @@ export default function ProfissionalGanhosPage() {
       const data = await obterResumoGanhos(token);
       setResumo(data);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao carregar resumo de ganhos.';
+      const msg = mensagemErro(err, 'Falha ao carregar resumo de ganhos.');
       setError(msg);
     } finally {
       setIsLoading(false);

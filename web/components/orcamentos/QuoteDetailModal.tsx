@@ -299,7 +299,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
         onResponded('Estimativa aprovada com sucesso! O profissional foi notificado.');
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao aprovar estimativa.';
+      const msg = mensagemErro(err, 'Erro ao aprovar estimativa.');
       setSubmitError(msg);
     } finally {
       setIsSubmitting(false);
@@ -336,7 +336,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
         onResponded('Solicitação de orçamento cancelada com sucesso.');
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao cancelar solicitação.';
+      const msg = mensagemErro(err, 'Erro ao cancelar solicitação.');
       setSubmitError(msg);
     } finally {
       setIsSubmitting(false);

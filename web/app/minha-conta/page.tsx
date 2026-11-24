@@ -30,6 +30,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useAddressLookup } from '../../hooks/useAddressLookup';
 import { VALID_UFS } from '../../utils/validators';
 import { cleanDigits, maskCEP, maskPhone } from '../../utils/formatters';
+import { mensagemErro } from '../../services/apiError';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
@@ -161,7 +162,7 @@ export default function MinhaContaPage() {
       populateForm(data);
     } catch (err) {
       setLoadError(
-        err instanceof Error ? err.message : 'Falha na comunicação com o servidor.'
+        mensagemErro(err, 'Falha na comunicação com o servidor.')
       );
     } finally {
       setIsLoadingProfile(false);
@@ -302,7 +303,7 @@ export default function MinhaContaPage() {
     } catch (err) {
       setFeedbackBanner({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Erro ao atualizar perfil.',
+        message: mensagemErro(err, 'Erro ao atualizar perfil.'),
       });
     } finally {
       setIsSavingProfile(false);
@@ -373,7 +374,7 @@ export default function MinhaContaPage() {
     } catch (err) {
       setFeedbackBanner({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Erro ao alterar senha.',
+        message: mensagemErro(err, 'Erro ao alterar senha.'),
       });
     } finally {
       setIsSavingPassword(false);
