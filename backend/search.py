@@ -310,16 +310,7 @@ def filter_professionals_intelligent(
 
         if clean_city:
             prof_city = clean_text(_field(prof, "city"))
-            # Profissionais sem cidade cadastrada não podem "casar" com a cidade
-            # buscada (evita que "" seja substring de qualquer termo).
-            if not prof_city:
-                continue
-            is_city_match = (
-                prof_city == clean_city
-                or clean_city in prof_city
-                or prof_city in clean_city
-            )
-            if not is_city_match and calculate_similarity(prof_city, clean_city) < 0.75:
+            if not prof_city or clean_city not in prof_city:
                 continue
 
         if not clean_q or not q_tokens:

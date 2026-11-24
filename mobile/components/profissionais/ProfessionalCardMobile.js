@@ -42,7 +42,14 @@ export const ProfessionalCardMobile = ({
     ? `Raio de ${Math.round(professional.service_radius_km)} km`
     : null;
 
-  const fullLocation = [location, radius].filter(Boolean).join(' • ');
+  const distance =
+    typeof professional.distance_km === 'number'
+      ? professional.distance_km < 1
+        ? 'A menos de 1 km'
+        : `A ${professional.distance_km.toFixed(1).replace('.', ',')} km`
+      : null;
+
+  const fullLocation = [location, distance, radius].filter(Boolean).join(' • ');
 
   const specialties = professional.specialties || [];
   const displayedSpecs = specialties.slice(0, 3);

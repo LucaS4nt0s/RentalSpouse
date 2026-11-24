@@ -141,3 +141,13 @@ test('professionalsSearchQuery: mapeia Até 10 km para max_radius_km=10 e limpa 
   assert.equal(parsed.searchParams.get('city'), null);
   assert.equal(parsed.searchParams.get('max_radius_km'), '10');
 });
+
+test('professionalsSearchQuery: slider Tinder numérico mapeia para max_distance_km', () => {
+  assert.equal(parseRadiusFilter('30'), '30');
+  assert.equal(parseRadiusFilter('0'), '');
+  assert.equal(parseRadiusFilter('999'), '');
+  assert.deepEqual(radiusFilterToApiParams('45'), { max_distance_km: 45 });
+
+  const sliderUrl = new URL(buildProfessionalsSearchUrl('http://localhost:8000', { radius: '35' }));
+  assert.equal(sliderUrl.searchParams.get('max_distance_km'), '35');
+});

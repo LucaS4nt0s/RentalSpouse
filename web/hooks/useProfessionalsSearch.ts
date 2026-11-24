@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Professional } from '../types/professional';
+import { cleanText } from '../utils/searchMatching';
 import {
   RadiusFilterValue,
   SortOrderValue,
@@ -39,9 +40,8 @@ interface PaginatedProfessionalsResponse {
 
 /**
  * Hook central de busca de profissionais no RentalSpouse.
- * Envia todos os filtros ativos (`q`, `specialty`, `city`, `state`, `min_radius_km` /
- * `max_radius_km` e `order_by`) diretamente ao motor de busca do backend e trata os
- * 3 estados obrigatórios (loading, error com retry e success/empty).
+ * Consulta `specialty`, `state`, `q` e `order_by` no backend e aplica cidade e distância
+ * instantaneamente em memória para zero latência ao digitar ou deslizar a barra.
  */
 export function useProfessionalsSearch({
   specialty = '',
@@ -51,8 +51,7 @@ export function useProfessionalsSearch({
   radius = '',
   orderBy = '',
 }: UseProfessionalsSearchOptions): UseProfessionalsSearchResult {
-  const [data, setData] = useState<Professional[]>([]);
-  const [total, setTotal] = useState<number>(0);
+  const [rawItems, setRawItems] = useState<Professional[]>([]);
   const [detectedSuggestion, setDetectedSuggestion] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRetrying, setIsRetrying] = useState<boolean>(false);
@@ -60,7 +59,6 @@ export function useProfessionalsSearch({
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchData = useCallback(async () => {
-    // Cancela requisição anterior em andamento
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -73,20 +71,28 @@ export function useProfessionalsSearch({
     try {
       const requestUrl = buildProfessionalsSearchUrl(API_BASE_URL, {
         specialty,
-        city,
         state,
         q,
-        radius,
         orderBy,
         approvalStatus: 'approved',
         limit: 50,
       });
 
+      const token =
+        typeof window !== 'undefined'
+          ? window.localStorage.getItem('rentalspouse_token')
+          : null;
+
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
       const response = await fetch(requestUrl, {
         signal: controller.signal,
-        headers: {
-          Accept: 'application/json',
-        },
+        headers,
       });
 
       if (!response.ok) {
@@ -98,13 +104,11 @@ export function useProfessionalsSearch({
       const payload: PaginatedProfessionalsResponse | Professional[] = await response.json();
 
       if (Array.isArray(payload)) {
-        setData(payload);
-        setTotal(payload.length);
+        setRawItems(payload);
         setDetectedSuggestion(null);
       } else {
         const items = Array.isArray(payload.items) ? payload.items : [];
-        setData(items);
-        setTotal(typeof payload.total === 'number' ? payload.total : items.length);
+        setRawItems(items);
         setDetectedSuggestion(payload.detected_suggestion ?? null);
       }
       setIsLoading(false);
@@ -117,7 +121,7 @@ export function useProfessionalsSearch({
       );
       setIsLoading(false);
     }
-  }, [specialty, city, state, q, radius, orderBy]);
+  }, [specialty, state, q, orderBy]);
 
   useEffect(() => {
     fetchData();
@@ -129,6 +133,33 @@ export function useProfessionalsSearch({
     };
   }, [fetchData]);
 
+  // ponytail: filtro instantâneo em memória para cidade/distância sobre a página (limit=50); mover para SQL se > 50 ativos
+  const data = useMemo(() => {
+    let items = rawItems;
+    const normCity = cleanText(city);
+    if (normCity) {
+      items = items.filter((p) => cleanText(p.city).includes(normCity));
+    }
+
+    if (/^\d+$/.test(radius)) {
+      const maxKm = Number(radius);
+      items = items.filter((p) => typeof p.distance_km === 'number' && p.distance_km <= maxKm);
+      if (!orderBy) {
+        items = [...items].sort((a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity));
+      }
+    } else if (radius === 'max_10') {
+      items = items.filter((p) => p.service_radius_km <= 10);
+    } else if (radius === 'min_10') {
+      items = items.filter((p) => p.service_radius_km >= 10);
+    } else if (radius === 'min_25') {
+      items = items.filter((p) => p.service_radius_km >= 25);
+    } else if (radius === 'min_50') {
+      items = items.filter((p) => p.service_radius_km >= 50);
+    }
+
+    return items;
+  }, [rawItems, city, radius, orderBy]);
+
   const retry = useCallback(async () => {
     setIsRetrying(true);
     await fetchData();
@@ -139,7 +170,7 @@ export function useProfessionalsSearch({
 
   return {
     data,
-    total,
+    total: data.length,
     isLoading,
     isRetrying,
     error,

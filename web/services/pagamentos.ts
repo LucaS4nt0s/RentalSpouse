@@ -1,3 +1,5 @@
+import { parseErrorMessage } from './apiError';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 const MP_PUBLIC_KEY = process.env.NEXT_PUBLIC_MP_PUBLIC_KEY ?? '';
 const MP_API_BASE_URL = 'https://api.mercadopago.com';
@@ -55,20 +57,6 @@ export interface CriarPagamentoPayload {
   cartao?: CartaoTokenizadoPayload;
 }
 
-function extrairDetalheErro(detail: unknown, fallback: string): string {
-  if (typeof detail === 'string' && detail.trim()) return detail;
-  if (Array.isArray(detail) && detail.length > 0) {
-    return detail
-      .map((item) =>
-        typeof item === 'object' && item && 'msg' in item
-          ? String((item as { msg: unknown }).msg).replace(/^Value error,\s*/i, '')
-          : String(item)
-      )
-      .join(' ');
-  }
-  return fallback;
-}
-
 export function detectarBandeiraCartao(numero: string): string {
   const digitos = numero.replace(/\D/g, '');
   if (digitos.startsWith('4')) return 'visa';
@@ -81,11 +69,97 @@ export function detectarBandeiraCartao(numero: string): string {
   return 'visa';
 }
 
+export function validarCpfDigitos(cpf: string): boolean {
+  const digits = cpf.replace(/\D/g, '');
+  if (digits.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(digits)) return false;
+
+  let soma = 0;
+  for (let i = 0; i < 9; i++) {
+    soma += Number(digits[i]) * (10 - i);
+  }
+  let resto = (soma * 10) % 11;
+  if (resto === 10) resto = 0;
+  if (resto !== Number(digits[9])) return false;
+
+  soma = 0;
+  for (let i = 0; i < 10; i++) {
+    soma += Number(digits[i]) * (11 - i);
+  }
+  resto = (soma * 10) % 11;
+  if (resto === 10) resto = 0;
+  return resto === Number(digits[10]);
+}
+
+export function validarDadosCartao(dados: {
+  numeroCartao: string;
+  nomeTitular: string;
+  cpfTitular: string;
+  mesValidade: string;
+  anoValidade: string;
+  cvv: string;
+}): {
+  numeroLimpo: string;
+  cpfLimpo: string;
+  mesNum: number;
+  anoCompleto: number;
+  cvvLimpo: string;
+  nomeLimpo: string;
+} {
+  const numeroLimpo = dados.numeroCartao.replace(/\D/g, '');
+  if (numeroLimpo.length < 13 || numeroLimpo.length > 19) {
+    throw new Error('Informe um número de cartão válido (13 a 19 dígitos).');
+  }
+
+  const nomeLimpo = dados.nomeTitular.trim();
+  if (nomeLimpo.length < 3) {
+    throw new Error('Informe o nome do titular impresso no cartão (mínimo 3 caracteres).');
+  }
+
+  const cpfLimpo = dados.cpfTitular.replace(/\D/g, '');
+  if (!validarCpfDigitos(cpfLimpo)) {
+    throw new Error('Informe um CPF válido com 11 dígitos para o titular do cartão.');
+  }
+
+  const mesStr = dados.mesValidade.trim();
+  const anoStr = dados.anoValidade.trim();
+  if (!/^\d{1,2}$/.test(mesStr) || !/^\d{2,4}$/.test(anoStr)) {
+    throw new Error('Informe a validade do cartão no formato MM/AA.');
+  }
+
+  const mesNum = Number(mesStr);
+  const anoCompleto = anoStr.length === 2 ? Number(`20${anoStr}`) : Number(anoStr);
+  if (!Number.isInteger(mesNum) || mesNum < 1 || mesNum > 12) {
+    throw new Error('O mês de validade do cartão deve estar entre 01 e 12.');
+  }
+
+  const agora = new Date();
+  const anoAtual = agora.getUTCFullYear();
+  const mesAtual = agora.getUTCMonth() + 1;
+  if (anoCompleto < anoAtual || (anoCompleto === anoAtual && mesNum < mesAtual)) {
+    throw new Error('O cartão informado está vencido. Verifique a validade.');
+  }
+
+  const cvvLimpo = dados.cvv.replace(/\D/g, '');
+  if (cvvLimpo.length < 3 || cvvLimpo.length > 4) {
+    throw new Error('Informe um código de segurança (CVV) válido com 3 ou 4 dígitos.');
+  }
+
+  return {
+    numeroLimpo,
+    cpfLimpo,
+    mesNum,
+    anoCompleto,
+    cvvLimpo,
+    nomeLimpo,
+  };
+}
+
 /**
  * Tokeniza os dados do cartão diretamente no cliente (PCI-DSS SAQ-A / EP).
  *
- * Sem `NEXT_PUBLIC_MP_PUBLIC_KEY` a operação falha de forma explícita: nunca
- * geramos um token falso nem simulamos aprovação em produção.
+ * Em ambiente de desenvolvimento/sandbox sem `NEXT_PUBLIC_MP_PUBLIC_KEY` configurada,
+ * valida todos os campos no cliente e gera token determinístico compatível com `sandbox_mock`.
  */
 export async function tokenizarCartaoMercadoPago(dados: {
   numeroCartao: string;
@@ -95,17 +169,33 @@ export async function tokenizarCartaoMercadoPago(dados: {
   anoValidade: string;
   cvv: string;
 }): Promise<{ card_token: string; payment_method_id: string }> {
-  if (!MP_PUBLIC_KEY || MP_PUBLIC_KEY.startsWith('TEST_MOCK')) {
+  const {
+    numeroLimpo,
+    cpfLimpo,
+    mesNum,
+    anoCompleto,
+    cvvLimpo,
+    nomeLimpo,
+  } = validarDadosCartao(dados);
+
+  const payment_method_id = detectarBandeiraCartao(numeroLimpo);
+
+  if (!MP_PUBLIC_KEY || MP_PUBLIC_KEY.startsWith('TEST')) {
+    const isProducaoEstrita =
+      process.env.NODE_ENV === 'production' &&
+      process.env.NEXT_PUBLIC_ENVIRONMENT === 'production';
+
+    if (!isProducaoEstrita) {
+      const lastFour = numeroLimpo.slice(-4) || '4242';
+      return {
+        card_token: `tok_sandbox_${lastFour}`,
+        payment_method_id,
+      };
+    }
     throw new Error(
       'Pagamento com cartão indisponível: NEXT_PUBLIC_MP_PUBLIC_KEY não está configurada. Use PIX ou contate o suporte.'
     );
   }
-
-  const numeroLimpo = dados.numeroCartao.replace(/\D/g, '');
-  const cpfLimpo = dados.cpfTitular.replace(/\D/g, '');
-  const payment_method_id = detectarBandeiraCartao(numeroLimpo);
-  const anoCompleto =
-    dados.anoValidade.length === 2 ? Number(`20${dados.anoValidade}`) : Number(dados.anoValidade);
 
   const res = await fetch(
     `${MP_API_BASE_URL}/v1/card_tokens?public_key=${encodeURIComponent(MP_PUBLIC_KEY)}`,
@@ -114,11 +204,11 @@ export async function tokenizarCartaoMercadoPago(dados: {
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({
         card_number: numeroLimpo,
-        security_code: dados.cvv.trim(),
-        expiration_month: Number(dados.mesValidade),
+        security_code: cvvLimpo,
+        expiration_month: mesNum,
         expiration_year: anoCompleto,
         cardholder: {
-          name: dados.nomeTitular.trim(),
+          name: nomeLimpo,
           identification: { type: 'CPF', number: cpfLimpo },
         },
       }),
@@ -149,7 +239,7 @@ export async function criarPagamento(
     let err = 'Falha ao processar o pagamento.';
     try {
       const errJson = await res.json();
-      err = extrairDetalheErro(errJson.detail, err);
+      err = parseErrorMessage(errJson, err);
     } catch {
       // ignora erro de parse
     }
@@ -197,11 +287,56 @@ export async function simularAprovacaoPix(
     let err = 'Não foi possível simular a confirmação do PIX.';
     try {
       const errJson = await res.json();
-      err = extrairDetalheErro(errJson.detail, err);
+      err = parseErrorMessage(errJson, err);
     } catch {
       // ignora
     }
     throw new Error(err);
   }
+  return res.json();
+}
+
+export interface PagamentoRecenteResumo {
+  id: number;
+  orcamento_id: number;
+  agendamento_id?: number | null;
+  cliente_nome?: string | null;
+  valor: number;
+  metodo: string;
+  status: string;
+  pago_em?: string | null;
+  gateway_txid: string;
+}
+
+export interface GanhosProfissionalResumo {
+  total_acumulado: number;
+  ganhos_mes_atual: number;
+  ganhos_semana_atual: number;
+  total_atendimentos_pagos: number;
+  ticket_medio: number;
+  mes_referencia: string;
+  semana_referencia: string;
+  pagamentos_recentes: PagamentoRecenteResumo[];
+}
+
+export async function obterResumoGanhos(token: string): Promise<GanhosProfissionalResumo> {
+  const res = await fetch(`${API_BASE_URL}/api/pagamentos/resumo-ganhos`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    let err = 'Falha ao obter resumo financeiro.';
+    try {
+      const errJson = await res.json();
+      err = parseErrorMessage(errJson, err);
+    } catch {
+      // ignora
+    }
+    throw new Error(err);
+  }
+
   return res.json();
 }

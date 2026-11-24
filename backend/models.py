@@ -81,6 +81,8 @@ class Cliente(Base):
     bairro = Column(String(100), nullable=False)
     cidade = Column(String(100), nullable=False)
     estado = Column(String(2), nullable=False)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
 
     criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -159,10 +161,21 @@ class Professional(Base):
     bio = Column(Text, nullable=False)
     service_radius_km = Column(Float, nullable=False)
     specialties = Column(JSON, nullable=False)
+    cep = Column(String(8), nullable=True)
+    logradouro = Column(String(255), nullable=True)
+    numero = Column(String(50), nullable=True)
+    complemento = Column(String(255), nullable=True)
+    bairro = Column(String(100), nullable=True)
     city = Column(String(100), nullable=True)
     state = Column(String(2), nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
     senha_hash = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    email_verificado = Column(Boolean, default=False, nullable=False, index=True)
+    verificacao_token_hash = Column(String(64), nullable=True, index=True)
+    verificacao_expira_em = Column(DateTime, nullable=True)
+    verificacao_enviada_em = Column(DateTime, nullable=True)
     approval_status = Column(
         String(50),
         default=ProfessionalApprovalStatus.PENDING.value,
@@ -200,7 +213,17 @@ class Professional(Base):
         self.normalized_city = normalize_text(self.city)
         specs = " ".join(normalize_text(s) for s in (self.specialties or []) if isinstance(s, str))
         self.normalized_specialties = specs
-        self.normalized_search = f"{normalize_text(self.name)} {normalize_text(self.bio)} {self.normalized_city} {specs}".strip()
+        bairro_norm = normalize_text(self.bairro)
+        self.normalized_search = f"{normalize_text(self.name)} {normalize_text(self.bio)} {self.normalized_city} {bairro_norm} {specs}".strip()
+
+    @property
+    def distance_km(self) -> Optional[float]:
+        """Distância calculada em km entre o endereço do cliente e o profissional."""
+        return getattr(self, "_distance_km", None)
+
+    @distance_km.setter
+    def distance_km(self, val: Optional[float]):
+        self._distance_km = val
 
     @property
     def average_rating(self) -> Optional[float]:

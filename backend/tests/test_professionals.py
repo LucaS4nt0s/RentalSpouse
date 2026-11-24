@@ -565,6 +565,42 @@ class TestUpdateAndRemoveProfessional:
         assert response.status_code == 409
         assert "E-mail já cadastrado" in response.json()["detail"]
 
+    def test_create_professional_dispatches_verification_email_and_confirms(
+        self, client: TestClient, caixa_de_entrada, db_session
+    ):
+        """Cadastro de profissional deve emitir token, disparar e-mail de verificação e permitir confirmação (#93)."""
+        import re
+        payload = dict(SAMPLE_PROFESSIONAL)
+        payload["email"] = "prof.verificacao@teste.com"
+        payload["password"] = "SenhaForte@2026"
+
+        response = client.post("/api/professionals", json=payload)
+        assert response.status_code == 201
+        assert len(caixa_de_entrada) == 1
+        msg = caixa_de_entrada[0]
+        assert msg["To"] == "prof.verificacao@teste.com"
+        assert "Confirme seu e-mail" in msg["Subject"]
+
+        corpo_txt = msg.get_body(preferencelist=("plain",)).get_content()
+        achado = re.search(r"token=([A-Za-z0-9_\-]+)", corpo_txt)
+        assert achado is not None
+        token = achado.group(1)
+
+        prof_db = db_session.query(models.Professional).filter_by(email="prof.verificacao@teste.com").first()
+        user_db = db_session.query(models.User).filter_by(email="prof.verificacao@teste.com").first()
+        assert prof_db.email_verificado is False
+        assert user_db.email_verificado is False
+
+        # Confirma o token via /api/verificacao/confirmar
+        conf_resp = client.post("/api/verificacao/confirmar", json={"token": token})
+        assert conf_resp.status_code == 200
+        assert conf_resp.json()["email_verificado"] is True
+
+        db_session.expire_all()
+        assert prof_db.email_verificado is True
+        assert user_db.email_verificado is True
+
+
 
 class TestProfessionalReputationAndSorting:
     """Valida a exposição de nota média, contagem de avaliações e ordenação por reputação na vitrine (issues #19 e #21)."""
@@ -780,6 +816,23 @@ class TestProfessionalRadiusAndCombinedFilters:
 
         resp_zero = client.get("/api/professionals?min_radius_km=0")
         assert resp_zero.status_code == 422
+
+    def test_max_distance_km_filters_and_sorts_and_seed_is_idempotent(
+        self, client: TestClient, db_session
+    ):
+        from routes.professionals import seed_demo_professionals
+
+        assert seed_demo_professionals(db_session) == 23
+        assert seed_demo_professionals(db_session) == 0
+
+        resp_20 = client.get("/api/professionals/search?max_distance_km=20&limit=50").json()
+        assert resp_20["total"] == 11
+        distances = [item["distance_km"] for item in resp_20["items"]]
+        assert all(d is not None and d <= 20.0 for d in distances)
+        assert distances == sorted(distances)
+
+        resp_100 = client.get("/api/professionals/search?max_distance_km=100&limit=50").json()
+        assert resp_100["total"] == 19
 
 
 

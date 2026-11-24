@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -110,6 +111,40 @@ def token_confere(hash_armazenado: str, token_recebido: str) -> bool:
     return secrets.compare_digest(hash_armazenado, hash_token(token_recebido))
 
 
+def verificar_email_disponivel(
+    db: Session,
+    email: str,
+    detail: str = "E-mail já cadastrado na plataforma.",
+    exclude_professional_id: int | None = None,
+    exclude_user_email: str | None = None,
+) -> str:
+    """
+    Garante unicidade cross-table de e-mail consultando `users`, `clientes` e `professionals`.
+    Levanta HTTP 409 Conflict caso o endereço normalizado já pertença a qualquer conta.
+    """
+    email_norm = (email or "").strip().lower()
+    exclude_email_norm = (exclude_user_email or "").strip().lower() or None
+
+    user_q = db.query(models.User).filter(func.lower(models.User.email) == email_norm)
+    if exclude_email_norm:
+        user_q = user_q.filter(func.lower(models.User.email) != exclude_email_norm)
+    if user_q.first() is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+    cliente_q = db.query(models.Cliente).filter(func.lower(models.Cliente.email) == email_norm)
+    if cliente_q.first() is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+    prof_q = db.query(models.Professional).filter(func.lower(models.Professional.email) == email_norm)
+    if exclude_professional_id is not None:
+        prof_q = prof_q.filter(models.Professional.id != exclude_professional_id)
+    if prof_q.first() is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+    return email_norm
+
+
+
 # ---------------------------------------------------------------------------
 # Autenticação JWT e Usuários
 # ---------------------------------------------------------------------------
@@ -150,6 +185,7 @@ def get_current_user(
     try:
         payload = decode_access_token(auth.credentials)
         email: str | None = payload.get("sub")
+        token_role: str | None = payload.get("role")
         if email is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -163,23 +199,26 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    email = email.strip().lower()
     user = db.query(models.User).filter(models.User.email == email).first()
 
     # Caso seja um cliente ou profissional sem registro prévio na tabela users, realiza fallback
     # puramente em memória (sem persistência no banco e sem colisão de sequence de ID)
+    # e sem jamais misturar papéis entre Cliente e Professional.
     if user is None:
         cliente = db.query(models.Cliente).filter(models.Cliente.email == email).first()
-        if cliente is not None and cliente.email_verificado:
-            user = models.User(
-                name=cliente.nome,
-                email=cliente.email,
-                hashed_password=cliente.senha_hash,
-                role=models.UserRole.CLIENT.value,
-                is_active=True,
-                email_verificado=cliente.email_verificado,
-                created_at=cliente.criado_em,
-            )
-        else:
+        if cliente is not None:
+            if cliente.email_verificado and token_role in (None, models.UserRole.CLIENT.value):
+                user = models.User(
+                    name=cliente.nome,
+                    email=cliente.email,
+                    hashed_password=cliente.senha_hash,
+                    role=models.UserRole.CLIENT.value,
+                    is_active=True,
+                    email_verificado=cliente.email_verificado,
+                    created_at=cliente.criado_em,
+                )
+        elif token_role in (None, models.UserRole.PROFESSIONAL.value):
             profissional = (
                 db.query(models.Professional)
                 .filter(models.Professional.email == email)
@@ -192,7 +231,7 @@ def get_current_user(
                     hashed_password=profissional.senha_hash or "",
                     role=models.UserRole.PROFESSIONAL.value,
                     is_active=profissional.is_active,
-                    email_verificado=True,
+                    email_verificado=bool(getattr(profissional, "email_verificado", True)),
                     created_at=profissional.created_at,
                 )
 
@@ -220,25 +259,28 @@ def get_optional_current_user(
     try:
         payload = decode_access_token(auth.credentials)
         email: str | None = payload.get("sub")
+        token_role: str | None = payload.get("role")
         if email is None:
             return None
     except jwt.PyJWTError:
         return None
 
+    email = email.strip().lower()
     user = db.query(models.User).filter(models.User.email == email).first()
     if user is None:
         cliente = db.query(models.Cliente).filter(models.Cliente.email == email).first()
-        if cliente is not None and cliente.email_verificado:
-            user = models.User(
-                name=cliente.nome,
-                email=cliente.email,
-                hashed_password=cliente.senha_hash,
-                role=models.UserRole.CLIENT.value,
-                is_active=True,
-                email_verificado=cliente.email_verificado,
-                created_at=cliente.criado_em,
-            )
-        else:
+        if cliente is not None:
+            if cliente.email_verificado and token_role in (None, models.UserRole.CLIENT.value):
+                user = models.User(
+                    name=cliente.nome,
+                    email=cliente.email,
+                    hashed_password=cliente.senha_hash,
+                    role=models.UserRole.CLIENT.value,
+                    is_active=True,
+                    email_verificado=cliente.email_verificado,
+                    created_at=cliente.criado_em,
+                )
+        elif token_role in (None, models.UserRole.PROFESSIONAL.value):
             profissional = (
                 db.query(models.Professional)
                 .filter(models.Professional.email == email)
@@ -251,7 +293,7 @@ def get_optional_current_user(
                     hashed_password=profissional.senha_hash or "",
                     role=models.UserRole.PROFESSIONAL.value,
                     is_active=profissional.is_active,
-                    email_verificado=True,
+                    email_verificado=bool(getattr(profissional, "email_verificado", True)),
                     created_at=profissional.created_at,
                 )
 

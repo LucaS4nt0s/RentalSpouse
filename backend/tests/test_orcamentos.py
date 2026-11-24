@@ -1459,3 +1459,285 @@ class TestResumoCapacidade:
         assert data["recusados"] >= 1
 
 
+class TestInteratividadeBilateralCliente:
+    """Validações da Issue #98: Aprovação de estimativa e cancelamento pelo cliente."""
+
+    def test_aprovar_estimativa_sucesso(
+        self,
+        client: TestClient,
+        profissional_teste: models.Professional,
+        cliente_teste: models.Cliente,
+    ):
+        token_cliente = create_access_token({"sub": cliente_teste.email, "role": "client"})
+        headers_cliente = {"Authorization": f"Bearer {token_cliente}"}
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        # 1. Cria orçamento vinculado ao cliente
+        res_create = client.post(
+            "/api/orcamentos",
+            data={
+                "professional_id": str(profissional_teste.id),
+                "descricao": "Instalação de tomadas 220V na cozinha.",
+            },
+            headers=headers_cliente,
+        )
+        assert res_create.status_code == 201
+        orc_id = res_create.json()["id"]
+
+        # 2. Profissional responde com estimativa
+        res_resp = client.patch(
+            f"/api/orcamentos/{orc_id}/responder",
+            json={"valor_estimado": 280.0, "resposta_profissional": "Estimativa inclui fiação antichama."},
+            headers=headers_prof,
+        )
+        assert res_resp.status_code == 200
+        assert res_resp.json()["status"] == "respondido"
+
+        # 3. Cliente aprova a estimativa
+        res_aprov = client.patch(
+            f"/api/orcamentos/{orc_id}/aprovar-estimativa",
+            json={"mensagem": "Aprovado, aguardo o início do serviço!"},
+            headers=headers_cliente,
+        )
+        assert res_aprov.status_code == 200
+        data = res_aprov.json()
+        assert data["status"] == "aceito"
+        assert data["decidido_em"] is not None
+        assert data["valor_estimado"] == 280.0
+
+    def test_aprovar_estimativa_bloqueia_usuario_nao_autor(
+        self,
+        client: TestClient,
+        db_session: Session,
+        profissional_teste: models.Professional,
+        cliente_teste: models.Cliente,
+    ):
+        from datetime import date
+        outro_cli = models.Cliente(
+            nome="Outro Cliente",
+            email="outro.cliente@exemplo.com",
+            cpf="99988877766",
+            data_nascimento=date(1990, 1, 1),
+            senha_hash="hash_teste",
+            cep="01310100",
+            logradouro="Rua B",
+            numero="20",
+            bairro="Centro",
+            cidade="São Paulo",
+            estado="SP",
+            email_verificado=True,
+        )
+        db_session.add(outro_cli)
+        db_session.commit()
+
+        token_cliente = create_access_token({"sub": cliente_teste.email, "role": "client"})
+        headers_cliente = {"Authorization": f"Bearer {token_cliente}"}
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        token_outro = create_access_token({"sub": "outro.cliente@exemplo.com", "role": "client"})
+        headers_outro = {"Authorization": f"Bearer {token_outro}"}
+
+        res_create = client.post(
+            "/api/orcamentos",
+            data={
+                "professional_id": str(profissional_teste.id),
+                "descricao": "Instalação de tomadas 220V na cozinha.",
+            },
+            headers=headers_cliente,
+        )
+        orc_id = res_create.json()["id"]
+
+        client.patch(
+            f"/api/orcamentos/{orc_id}/responder",
+            json={"valor_estimado": 200.0, "resposta_profissional": "Preço padrão."},
+            headers=headers_prof,
+        )
+
+        res_negado = client.patch(
+            f"/api/orcamentos/{orc_id}/aprovar-estimativa",
+            headers=headers_outro,
+        )
+        assert res_negado.status_code == 403
+
+    def test_aprovar_estimativa_bloqueia_quando_ainda_pendente(
+        self,
+        client: TestClient,
+        profissional_teste: models.Professional,
+        cliente_teste: models.Cliente,
+    ):
+        token_cliente = create_access_token({"sub": cliente_teste.email, "role": "client"})
+        headers_cliente = {"Authorization": f"Bearer {token_cliente}"}
+
+        res_create = client.post(
+            "/api/orcamentos",
+            data={
+                "professional_id": str(profissional_teste.id),
+                "descricao": "Instalação de tomadas 220V na cozinha.",
+            },
+            headers=headers_cliente,
+        )
+        orc_id = res_create.json()["id"]
+
+        # Tenta aprovar antes de o profissional enviar uma estimativa
+        res_tentativa = client.patch(
+            f"/api/orcamentos/{orc_id}/aprovar-estimativa",
+            headers=headers_cliente,
+        )
+        assert res_tentativa.status_code == 400
+        assert "não possui uma estimativa" in res_tentativa.json()["detail"]
+
+    def test_cancelar_orcamento_cliente_pendente(
+        self,
+        client: TestClient,
+        profissional_teste: models.Professional,
+        cliente_teste: models.Cliente,
+    ):
+        token_cliente = create_access_token({"sub": cliente_teste.email, "role": "client"})
+        headers_cliente = {"Authorization": f"Bearer {token_cliente}"}
+
+        res_create = client.post(
+            "/api/orcamentos",
+            data={
+                "professional_id": str(profissional_teste.id),
+                "descricao": "Troca de fiação no quarto.",
+            },
+            headers=headers_cliente,
+        )
+        orc_id = res_create.json()["id"]
+
+        res_cancela = client.patch(
+            f"/api/orcamentos/{orc_id}/cancelar",
+            json={"motivo": "Resolvi fazer eu mesmo."},
+            headers=headers_cliente,
+        )
+        assert res_cancela.status_code == 200
+        assert res_cancela.json()["status"] == "cancelado"
+        assert "Resolvi fazer eu mesmo" in res_cancela.json()["justificativa_recusa"]
+
+    def test_cancelar_orcamento_recusando_estimativa_recebida(
+        self,
+        client: TestClient,
+        profissional_teste: models.Professional,
+        cliente_teste: models.Cliente,
+    ):
+        token_cliente = create_access_token({"sub": cliente_teste.email, "role": "client"})
+        headers_cliente = {"Authorization": f"Bearer {token_cliente}"}
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        res_create = client.post(
+            "/api/orcamentos",
+            data={
+                "professional_id": str(profissional_teste.id),
+                "descricao": "Troca de fiação no quarto.",
+            },
+            headers=headers_cliente,
+        )
+        orc_id = res_create.json()["id"]
+
+        client.patch(
+            f"/api/orcamentos/{orc_id}/responder",
+            json={"valor_estimado": 500.0, "resposta_profissional": "Orçamento alto."},
+            headers=headers_prof,
+        )
+
+        res_cancela = client.patch(
+            f"/api/orcamentos/{orc_id}/cancelar",
+            json={"motivo": "Valor acima do meu orçamento disponível."},
+            headers=headers_cliente,
+        )
+        assert res_cancela.status_code == 200
+        assert res_cancela.json()["status"] == "cancelado"
+
+    def test_cancelar_orcamento_bloqueia_se_ja_possui_pagamento_aprovado(
+        self,
+        client: TestClient,
+        db_session: Session,
+        profissional_teste: models.Professional,
+        cliente_teste: models.Cliente,
+    ):
+        from datetime import datetime, timezone
+        token_cliente = create_access_token({"sub": cliente_teste.email, "role": "client"})
+        headers_cliente = {"Authorization": f"Bearer {token_cliente}"}
+
+        res_create = client.post(
+            "/api/orcamentos",
+            data={
+                "professional_id": str(profissional_teste.id),
+                "descricao": "Serviço que será pago.",
+            },
+            headers=headers_cliente,
+        )
+        orc_id = res_create.json()["id"]
+
+        # Insere um pagamento aprovado associado a este orçamento
+        pagamento = models.Pagamento(
+            orcamento_id=orc_id,
+            cliente_id=cliente_teste.id,
+            professional_id=profissional_teste.id,
+            valor=150.0,
+            metodo="pix",
+            status=models.PagamentoStatus.APROVADO.value,
+            parcelas=1,
+            gateway_provider="sandbox_mock",
+            gateway_txid="tx_teste_aprovado_123",
+            external_reference=f"orc_{orc_id}_ref",
+            idempotency_key="idem_teste_aprovado_123",
+            pago_em=datetime.now(timezone.utc),
+        )
+        db_session.add(pagamento)
+        db_session.commit()
+
+        res_tentativa = client.patch(
+            f"/api/orcamentos/{orc_id}/cancelar",
+            json={"motivo": "Tentativa de cancelamento pós-pagamento."},
+            headers=headers_cliente,
+        )
+        assert res_tentativa.status_code == 400
+        assert "pagamento aprovado" in res_tentativa.json()["detail"]
+
+    def test_aprovar_estimativa_com_body_vazio_e_json_vazio(
+        self,
+        client: TestClient,
+        profissional_teste: models.Professional,
+        cliente_teste: models.Cliente,
+    ):
+        """Valida que PATCH /api/orcamentos/{id}/aprovar-estimativa aceita body vazio ou {} sem erro 422."""
+        token_cliente = create_access_token({"sub": cliente_teste.email, "role": "client"})
+        headers_cliente = {"Authorization": f"Bearer {token_cliente}"}
+
+        token_prof = create_access_token({"sub": profissional_teste.email, "role": "professional"})
+        headers_prof = {"Authorization": f"Bearer {token_prof}"}
+
+        # 1. Cria orçamento e responde com estimativa
+        res_create = client.post(
+            "/api/orcamentos",
+            data={
+                "professional_id": str(profissional_teste.id),
+                "descricao": "Instalação sem mensagem.",
+            },
+            headers=headers_cliente,
+        )
+        orc_id = res_create.json()["id"]
+
+        client.patch(
+            f"/api/orcamentos/{orc_id}/responder",
+            json={"valor_estimado": 190.0, "resposta_profissional": "Estimativa simples."},
+            headers=headers_prof,
+        )
+
+        # 2. Aprova sem body nenhum (Content-Length: 0)
+        res_aprov = client.patch(
+            f"/api/orcamentos/{orc_id}/aprovar-estimativa",
+            headers=headers_cliente,
+        )
+        assert res_aprov.status_code == 200
+        assert res_aprov.json()["status"] == "aceito"
+
+
+
