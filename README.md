@@ -136,7 +136,7 @@ git clone https://github.com/LucaS4nt0s/RentalSpouse.git
 cd RentalSpouse
 ```
 
-**2. Crie o arquivo de ambiente**
+**2. Crie o arquivo de ambiente (opcional em desenvolvimento local)**
 
 ```bash
 # Windows (PowerShell/CMD)
@@ -146,7 +146,7 @@ copy .env.example .env
 cp .env.example .env
 ```
 
-> ✏️ Edite o `.env` com usuário/senha fortes para o PostgreSQL, se desejar.
+> ✏️ Este passo é **opcional** para subir o ambiente local: o `docker-compose.yml` já define valores padrão prontos para desenvolvimento (incluindo PostgreSQL, `SEED_INITIAL_ADMIN=true` e `PAYMENT_PROVIDER=sandbox_mock`), e o `.env.example` segue o mesmo padrão `sandbox_mock` para o fluxo completo funcionar de imediato. Edite o `.env` apenas se quiser personalizar credenciais ou testar integrações externas (SMTP real / Mercado Pago).
 
 **3. Suba os containers**
 
