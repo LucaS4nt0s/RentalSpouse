@@ -223,6 +223,11 @@ def _executar_resumo_denuncias_admin(db: Session) -> schemas.DenunciaAdminResumo
     )
 
 
+def _escape_like(val: str) -> str:
+    """Escapa caracteres especiais do SQL LIKE/ILIKE (\\, %, _) para busca literal."""
+    return val.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _executar_listagem_denuncias_admin(
     db: Session,
     status_filter: Optional[str],
@@ -266,14 +271,14 @@ def _executar_listagem_denuncias_admin(
             query = query.filter(models.Denuncia.motivo == motivo_limpo)
 
     if q and q.strip():
-        termo = f"%{q.strip()}%"
+        termo = f"%{_escape_like(q.strip())}%"
         query = query.filter(
             or_(
-                models.Professional.name.ilike(termo),
-                models.Professional.email.ilike(termo),
-                models.Cliente.nome.ilike(termo),
-                models.Cliente.email.ilike(termo),
-                models.Denuncia.descricao.ilike(termo),
+                models.Professional.name.ilike(termo, escape="\\"),
+                models.Professional.email.ilike(termo, escape="\\"),
+                models.Cliente.nome.ilike(termo, escape="\\"),
+                models.Cliente.email.ilike(termo, escape="\\"),
+                models.Denuncia.descricao.ilike(termo, escape="\\"),
             )
         )
 

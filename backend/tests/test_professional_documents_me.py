@@ -50,12 +50,15 @@ def criar_profissional(
     client: TestClient, email: str, senha: str | None = "SenhaForte@2026"
 ) -> dict:
     """Cria um profissional via API (com senha, gera também o registro em `users`)."""
+    import email_service
     payload = dict(SAMPLE_PROF)
     payload["email"] = email
     if senha:
         payload["senha"] = senha
     resposta = client.post("/api/professionals", json=payload)
     assert resposta.status_code == 201, resposta.text
+    # Limpa o e-mail de verificação do cadastro para isolar as asserções de notificação de documentos
+    email_service.limpar_caixa_de_saida()
     return resposta.json()
 
 

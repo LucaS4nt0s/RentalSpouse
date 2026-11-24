@@ -31,6 +31,7 @@ import {
   DocumentType,
 } from '../../types/professionalDocuments';
 import { fetchDocumentBlob, resolveApiUrl } from '../../services/moderation';
+import { mensagemErro } from '../../services/apiError';
 
 interface ModerationReviewModalProps {
   token: string;
@@ -215,7 +216,7 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
       await onReject(review.id, { reason: trimmed });
       setIsRejectingOpen(false);
     } catch (err) {
-      setRejectError(err instanceof Error ? err.message : 'Falha ao rejeitar.');
+      setRejectError(mensagemErro(err, 'Falha ao rejeitar.'));
     } finally {
       setIsRejecting(false);
     }

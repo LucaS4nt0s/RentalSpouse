@@ -5,8 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Briefcase, CalendarOff, FileCheck2, Lock } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { Button } from '../../../components/ui/Button';
-import { ThemeToggle } from '../../../components/ui/ThemeToggle';
-import { NotificationBell } from '../../../components/notificacoes/NotificationBell';
+import { AppHeader } from '../../../components/layout/AppHeader';
 import { BloqueiosAgendaSection } from '../../../components/agenda/BloqueiosAgendaSection';
 
 /**
@@ -69,46 +68,7 @@ export default function ProfissionalBloqueiosPage() {
 
   return (
     <div className="min-h-screen bg-rental-bg text-rental-ink flex flex-col">
-      <header className="sticky top-0 z-30 border-b border-rental-border/60 bg-rental-bg/90 backdrop-blur-md">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 sm:px-6 py-4 gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link
-              href="/profissional/orcamentos"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-muted hover:text-rental-primary hover:border-rental-primary/40 transition-colors"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Voltar</span>
-            </Link>
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-rental-primary/10 text-rental-primary">
-                <CalendarOff className="h-4 w-4" />
-              </span>
-              <h1 className="text-sm sm:text-base font-extrabold truncate">
-                Bloqueios e Folgas na Agenda
-              </h1>
-            </div>
-          </div>
-
-          <nav className="flex items-center gap-2">
-            <Link
-              href="/profissional/orcamentos"
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-muted hover:text-rental-primary hover:border-rental-primary/40 transition-colors"
-            >
-              <Briefcase className="h-3.5 w-3.5" />
-              <span>Orçamentos</span>
-            </Link>
-            <Link
-              href="/profissional/documentos"
-              className="hidden md:inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-muted hover:text-rental-primary hover:border-rental-primary/40 transition-colors"
-            >
-              <FileCheck2 className="h-3.5 w-3.5" />
-              <span>Documentos</span>
-            </Link>
-            <NotificationBell />
-            <ThemeToggle />
-          </nav>
-        </div>
-      </header>
+      <AppHeader />
 
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 sm:px-6 py-8">
         <BloqueiosAgendaSection token={token} />

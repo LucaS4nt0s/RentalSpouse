@@ -192,6 +192,48 @@ class TestAdminRegistration:
         assert response.status_code == 409
         assert "Já existe um usuário cadastrado com este e-mail" in response.json()["detail"]
 
+    def test_duplicate_email_against_cliente_or_professional_rejected_with_409(
+        self, client: TestClient, admin_user: dict
+    ):
+        """Não deve permitir cadastrar admin com e-mail já pertencente a Cliente ou Professional (#53/#93)."""
+        from datetime import date
+        db = TestingSessionLocal()
+        try:
+            cli = models.Cliente(
+                nome="Cliente Existente",
+                email="cli.cross.admin@rentalspouse.com",
+                cpf="12345678909",
+                data_nascimento=date(1990, 1, 1),
+                senha_hash=hash_senha("SenhaForte@2026"),
+                cep="01001000",
+                logradouro="Praça da Sé",
+                numero="10",
+                bairro="Sé",
+                cidade="São Paulo",
+                estado="SP",
+            )
+            prof = models.Professional(
+                name="Prof Existente",
+                email="prof.cross.admin@rentalspouse.com",
+                bio="Profissional com experiência comprovada em reparos.",
+                service_radius_km=10.0,
+                specialties=["Elétrica"],
+            )
+            db.add_all([cli, prof])
+            db.commit()
+        finally:
+            db.close()
+
+        for email_conflito in ("cli.cross.admin@rentalspouse.com", "prof.cross.admin@rentalspouse.com"):
+            res = client.post(
+                "/api/admins",
+                json={"name": "Admin Conflito", "email": email_conflito, "password": "SenhaForte@2026"},
+                headers=admin_user["headers"],
+            )
+            assert res.status_code == 409
+            assert "Já existe um usuário cadastrado com este e-mail" in res.json()["detail"]
+
+
 
 
 class TestAdminListAndLogin:

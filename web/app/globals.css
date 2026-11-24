@@ -46,9 +46,13 @@
 }
 
 @layer base {
+  html,
   body {
     background-color: var(--rs-bg);
     color: var(--rs-text);
+    transform: none !important;
+    perspective: none !important;
+    filter: none !important;
   }
 }
 

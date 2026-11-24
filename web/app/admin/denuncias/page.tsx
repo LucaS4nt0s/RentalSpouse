@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
@@ -20,7 +20,13 @@ import {
   UserCheck,
   X,
 } from 'lucide-react';
-import { useAuth } from '../../../context/AuthContext';
+import {
+  useAuth,
+  TOKEN_STORAGE_KEY,
+  LEGACY_ADMIN_TOKEN_KEY,
+} from '../../../context/AuthContext';
+import { acquireBodyScrollLock } from '../../../lib/scrollLock';
+import { mensagemErro } from '../../../services/apiError';
 import { AdminNavigationHeader } from '../../../components/moderacao/AdminNavigationHeader';
 import { ToastContainer, ToastData } from '../../../components/moderacao/Toast';
 import { Button } from '../../../components/ui/Button';
@@ -41,9 +47,8 @@ import {
 } from '../../../services/denuncias';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
-const ADMIN_STORAGE_KEY = 'rentalspouse_admin_token';
-const GENERAL_STORAGE_KEY = 'rentalspouse_token';
 const isDevEnvironment = process.env.NODE_ENV === 'development';
+const PAGE_SIZE = 50;
 
 interface AdminSessionUser {
   id: number;
@@ -61,15 +66,28 @@ const RESUMO_INICIAL: DenunciaAdminResumo = {
   arquivadas: 0,
 };
 
+function normalizarIsoUtc(iso: string): string {
+  if (!iso) return iso;
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(iso) ? iso : `${iso}Z`;
+}
+
 function formatarDataPtBr(iso: string): string {
   try {
     return new Intl.DateTimeFormat('pt-BR', {
       dateStyle: 'short',
       timeStyle: 'short',
-    }).format(new Date(iso));
+    }).format(new Date(normalizarIsoUtc(iso)));
   } catch {
     return iso;
   }
+}
+
+function isAbortError(err: unknown): boolean {
+  return (
+    err instanceof DOMException
+      ? err.name === 'AbortError'
+      : Boolean(err && typeof err === 'object' && 'name' in err && err.name === 'AbortError')
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -99,7 +117,16 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function AdminDenunciasPage() {
-  const { user: authUser, token: contextToken, logout: authLogout } = useAuth();
+  const {
+    user: authUser,
+    token: contextToken,
+    isLoading: isAuthLoading,
+    login: authLogin,
+    logout: authLogout,
+  } = useAuth();
+
+  const authLoginRef = useRef(authLogin);
+  authLoginRef.current = authLogin;
 
   // Sessão Administrativa
   const [adminToken, setAdminToken] = useState<string | null>(null);
@@ -116,15 +143,19 @@ export default function AdminDenunciasPage() {
   const [denuncias, setDenuncias] = useState<DenunciaAdminItem[]>([]);
   const [resumo, setResumo] = useState<DenunciaAdminResumo>(RESUMO_INICIAL);
   const [isLoadingList, setIsLoadingList] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
 
   // Filtros
   const [statusFilter, setStatusFilter] = useState<DenunciaAdminStatusFilter>('all');
   const [motivoFilter, setMotivoFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
   // Modal de Análise (ponto de extensão para ações da Fatia 2)
   const [selectedDenuncia, setSelectedDenuncia] = useState<DenunciaAdminItem | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
 
   // Toasts
   const [toasts, setToasts] = useState<ToastData[]>([]);
@@ -133,17 +164,33 @@ export default function AdminDenunciasPage() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const handleLogout = useCallback(() => {
-    localStorage.removeItem(ADMIN_STORAGE_KEY);
+  // Limpa apenas o estado local da tela admin sem derrubar sessões de cliente/profissional no AuthContext
+  const clearAdminLocalState = useCallback((clearLegacyAdminToken = false) => {
+    if (clearLegacyAdminToken && typeof window !== 'undefined') {
+      localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
+    }
     setAdminToken(null);
     setAdminUser(null);
     setDenuncias([]);
     setResumo(RESUMO_INICIAL);
+    setHasMore(false);
+  }, []);
+
+  // Encerramento explícito de sessão admin autenticada (botão Sair ou token admin expirado 401/403)
+  const handleLogout = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+    clearAdminLocalState(false);
     if (authLogout) authLogout();
-  }, [authLogout]);
+  }, [authLogout, clearAdminLocalState]);
 
   const verifyAdminToken = useCallback(
-    async (token: string): Promise<boolean> => {
+    async (
+      token: string,
+      options?: { syncAuthContext?: boolean; isLegacyToken?: boolean },
+    ): Promise<boolean> => {
       try {
         const res = await fetch(`${API_URL}/api/auth/me`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -157,58 +204,139 @@ export default function AdminDenunciasPage() {
 
         setAdminUser(data);
         setAdminToken(token);
+        if (options?.syncAuthContext) {
+          authLoginRef.current(
+            {
+              id: data.id,
+              nome: data.name || data.nome || '',
+              name: data.name,
+              email: data.email,
+              tipo: 'admin',
+              role: 'admin',
+            },
+            token,
+          );
+        }
         return true;
       } catch {
-        handleLogout();
+        clearAdminLocalState(Boolean(options?.isLegacyToken));
         return false;
       } finally {
         setIsValidatingSession(false);
       }
     },
-    [handleLogout],
+    [clearAdminLocalState],
   );
 
   useEffect(() => {
+    if (isAuthLoading) {
+      return;
+    }
+
     const checkSession = async () => {
-      if (contextToken && authUser?.role === 'admin') {
-        const ok = await verifyAdminToken(contextToken);
+      const isContextAdmin = authUser?.role === 'admin' || authUser?.tipo === 'admin';
+      const isNonAdminContextUser = Boolean(authUser) && !isContextAdmin;
+
+      if (contextToken && isContextAdmin) {
+        const ok = await verifyAdminToken(contextToken, { syncAuthContext: false });
         if (ok) return;
       }
 
-      const savedAdminToken = localStorage.getItem(ADMIN_STORAGE_KEY);
-      if (savedAdminToken) {
-        const ok = await verifyAdminToken(savedAdminToken);
+      const savedLegacyToken = localStorage.getItem(LEGACY_ADMIN_TOKEN_KEY);
+      if (savedLegacyToken) {
+        const ok = await verifyAdminToken(savedLegacyToken, {
+          syncAuthContext: true,
+          isLegacyToken: true,
+        });
         if (ok) return;
       }
 
-      const savedGeneralToken = localStorage.getItem(GENERAL_STORAGE_KEY);
-      if (savedGeneralToken) {
-        const ok = await verifyAdminToken(savedGeneralToken);
-        if (ok) return;
+      if (!isNonAdminContextUser) {
+        const savedGeneralToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+        if (savedGeneralToken && savedGeneralToken !== contextToken) {
+          const ok = await verifyAdminToken(savedGeneralToken, { syncAuthContext: true });
+          if (ok) return;
+        }
       }
 
+      clearAdminLocalState(false);
       setIsValidatingSession(false);
     };
 
     checkSession();
-  }, [contextToken, authUser, verifyAdminToken]);
+  }, [
+    isAuthLoading,
+    contextToken,
+    authUser,
+    verifyAdminToken,
+    clearAdminLocalState,
+  ]);
 
-  const loadDenuncias = useCallback(
-    async (token: string) => {
-      setIsLoadingList(true);
-      setListError(null);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const carregarResumo = useCallback(
+    async (token: string, signal?: AbortSignal) => {
       try {
-        const [items, stats] = await Promise.all([
-          listAdminDenuncias(token, {
+        const stats = await getAdminDenunciasResumo(token, signal);
+        if (!signal?.aborted) {
+          setResumo(stats);
+        }
+      } catch (err) {
+        if (isAbortError(err)) return;
+        if (
+          err &&
+          typeof err === 'object' &&
+          'status' in err &&
+          (err.status === 401 || err.status === 403)
+        ) {
+          handleLogout();
+          setLoginError('Sua sessão de administrador expirou. Faça login novamente.');
+        }
+      }
+    },
+    [handleLogout],
+  );
+
+  const carregarDenuncias = useCallback(
+    async (
+      token: string,
+      options?: { skip?: number; append?: boolean; signal?: AbortSignal },
+    ) => {
+      const skip = options?.skip ?? 0;
+      const append = Boolean(options?.append);
+      const signal = options?.signal;
+
+      if (append) {
+        setIsLoadingMore(true);
+      } else {
+        setIsLoadingList(true);
+        setListError(null);
+      }
+
+      try {
+        const items = await listAdminDenuncias(
+          token,
+          {
             status: statusFilter,
             motivo: motivoFilter,
-            q: searchQuery,
-          }),
-          getAdminDenunciasResumo(token),
-        ]);
-        setDenuncias(items);
-        setResumo(stats);
+            q: debouncedSearchQuery,
+            skip,
+            limit: PAGE_SIZE,
+          },
+          signal,
+        );
+        if (signal?.aborted) return;
+
+        setDenuncias((prev) => (append ? [...prev, ...items] : items));
+        setHasMore(items.length === PAGE_SIZE);
       } catch (err) {
+        if (isAbortError(err) || signal?.aborted) return;
         if (
           err &&
           typeof err === 'object' &&
@@ -220,22 +348,99 @@ export default function AdminDenunciasPage() {
           return;
         }
         setListError(
-          err instanceof Error
-            ? err.message
-            : 'Não foi possível carregar as denúncias para moderação.',
+          mensagemErro(err, 'Não foi possível carregar as denúncias para moderação.'),
         );
       } finally {
-        setIsLoadingList(false);
+        if (!signal?.aborted) {
+          if (append) {
+            setIsLoadingMore(false);
+          } else {
+            setIsLoadingList(false);
+          }
+        }
       }
     },
-    [statusFilter, motivoFilter, searchQuery, handleLogout],
+    [statusFilter, motivoFilter, debouncedSearchQuery, handleLogout],
+  );
+
+  const loadDenuncias = useCallback(
+    async (token: string) => {
+      await Promise.all([
+        carregarDenuncias(token, { skip: 0, append: false }),
+        carregarResumo(token),
+      ]);
+    },
+    [carregarDenuncias, carregarResumo],
   );
 
   useEffect(() => {
-    if (adminToken) {
-      loadDenuncias(adminToken);
+    if (!adminToken) return;
+    const controller = new AbortController();
+    carregarResumo(adminToken, controller.signal);
+    return () => controller.abort();
+  }, [adminToken, carregarResumo]);
+
+  useEffect(() => {
+    if (!adminToken) return;
+    const controller = new AbortController();
+    carregarDenuncias(adminToken, { skip: 0, append: false, signal: controller.signal });
+    return () => controller.abort();
+  }, [adminToken, carregarDenuncias]);
+
+  useEffect(() => {
+    if (!selectedDenuncia) return;
+
+    const previouslyFocused =
+      typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
+    const releaseScrollLock = acquireBodyScrollLock();
+
+    const container = modalRef.current;
+    const focusableSelector =
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    if (container) {
+      const firstFocusable = container.querySelector<HTMLElement>(focusableSelector);
+      if (firstFocusable) {
+        firstFocusable.focus();
+      } else {
+        container.focus();
+      }
     }
-  }, [adminToken, loadDenuncias]);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setSelectedDenuncia(null);
+        return;
+      }
+
+      if (event.key === 'Tab' && container) {
+        const focusables = Array.from(
+          container.querySelectorAll<HTMLElement>(focusableSelector),
+        );
+        if (focusables.length === 0) {
+          event.preventDefault();
+          return;
+        }
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      releaseScrollLock();
+      previouslyFocused?.focus();
+    };
+  }, [selectedDenuncia]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -258,14 +463,12 @@ export default function AdminDenunciasPage() {
       }
 
       const token = data.access_token;
-      localStorage.setItem(ADMIN_STORAGE_KEY, token);
-
-      const isValid = await verifyAdminToken(token);
+      const isValid = await verifyAdminToken(token, { syncAuthContext: true });
       if (!isValid) {
         setLoginError('A conta autenticada não possui permissão de administrador.');
       }
     } catch (err) {
-      setLoginError(err instanceof Error ? err.message : 'Falha ao autenticar.');
+      setLoginError(mensagemErro(err, 'Falha ao autenticar.'));
     } finally {
       setIsLoggingIn(false);
     }
@@ -409,9 +612,11 @@ export default function AdminDenunciasPage() {
 
             {/* Cards de Métricas no Topo */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div
+              <button
+                type="button"
                 onClick={() => setStatusFilter('all')}
-                className={`rounded-2xl p-5 border cursor-pointer transition-all hover:scale-[1.01] ${
+                aria-pressed={statusFilter === 'all'}
+                className={`w-full text-left rounded-2xl p-5 border cursor-pointer transition-all hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-rental-primary ${
                   statusFilter === 'all'
                     ? 'border-rental-primary/40 bg-rental-primary/10 shadow-sm'
                     : 'border-rental-border bg-rental-surface hover:border-rental-border-strong'
@@ -431,11 +636,13 @@ export default function AdminDenunciasPage() {
                   </span>
                   <span className="text-xs text-rental-muted">registradas</span>
                 </div>
-              </div>
+              </button>
 
-              <div
+              <button
+                type="button"
                 onClick={() => setStatusFilter('pendente')}
-                className={`rounded-2xl p-5 border cursor-pointer transition-all hover:scale-[1.01] ${
+                aria-pressed={statusFilter === 'pendente'}
+                className={`w-full text-left rounded-2xl p-5 border cursor-pointer transition-all hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-amber-500 ${
                   statusFilter === 'pendente'
                     ? 'border-amber-500/40 bg-amber-500/10 shadow-sm'
                     : 'border-rental-border bg-rental-surface hover:border-rental-border-strong'
@@ -455,11 +662,13 @@ export default function AdminDenunciasPage() {
                   </span>
                   <span className="text-xs text-rental-muted">aguardando decisão</span>
                 </div>
-              </div>
+              </button>
 
-              <div
+              <button
+                type="button"
                 onClick={() => setStatusFilter('resolvida')}
-                className={`rounded-2xl p-5 border cursor-pointer transition-all hover:scale-[1.01] ${
+                aria-pressed={statusFilter === 'resolvida'}
+                className={`w-full text-left rounded-2xl p-5 border cursor-pointer transition-all hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-red-500 ${
                   statusFilter === 'resolvida'
                     ? 'border-red-500/40 bg-red-500/10 shadow-sm'
                     : 'border-rental-border bg-rental-surface hover:border-rental-border-strong'
@@ -467,7 +676,7 @@ export default function AdminDenunciasPage() {
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
-                    Contas Banidas / Suspensas
+                    Denúncias com Sanção
                   </span>
                   <div className="h-8 w-8 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center">
                     <Ban className="h-4 w-4" />
@@ -477,13 +686,15 @@ export default function AdminDenunciasPage() {
                   <span className="text-3xl font-extrabold font-mono text-rental-ink">
                     {resumo.resolvidas_banimento}
                   </span>
-                  <span className="text-xs text-rental-muted">resolvidas com sanção</span>
+                  <span className="text-xs text-rental-muted">resolvidas com banimento</span>
                 </div>
-              </div>
+              </button>
 
-              <div
+              <button
+                type="button"
                 onClick={() => setStatusFilter('arquivada')}
-                className={`rounded-2xl p-5 border cursor-pointer transition-all hover:scale-[1.01] ${
+                aria-pressed={statusFilter === 'arquivada'}
+                className={`w-full text-left rounded-2xl p-5 border cursor-pointer transition-all hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
                   statusFilter === 'arquivada'
                     ? 'border-emerald-500/40 bg-emerald-500/10 shadow-sm'
                     : 'border-rental-border bg-rental-surface hover:border-rental-border-strong'
@@ -503,7 +714,7 @@ export default function AdminDenunciasPage() {
                   </span>
                   <span className="text-xs text-rental-muted">improcedentes</span>
                 </div>
-              </div>
+              </button>
             </div>
 
             {/* Barra de Filtros */}
@@ -551,6 +762,7 @@ export default function AdminDenunciasPage() {
                   <Search className="h-3.5 w-3.5 text-rental-muted absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
+                    aria-label="Buscar profissional ou cliente"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Buscar profissional ou cliente..."
@@ -608,100 +820,123 @@ export default function AdminDenunciasPage() {
             )}
 
             {!isLoadingList && !listError && denuncias.length > 0 && (
-              <div className="glass-panel rounded-3xl border border-rental-border overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-rental-border bg-rental-surface2/70 text-[11px] font-bold uppercase tracking-wider text-rental-muted">
-                        <th className="py-3.5 px-4">ID / Data</th>
-                        <th className="py-3.5 px-4">Profissional Denunciado</th>
-                        <th className="py-3.5 px-4">Cliente Autor</th>
-                        <th className="py-3.5 px-4">Motivo</th>
-                        <th className="py-3.5 px-4">Status</th>
-                        <th className="py-3.5 px-4 text-right">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-rental-border text-xs">
-                      {denuncias.map((denuncia) => (
-                        <tr
-                          key={denuncia.id}
-                          className="hover:bg-rental-surface2/40 transition-colors"
-                        >
-                          <td className="py-4 px-4 align-top whitespace-nowrap">
-                            <span className="font-mono font-bold text-rental-ink">
-                              #{denuncia.id}
-                            </span>
-                            <div className="text-[11px] text-rental-muted mt-0.5">
-                              {formatarDataPtBr(denuncia.created_at)}
-                            </div>
-                          </td>
-
-                          <td className="py-4 px-4 align-top">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-bold text-rental-ink">
-                                {denuncia.professional_name || `Profissional #${denuncia.professional_id}`}
-                              </span>
-                              {denuncia.professional_is_active ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                                  <UserCheck className="h-2.5 w-2.5" />
-                                  Ativo
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 border border-red-500/25 px-2 py-0.5 text-[10px] font-bold text-red-600 dark:text-red-400">
-                                  <Ban className="h-2.5 w-2.5" />
-                                  Banido / Suspenso
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-rental-muted mt-0.5">
-                              {denuncia.professional_email || 'E-mail indisponível'}
-                            </div>
-                            <div className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold mt-1">
-                              {denuncia.professional_total_denuncias}{' '}
-                              {denuncia.professional_total_denuncias === 1
-                                ? 'denúncia recebida'
-                                : 'denúncias recebidas'}
-                            </div>
-                          </td>
-
-                          <td className="py-4 px-4 align-top">
-                            <div className="font-semibold text-rental-ink">
-                              {denuncia.cliente_nome || `Cliente #${denuncia.cliente_id}`}
-                            </div>
-                            <div className="text-[11px] text-rental-muted mt-0.5">
-                              {denuncia.cliente_email || 'E-mail indisponível'}
-                            </div>
-                          </td>
-
-                          <td className="py-4 px-4 align-top max-w-[260px]">
-                            <div className="font-semibold text-rental-ink">
-                              {motivoDenunciaLabel(denuncia.motivo)}
-                            </div>
-                            <p className="text-[11px] text-rental-muted mt-1 line-clamp-2">
-                              {denuncia.descricao}
-                            </p>
-                          </td>
-
-                          <td className="py-4 px-4 align-top whitespace-nowrap">
-                            <StatusBadge status={denuncia.status} />
-                          </td>
-
-                          <td className="py-4 px-4 align-top text-right whitespace-nowrap">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setSelectedDenuncia(denuncia)}
-                              leftIcon={<Eye className="h-3.5 w-3.5" />}
-                            >
-                              Analisar Denúncia
-                            </Button>
-                          </td>
+              <div className="space-y-4">
+                <div className="glass-panel rounded-3xl border border-rental-border overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-rental-border bg-rental-surface2/70 text-[11px] font-bold uppercase tracking-wider text-rental-muted">
+                          <th className="py-3.5 px-4">ID / Data</th>
+                          <th className="py-3.5 px-4">Profissional Denunciado</th>
+                          <th className="py-3.5 px-4">Cliente Autor</th>
+                          <th className="py-3.5 px-4">Motivo</th>
+                          <th className="py-3.5 px-4">Status</th>
+                          <th className="py-3.5 px-4 text-right">Ações</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-rental-border text-xs">
+                        {denuncias.map((denuncia) => (
+                          <tr
+                            key={denuncia.id}
+                            className="hover:bg-rental-surface2/40 transition-colors"
+                          >
+                            <td className="py-4 px-4 align-top whitespace-nowrap">
+                              <span className="font-mono font-bold text-rental-ink">
+                                #{denuncia.id}
+                              </span>
+                              <div className="text-[11px] text-rental-muted mt-0.5">
+                                {formatarDataPtBr(denuncia.created_at)}
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-4 align-top">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-bold text-rental-ink">
+                                  {denuncia.professional_name ||
+                                    `Profissional #${denuncia.professional_id}`}
+                                </span>
+                                {denuncia.professional_is_active ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                                    <UserCheck className="h-2.5 w-2.5" />
+                                    Ativo
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 border border-red-500/25 px-2 py-0.5 text-[10px] font-bold text-red-600 dark:text-red-400">
+                                    <Ban className="h-2.5 w-2.5" />
+                                    Banido / Suspenso
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-rental-muted mt-0.5">
+                                {denuncia.professional_email || 'E-mail indisponível'}
+                              </div>
+                              <div className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold mt-1">
+                                {denuncia.professional_total_denuncias}{' '}
+                                {denuncia.professional_total_denuncias === 1
+                                  ? 'denúncia recebida'
+                                  : 'denúncias recebidas'}
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-4 align-top">
+                              <div className="font-semibold text-rental-ink">
+                                {denuncia.cliente_nome || `Cliente #${denuncia.cliente_id}`}
+                              </div>
+                              <div className="text-[11px] text-rental-muted mt-0.5">
+                                {denuncia.cliente_email || 'E-mail indisponível'}
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-4 align-top max-w-[260px]">
+                              <div className="font-semibold text-rental-ink">
+                                {motivoDenunciaLabel(denuncia.motivo)}
+                              </div>
+                              <p className="text-[11px] text-rental-muted mt-1 line-clamp-2">
+                                {denuncia.descricao}
+                              </p>
+                            </td>
+
+                            <td className="py-4 px-4 align-top whitespace-nowrap">
+                              <StatusBadge status={denuncia.status} />
+                            </td>
+
+                            <td className="py-4 px-4 align-top text-right whitespace-nowrap">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSelectedDenuncia(denuncia)}
+                                leftIcon={<Eye className="h-3.5 w-3.5" />}
+                              >
+                                Analisar Denúncia
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
+
+                {hasMore && (
+                  <div className="flex justify-center pt-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      isLoading={isLoadingMore}
+                      loadingText="Carregando mais..."
+                      onClick={() =>
+                        carregarDenuncias(adminToken, {
+                          skip: denuncias.length,
+                          append: true,
+                        })
+                      }
+                    >
+                      Carregar mais denúncias
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -715,8 +950,17 @@ export default function AdminDenunciasPage() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-denuncia-titulo"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setSelectedDenuncia(null);
+            }
+          }}
         >
-          <div className="glass-panel-elevated w-full max-w-2xl rounded-3xl border border-rental-border bg-rental-surface p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+          <div
+            ref={modalRef}
+            tabIndex={-1}
+            className="glass-panel-elevated w-full max-w-2xl rounded-3xl border border-rental-border bg-rental-surface p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto focus:outline-none"
+          >
             <div className="flex items-start justify-between gap-4 border-b border-rental-border pb-4">
               <div>
                 <div className="flex items-center gap-2">

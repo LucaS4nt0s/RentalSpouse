@@ -3,8 +3,12 @@
  * da vitrine de profissionais (issue #96).
  */
 
-export type RadiusFilterValue = '' | 'max_10' | 'min_10' | 'min_25' | 'min_50';
+export type RadiusFilterValue = string;
 export type SortOrderValue = '' | 'avaliacao';
+
+export const MIN_DISTANCE_KM = 5;
+export const MAX_DISTANCE_KM = 150;
+export const DISTANCE_STEP_KM = 5;
 
 export interface RadiusOption {
   value: RadiusFilterValue;
@@ -29,13 +33,18 @@ export const SORT_ORDER_OPTIONS: readonly SortOption[] = [
   { value: 'avaliacao', label: 'Melhor avaliação' },
 ] as const;
 
-const VALID_RADIUS_VALUES = new Set<string>(RADIUS_FILTER_OPTIONS.map((opt) => opt.value));
+const LEGACY_RADIUS_VALUES = new Set<string>(['max_10', 'min_10', 'min_25', 'min_50']);
 const VALID_SORT_VALUES = new Set<string>(SORT_ORDER_OPTIONS.map((opt) => opt.value));
 
 export function parseRadiusFilter(raw: string | null | undefined): RadiusFilterValue {
   if (!raw) return '';
   const trimmed = raw.trim();
-  return VALID_RADIUS_VALUES.has(trimmed) ? (trimmed as RadiusFilterValue) : '';
+  if (LEGACY_RADIUS_VALUES.has(trimmed)) return trimmed;
+  if (/^\d+$/.test(trimmed)) {
+    const km = Number(trimmed);
+    if (km >= 1 && km <= 500) return String(km);
+  }
+  return '';
 }
 
 export function parseSortOrder(raw: string | null | undefined): SortOrderValue {
@@ -46,7 +55,7 @@ export function parseSortOrder(raw: string | null | undefined): SortOrderValue {
 
 export function radiusFilterToApiParams(
   radius: RadiusFilterValue,
-): { min_radius_km?: number; max_radius_km?: number } {
+): { min_radius_km?: number; max_radius_km?: number; max_distance_km?: number } {
   switch (radius) {
     case 'max_10':
       return { max_radius_km: 10 };
@@ -56,8 +65,13 @@ export function radiusFilterToApiParams(
       return { min_radius_km: 25 };
     case 'min_50':
       return { min_radius_km: 50 };
-    default:
+    default: {
+      if (/^\d+$/.test(radius)) {
+        const km = Number(radius);
+        if (km >= 1 && km <= 500) return { max_distance_km: km };
+      }
       return {};
+    }
   }
 }
 
@@ -105,12 +119,15 @@ export function buildProfessionalsSearchUrl(
     url.searchParams.set('state', state);
   }
 
-  const { min_radius_km, max_radius_km } = radiusFilterToApiParams(options.radius ?? '');
+  const { min_radius_km, max_radius_km, max_distance_km } = radiusFilterToApiParams(options.radius ?? '');
   if (min_radius_km !== undefined) {
     url.searchParams.set('min_radius_km', String(min_radius_km));
   }
   if (max_radius_km !== undefined) {
     url.searchParams.set('max_radius_km', String(max_radius_km));
+  }
+  if (max_distance_km !== undefined) {
+    url.searchParams.set('max_distance_km', String(max_distance_km));
   }
 
   const orderBy = parseSortOrder(options.orderBy);

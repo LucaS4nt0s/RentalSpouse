@@ -13,6 +13,7 @@ from typing import List, Optional
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Body,
     Depends,
     File,
     Form,
@@ -34,6 +35,8 @@ from routes.notificacoes import (
 )
 from schemas import (
     OrcamentoAceitar,
+    OrcamentoAprovarEstimativaCliente,
+    OrcamentoCancelarCliente,
     OrcamentoFotoRead,
     OrcamentoRead,
     OrcamentoRecusar,
@@ -726,4 +729,223 @@ def recusar_orcamento(
         payload.motivo,
     )
     return _montar_orcamento_read(orcamento)
+
+
+# ---------------------------------------------------------------------------
+# Aprovar Estimativa de Orçamento (Cliente) - Issue #98
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/{orcamento_id}/aprovar-estimativa",
+    response_model=OrcamentoRead,
+    summary="Aprovar estimativa de orçamento pelo cliente (Issue #98)",
+    description="Permite ao cliente autor aprovar a estimativa enviada pelo profissional, transicionando o status para 'aceito'.",
+)
+def aprovar_estimativa_orcamento(
+    orcamento_id: int,
+    payload: Optional[OrcamentoAprovarEstimativaCliente] = Body(default=None),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    orcamento = db.query(models.Orcamento).filter(models.Orcamento.id == orcamento_id).first()
+    if not orcamento:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Orçamento não encontrado.",
+        )
+
+    # Apenas o cliente autor do orçamento ou administrador pode aprovar a estimativa
+    eh_dono = current_user.email.strip().lower() == orcamento.cliente_email.strip().lower()
+    eh_admin = current_user.role == models.UserRole.ADMIN.value
+
+    if not (eh_dono or eh_admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Apenas o cliente autor deste orçamento pode aprovar a estimativa.",
+        )
+
+    # Validações de integridade de ciclo de vida (case-insensitive)
+    status_atual = (orcamento.status or "").strip().lower()
+    if status_atual == models.OrcamentoStatus.ACEITO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Esta solicitação de orçamento já foi aceita anteriormente.",
+        )
+    if status_atual == models.OrcamentoStatus.CANCELADO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Não é possível aprovar uma estimativa de solicitação já cancelada.",
+        )
+    if status_atual == models.OrcamentoStatus.RECUSADO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Não é possível aprovar uma estimativa de solicitação já recusada.",
+        )
+    if status_atual == models.OrcamentoStatus.PENDENTE.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="O orçamento ainda não possui uma estimativa enviada pelo profissional para ser aprovada.",
+        )
+
+    if status_atual != models.OrcamentoStatus.RESPONDIDO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Não é possível aprovar estimativa com status atual '{orcamento.status}'.",
+        )
+
+    agora = datetime.now(timezone.utc)
+    orcamento.status = models.OrcamentoStatus.ACEITO.value
+    orcamento.decidido_em = agora
+    if payload and payload.mensagem and payload.mensagem.strip():
+        orcamento.mensagem_resposta = payload.mensagem.strip()
+
+    db.commit()
+    db.refresh(orcamento)
+
+    # Notifica o profissional sobre a aprovação da estimativa
+    prof = db.query(models.Professional).filter(models.Professional.id == orcamento.professional_id).first()
+    if prof:
+        nome_cliente = orcamento.cliente_nome or "O cliente"
+        valor_str = f"R$ {orcamento.valor_estimado:.2f}" if orcamento.valor_estimado else ""
+        titulo_notificacao = f"Estimativa Aprovada para Orçamento #{orcamento.id}!"
+        msg_notificacao = (
+            f"{nome_cliente} aprovou sua estimativa{f' no valor de {valor_str}' if valor_str else ''}. "
+            f"O serviço está confirmado para execução/pagamento."
+        )
+        if payload and payload.mensagem:
+            msg_notificacao += f" Mensagem do cliente: {payload.mensagem.strip()}"
+
+        registrar_e_enviar_notificacao(
+            db=db,
+            user_email=prof.email,
+            titulo=titulo_notificacao,
+            mensagem=msg_notificacao,
+            tipo="orcamento_estimativa_aprovada",
+            referencia_id=orcamento.id,
+            payload_extra={
+                "orcamento_id": orcamento.id,
+                "status": "aceito",
+                "cliente_nome": nome_cliente,
+                "valor_estimado": orcamento.valor_estimado,
+            },
+        )
+
+        background_tasks.add_task(
+            enviar_email_alerta_orcamento,
+            destinatario_email=prof.email,
+            destinatario_nome=prof.name,
+            titulo=titulo_notificacao,
+            descricao=msg_notificacao,
+            orcamento_id=orcamento.id,
+        )
+
+    logger.info("Estimativa do orçamento #%d aprovada pelo cliente '%s'.", orcamento.id, current_user.email)
+    return _montar_orcamento_read(orcamento)
+
+
+# ---------------------------------------------------------------------------
+# Cancelar / Recusar Orçamento (Cliente) - Issue #98
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/{orcamento_id}/cancelar",
+    response_model=OrcamentoRead,
+    summary="Cancelar solicitação ou recusar estimativa pelo cliente (Issue #98)",
+    description="Permite ao cliente autor cancelar a solicitação pendente ou recusar a estimativa enviada pelo profissional.",
+)
+def cancelar_orcamento_cliente(
+    orcamento_id: int,
+    payload: Optional[OrcamentoCancelarCliente] = Body(default=None),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    orcamento = db.query(models.Orcamento).filter(models.Orcamento.id == orcamento_id).first()
+    if not orcamento:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Orçamento não encontrado.",
+        )
+
+    eh_dono = current_user.email.strip().lower() == orcamento.cliente_email.strip().lower()
+    eh_admin = current_user.role == models.UserRole.ADMIN.value
+
+    if not (eh_dono or eh_admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Apenas o cliente autor deste orçamento pode cancelá-lo ou recusar a proposta.",
+        )
+
+    status_atual = (orcamento.status or "").strip().lower()
+    if status_atual == models.OrcamentoStatus.CANCELADO.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Esta solicitação de orçamento já foi cancelada anteriormente.",
+        )
+
+    # Bloqueia cancelamento se já existir pagamento aprovado para este orçamento
+    pagamento_aprovado = (
+        db.query(models.Pagamento)
+        .filter(
+            models.Pagamento.orcamento_id == orcamento.id,
+            models.Pagamento.status == models.PagamentoStatus.APROVADO.value,
+        )
+        .first()
+    )
+    if pagamento_aprovado:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Não é possível cancelar uma solicitação de orçamento que já possui pagamento aprovado.",
+        )
+
+    agora = datetime.now(timezone.utc)
+    orcamento.status = models.OrcamentoStatus.CANCELADO.value
+    orcamento.decidido_em = agora
+
+    motivo_informado = payload.motivo.strip() if (payload and payload.motivo) else None
+    if motivo_informado:
+        orcamento.justificativa_recusa = f"Cancelado pelo cliente: {motivo_informado}"
+
+    db.commit()
+    db.refresh(orcamento)
+
+    # Notifica o profissional sobre o cancelamento
+    prof = db.query(models.Professional).filter(models.Professional.id == orcamento.professional_id).first()
+    if prof:
+        nome_cliente = orcamento.cliente_nome or "O cliente"
+        titulo_notificacao = f"Orçamento #{orcamento.id} Cancelado pelo Cliente"
+        msg_notificacao = f"{nome_cliente} cancelou a solicitação de orçamento."
+        if motivo_informado:
+            msg_notificacao += f" Motivo: {motivo_informado}."
+
+        registrar_e_enviar_notificacao(
+            db=db,
+            user_email=prof.email,
+            titulo=titulo_notificacao,
+            mensagem=msg_notificacao,
+            tipo="orcamento_cancelado",
+            referencia_id=orcamento.id,
+            payload_extra={
+                "orcamento_id": orcamento.id,
+                "status": "cancelado",
+                "cliente_nome": nome_cliente,
+                "motivo": motivo_informado,
+            },
+        )
+
+        background_tasks.add_task(
+            enviar_email_alerta_orcamento,
+            destinatario_email=prof.email,
+            destinatario_nome=prof.name,
+            titulo=titulo_notificacao,
+            descricao=msg_notificacao,
+            orcamento_id=orcamento.id,
+        )
+
+    logger.info("Orçamento #%d cancelado pelo cliente '%s'.", orcamento.id, current_user.email)
+    return _montar_orcamento_read(orcamento)
+
 

@@ -788,3 +788,215 @@ def test_rate_limit_pagamento_separa_cliente_e_ip():
     with pytest.raises(HTTPException) as erro_ip:
         check_payment_rate_limit(_request_com_ip(ip_compartilhado), cliente_id=21)
     assert erro_ip.value.status_code == 429
+
+
+# ---------------------------------------------------------------------------
+# Testes das Issues #97, #98 e #27 (Fallback, Transição e Dashboard de Ganhos)
+# ---------------------------------------------------------------------------
+
+
+def test_pagamento_cartao_orcamento_respondido_transiciona_para_aceito(client, db_session):
+    """Issue #98: Pagamento aprovado de orçamento 'respondido' transiciona status para 'aceito'."""
+    ctx = _seed_cenario_pagamento(db_session, valor_estimado=220.0, status_orc="respondido")
+    orc = ctx["orcamento"]
+    headers_cli = ctx["headers_cli1"]
+    assert orc.status == "respondido"
+
+    resp = client.post(
+        "/api/pagamentos",
+        headers=headers_cli,
+        json={
+            "orcamento_id": orc.id,
+            "metodo": "cartao_credito",
+            "parcelas": 1,
+            "idempotency_key": "idem-respondido-para-aceito-1",
+            "cartao": {
+                "card_token": "tok_teste_aprovado",
+                "payment_method_id": "visa",
+                "nome_titular": "MARIANA FERREIRA",
+                "cpf_titular": "52998224725",
+            },
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["status"] == "aprovado"
+
+    db_session.refresh(orc)
+    assert orc.status == "aceito"
+    assert orc.decidido_em is not None
+
+
+def test_simular_aprovacao_pix_transiciona_orcamento_respondido_para_aceito(client, db_session):
+    """Issue #98: Simulação de aprovação PIX transiciona orçamento 'respondido' para 'aceito'."""
+    ctx = _seed_cenario_pagamento(db_session, valor_estimado=150.0, status_orc="respondido")
+    orc = ctx["orcamento"]
+    headers_cli = ctx["headers_cli1"]
+    headers_prof = ctx["headers_prof"]
+
+    # 1. Cria intenção PIX
+    resp_pix = client.post(
+        "/api/pagamentos",
+        headers=headers_cli,
+        json={
+            "orcamento_id": orc.id,
+            "metodo": "pix",
+            "idempotency_key": "idem-pix-respondido-1",
+        },
+    )
+    assert resp_pix.status_code == 201
+    pgto_id = resp_pix.json()["id"]
+
+    # 2. Simula aprovação (pelo cliente dono da cobrança)
+    resp_sim = client.post(
+        f"/api/pagamentos/{pgto_id}/simular-aprovacao",
+        headers=headers_cli,
+    )
+    assert resp_sim.status_code == 200
+    assert resp_sim.json()["status"] == "aprovado"
+
+    db_session.refresh(orc)
+    assert orc.status == "aceito"
+
+
+def test_fallback_inteligente_provider_mode_fora_de_producao(monkeypatch):
+    """Issue #97: Fora de produção sem MP_ACCESS_TOKEN, provider opera em sandbox_mock."""
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("MP_ACCESS_TOKEN", "")
+    monkeypatch.delenv("PAYMENT_PROVIDER", raising=False)
+
+    provider = payment_gateway.MercadoPagoProvider()
+    assert provider.mode == "sandbox_mock"
+
+    # Em produção, o padrão estrito é mercadopago (fail-closed):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv("PAYMENT_PROVIDER", raising=False)
+    provider_prod = payment_gateway.MercadoPagoProvider()
+    assert provider_prod.mode == "mercadopago"
+
+
+def test_obter_resumo_ganhos_profissional_metricas_completas(client, db_session):
+    """Issue #27: Endpoint GET /api/pagamentos/resumo-ganhos agrega faturamento da semana, mês e total."""
+    ctx = _seed_cenario_pagamento(db_session, valor_estimado=100.0)
+    prof = ctx["prof"]
+    cli = ctx["cli1"]
+    orc = ctx["orcamento"]
+    headers_prof = ctx["headers_prof"]
+
+    orc2 = models.Orcamento(
+        cliente_id=cli.id,
+        cliente_nome=cli.nome,
+        cliente_email=cli.email,
+        professional_id=prof.id,
+        descricao="Segundo serviço elétrico",
+        status="aceito",
+        valor_estimado=200.0,
+    )
+    orc3 = models.Orcamento(
+        cliente_id=cli.id,
+        cliente_nome=cli.nome,
+        cliente_email=cli.email,
+        professional_id=prof.id,
+        descricao="Terceiro serviço",
+        status="pendente",
+        valor_estimado=500.0,
+    )
+    db_session.add_all([orc2, orc3])
+    db_session.commit()
+    db_session.refresh(orc2)
+    db_session.refresh(orc3)
+
+    agora = datetime.now(timezone.utc)
+
+    # 1. Pagamento aprovado na semana atual (R$ 100)
+    p1 = models.Pagamento(
+        orcamento_id=orc.id,
+        cliente_id=cli.id,
+        professional_id=prof.id,
+        valor=100.0,
+        metodo="pix",
+        status=models.PagamentoStatus.APROVADO.value,
+        parcelas=1,
+        gateway_provider="sandbox_mock",
+        gateway_txid="tx_ganhos_1",
+        external_reference="ref_1",
+        idempotency_key="idem_ganhos_1",
+        pago_em=agora,
+    )
+
+    # 2. Pagamento aprovado no mês atual (R$ 200)
+    p2 = models.Pagamento(
+        orcamento_id=orc2.id,
+        cliente_id=cli.id,
+        professional_id=prof.id,
+        valor=200.0,
+        metodo="cartao_credito",
+        status=models.PagamentoStatus.APROVADO.value,
+        parcelas=2,
+        gateway_provider="sandbox_mock",
+        gateway_txid="tx_ganhos_2",
+        external_reference="ref_2",
+        idempotency_key="idem_ganhos_2",
+        pago_em=agora.replace(day=1) if agora.day > 1 else agora,
+    )
+
+    # 3. Pagamento recusado (não deve somar nos ganhos)
+    p3 = models.Pagamento(
+        orcamento_id=orc3.id,
+        cliente_id=cli.id,
+        professional_id=prof.id,
+        valor=500.0,
+        metodo="pix",
+        status=models.PagamentoStatus.RECUSADO.value,
+        parcelas=1,
+        gateway_provider="sandbox_mock",
+        gateway_txid="tx_ganhos_3",
+        external_reference="ref_3",
+        idempotency_key="idem_ganhos_3",
+        pago_em=None,
+    )
+
+    db_session.add_all([p1, p2, p3])
+    db_session.commit()
+
+    resp = client.get("/api/pagamentos/resumo-ganhos", headers=headers_prof)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["total_acumulado"] == 300.0
+    assert data["total_atendimentos_pagos"] == 2
+    assert data["ticket_medio"] == 150.0
+    assert data["ganhos_mes_atual"] >= 300.0
+    assert data["ganhos_semana_atual"] >= 100.0
+    assert len(data["pagamentos_recentes"]) == 2
+    assert data["pagamentos_recentes"][0]["cliente_nome"] == cli.nome
+
+
+def test_obter_resumo_ganhos_bloqueia_cliente_ou_visitante(client, db_session):
+    """Issue #27: Endpoint restrito a profissionais autenticados (403 para clientes)."""
+    ctx = _seed_cenario_pagamento(db_session)
+    headers_cli = ctx["headers_cli1"]
+
+    # Cliente tentando acessar rota de ganhos
+    resp_cli = client.get("/api/pagamentos/resumo-ganhos", headers=headers_cli)
+    assert resp_cli.status_code == 403
+
+    # Visitante anônimo
+    resp_anon = client.get("/api/pagamentos/resumo-ganhos")
+    assert resp_anon.status_code == 401
+
+
+def test_obter_resumo_ganhos_profissional_sem_pagamentos(client, db_session):
+    """Issue #27: Profissional sem pagamentos recebe dashboard zerado sem erro de divisão por zero."""
+    ctx = _seed_cenario_pagamento(db_session)
+    headers_prof = ctx["headers_prof"]
+
+    resp = client.get("/api/pagamentos/resumo-ganhos", headers=headers_prof)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_acumulado"] == 0.0
+    assert data["ganhos_mes_atual"] == 0.0
+    assert data["ganhos_semana_atual"] == 0.0
+    assert data["total_atendimentos_pagos"] == 0
+    assert data["ticket_medio"] == 0.0
+    assert data["pagamentos_recentes"] == []
+

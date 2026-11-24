@@ -2,13 +2,12 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Zap, ArrowRight, Wrench, ShieldCheck, Star, Clock, User, LogOut, Briefcase, Calendar } from 'lucide-react';
-import { ThemeToggle } from '../components/ui/ThemeToggle';
+import { ArrowRight, ShieldCheck, Star, Clock, User, Calendar, Wallet } from 'lucide-react';
 import {
   ProfessionalDocumentsLink,
   useIsProfessional,
 } from '../components/documentos/ProfessionalDocumentsLink';
-import { NotificationBell } from '../components/notificacoes/NotificationBell';
+import { AppHeader } from '../components/layout/AppHeader';
 import { useAuth } from '../context/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
@@ -38,91 +37,7 @@ export default function Home() {
 
   return (
     <main className="flex min-h-screen flex-col bg-rental-bg text-rental-ink">
-      <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6">
-        <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-90">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rental-primary text-[var(--rs-primary-text)]">
-            <Zap className="h-5 w-5" />
-          </span>
-          <span className="text-lg font-extrabold tracking-tight">RentalSpouse</span>
-        </Link>
-
-        <div className="flex items-center gap-3">
-          <Link
-            href="/profissionais"
-            className="rounded-xl px-3 py-1.5 text-xs font-bold text-rental-primary hover:bg-rental-primary/10 transition-colors"
-          >
-            Buscar Profissionais
-          </Link>
-          {isLoading ? (
-            <div className="h-8 w-28 animate-pulse rounded-xl bg-rental-surface2" />
-          ) : isAuthenticated && user ? (
-            <div className="flex items-center gap-3">
-              <Link
-                href={
-                  user.tipo === 'profissional' || user.role === 'professional'
-                    ? '/profissional/orcamentos'
-                    : '/cliente/orcamentos'
-                }
-                className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
-                title="Meus Orçamentos"
-              >
-                <Briefcase className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Meus Orçamentos</span>
-              </Link>
-              <Link
-                href="/entrar"
-                className="flex items-center gap-2 text-xs font-semibold hover:opacity-85 transition-opacity"
-                title="Minha Conta"
-              >
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-rental-primary/10 text-rental-primary">
-                  <User className="h-4 w-4" />
-                </span>
-                <span className="hidden sm:inline font-bold text-rental-ink">
-                  Olá, {user.nome.split(' ')[0]}
-                </span>
-              </Link>
-              <ProfessionalDocumentsLink variant="header" />
-              {isProfessional && (
-                <Link
-                  href="/profissional/agenda"
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
-                  title="Minha Agenda"
-                >
-                  <Calendar className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Minha Agenda</span>
-                </Link>
-              )}
-              <NotificationBell />
-              <button
-                type="button"
-                onClick={logout}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-muted transition-colors hover:border-[var(--rs-error)]/40 hover:text-[var(--rs-error)]"
-                title="Sair da conta"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Sair</span>
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Link
-                href="/entrar?mode=signin"
-                className="rounded-xl px-3.5 py-1.5 text-xs font-bold text-rental-ink transition-colors hover:text-rental-primary"
-              >
-                Entrar
-              </Link>
-              <Link
-                href="/entrar?mode=signup"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-rental-primary px-3.5 py-1.5 text-xs font-bold text-[var(--rs-primary-text)] shadow-primary transition-colors hover:bg-[var(--rs-primary-hover)]"
-              >
-                Cadastre-se
-              </Link>
-            </div>
-          )}
-
-          <ThemeToggle />
-        </div>
-      </header>
+      <AppHeader />
 
       <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center px-6 py-16 text-center">
         <span className="inline-flex items-center gap-2 rounded-full border border-rental-border bg-rental-surface px-3 py-1 text-xs font-semibold text-rental-muted">
@@ -151,13 +66,13 @@ export default function Home() {
           {isAuthenticated && user ? (
             <>
               <Link
-                href="/entrar"
+                href="/minha-conta"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
               >
                 <User className="h-4 w-4 text-rental-primary" />
                 Minha Conta ({user.nome.split(' ')[0]})
               </Link>
-              {isProfessional ? (
+              {isProfessional && (
                 <>
                   <Link
                     href="/profissional/agenda"
@@ -166,16 +81,15 @@ export default function Home() {
                     <Calendar className="h-4 w-4 text-rental-primary" />
                     Minha Agenda
                   </Link>
+                  <Link
+                    href="/profissional/ganhos"
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-emerald-500/40"
+                  >
+                    <Wallet className="h-4 w-4 text-emerald-500" />
+                    Meus Ganhos
+                  </Link>
                   <ProfessionalDocumentsLink variant="hero" />
                 </>
-              ) : (
-                <Link
-                  href="/cadastro/profissional"
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
-                >
-                  <Wrench className="h-4 w-4 text-rental-primary" />
-                  Sou profissional
-                </Link>
               )}
             </>
           ) : (
