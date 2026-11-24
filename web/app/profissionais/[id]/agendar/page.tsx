@@ -102,7 +102,6 @@ export default function AgendarProfissionalPage() {
               onClick={handleVerMeusAgendamentos}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-rental-primary transition-colors hover:underline"
             >
-              <ListChecks className="h-4 w-4" />
               <span>Meus agendamentos</span>
             </button>
           )}
@@ -128,7 +127,6 @@ export default function AgendarProfissionalPage() {
                   </h1>
                   {profissional?.approval_status === 'approved' && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-rental-success/10 px-2.5 py-0.5 text-xs font-semibold text-rental-success">
-                      <ShieldCheck className="h-3.5 w-3.5" />
                       <span>Verificado</span>
                     </span>
                   )}
@@ -136,7 +134,6 @@ export default function AgendarProfissionalPage() {
 
                 {localizacao && (
                   <p className="mt-1 flex items-center gap-1 text-xs text-rental-muted">
-                    <MapPin className="h-3.5 w-3.5 text-rental-primary" />
                     <span>{localizacao}</span>
                   </p>
                 )}
@@ -189,9 +186,6 @@ export default function AgendarProfissionalPage() {
             role="alert"
             className="flex flex-col items-center justify-center rounded-2xl border border-[var(--rs-error)]/40 bg-rental-surface p-8 text-center shadow-sm"
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--rs-error)]/10 text-[var(--rs-error)]">
-              <AlertTriangle className="h-6 w-6" />
-            </div>
             <h2 className="mt-3 text-base font-extrabold text-rental-ink">
               Não foi possível carregar a agenda
             </h2>
@@ -201,16 +195,12 @@ export default function AgendarProfissionalPage() {
               onClick={() => recarregarAgenda(false)}
               className="mt-5 inline-flex items-center gap-2 rounded-xl bg-rental-primary px-5 py-2.5 text-xs sm:text-sm font-bold text-white shadow-primary transition-all hover:bg-[var(--rs-primary-hover)]"
             >
-              <RefreshCw className="h-4 w-4" />
               <span>Tentar novamente</span>
             </button>
           </section>
         ) : agendaVazia && !agendamentoCriado ? (
           /* Estado 3: Empty ("este profissional ainda não abriu a agenda") */
           <section className="flex flex-col items-center justify-center rounded-2xl border border-rental-border bg-rental-surface p-10 text-center shadow-sm">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rental-primary/10 text-rental-primary">
-              <CalendarOff className="h-7 w-7" />
-            </div>
             <h2 className="mt-4 text-lg font-extrabold text-rental-ink">
               Este profissional ainda não abriu a agenda
             </h2>

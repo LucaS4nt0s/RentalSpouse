@@ -3,25 +3,12 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  Zap,
-  Search,
-  Briefcase,
-  Calendar,
-  FileCheck2,
-  ShieldCheck,
-  AlertTriangle,
-  User,
-  LogOut,
-  Menu,
-  X,
-  Users,
-  Wallet,
-} from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getAdminDenunciasResumo } from '../../services/denuncias';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { NotificationBell } from '../notificacoes/NotificationBell';
+import { BrandMark } from '../brand/BrandMark';
 
 export interface AppHeaderProps {
   /** Callback opcional acionado ao clicar em "Meus Agendamentos" (ex.: na tela de agendamento) */
@@ -35,7 +22,6 @@ export interface AppHeaderProps {
 interface NavItem {
   href: string;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
   onClick?: () => void;
   badge?: number;
 }
@@ -102,37 +88,35 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   const getNavItems = (): NavItem[] => {
     if (role === 'client') {
       return [
-        { href: '/profissionais', label: 'Buscar Profissionais', icon: Search },
-        { href: '/cliente/orcamentos', label: 'Meus Orçamentos', icon: Briefcase },
+        { href: '/profissionais', label: 'Buscar profissionais' },
+        { href: '/cliente/orcamentos', label: 'Meus orçamentos' },
         {
           href: '/cliente/agendamentos',
-          label: 'Meus Agendamentos',
-          icon: Calendar,
+          label: 'Meus agendamentos',
           onClick: onOpenAgendamentos,
         },
       ];
     }
     if (role === 'professional') {
       return [
-        { href: '/profissional/agenda', label: 'Minha Agenda', icon: Calendar },
-        { href: '/profissional/orcamentos', label: 'Orçamentos Recebidos', icon: Briefcase },
-        { href: '/profissional/ganhos', label: 'Meus Ganhos', icon: Wallet },
-        { href: '/profissional/documentos', label: 'Meus Documentos', icon: FileCheck2 },
+        { href: '/profissional/agenda', label: 'Minha agenda' },
+        { href: '/profissional/orcamentos', label: 'Orçamentos recebidos' },
+        { href: '/profissional/ganhos', label: 'Meus ganhos' },
+        { href: '/profissional/documentos', label: 'Meus documentos' },
       ];
     }
     if (role === 'admin') {
       return [
-        { href: '/admin/moderacao', label: 'Moderação de Documentos', icon: ShieldCheck },
+        { href: '/admin/moderacao', label: 'Moderação' },
         {
           href: '/admin/denuncias',
-          label: 'Painel de Denúncias',
-          icon: AlertTriangle,
+          label: 'Denúncias',
           badge: effectivePendingCount,
         },
-        { href: '/cadastro/admin', label: 'Administradores', icon: Users },
+        { href: '/cadastro/admin', label: 'Administradores' },
       ];
     }
-    return [{ href: '/profissionais', label: 'Buscar Profissionais', icon: Search }];
+    return [{ href: '/profissionais', label: 'Buscar profissionais' }];
   };
 
   const navItems = getNavItems();
@@ -146,11 +130,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           className="flex items-center gap-2.5 transition-opacity hover:opacity-90"
           onClick={() => setMobileMenuOpen(false)}
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rental-primary text-[var(--rs-primary-text)] shadow-primary">
-            <Zap className="h-5 w-5" />
-          </span>
+          <BrandMark size={28} className="text-rental-ink" />
           <div className="flex items-center gap-2">
-            <span className="text-lg font-extrabold tracking-tight text-rental-ink">
+            <span className="whitespace-nowrap text-lg font-extrabold tracking-tight text-rental-ink">
               RentalSpouse
             </span>
             {role === 'admin' && (
@@ -164,10 +146,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         {/* Navegação Desktop */}
         <nav
           aria-label="Navegação principal"
-          className="hidden md:flex items-center gap-1.5"
+          className="hidden lg:flex items-center gap-1"
         >
           {navItems.map((item) => {
-            const Icon = item.icon;
             const isActive =
               pathname === item.href ||
               (item.href !== '/' && pathname?.startsWith(item.href) && !item.onClick);
@@ -178,9 +159,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                   key={item.label}
                   type="button"
                   onClick={item.onClick}
-                  className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold text-rental-muted transition-colors hover:bg-rental-surface2 hover:text-rental-ink"
+                  className="inline-flex items-center whitespace-nowrap rounded-lg px-3 py-2 text-[13px] font-semibold text-rental-muted transition-colors hover:bg-rental-surface2 hover:text-rental-ink"
                 >
-                  <Icon className="h-3.5 w-3.5 text-rental-primary" />
                   <span>{item.label}</span>
                 </button>
               );
@@ -190,13 +170,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               <Link
                 key={item.label}
                 href={item.href}
-                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
+                className={`inline-flex items-center whitespace-nowrap rounded-lg px-3 py-2 text-[13px] font-semibold transition-colors ${
                   isActive
-                    ? 'bg-rental-primary/10 text-rental-primary font-bold'
+                    ? 'text-rental-ink font-bold bg-rental-surface2'
                     : 'text-rental-muted hover:bg-rental-surface2 hover:text-rental-ink'
                 }`}
               >
-                <Icon className="h-3.5 w-3.5" />
                 <span>{item.label}</span>
                 {typeof item.badge === 'number' && item.badge > 0 && (
                   <span className="ml-0.5 inline-flex min-w-[18px] items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
@@ -209,7 +188,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </nav>
 
         {/* Ações à Direita (Desktop) */}
-        <div className="hidden md:flex items-center gap-2.5">
+        <div className="hidden lg:flex items-center gap-2">
           {isLoading ? (
             <div className="h-8 w-28 animate-pulse rounded-xl bg-rental-surface2" />
           ) : isAuthenticated && user ? (
@@ -219,14 +198,13 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               <Link
                 href="/minha-conta"
                 title="Minha Conta"
-                className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-bold transition-colors ${
+                className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-1.5 text-xs font-bold transition-colors ${
                   pathname?.startsWith('/minha-conta')
                     ? 'border-rental-primary bg-rental-primary/10 text-rental-primary'
                     : 'border-rental-border bg-rental-surface text-rental-ink hover:border-rental-primary/40 hover:text-rental-primary'
                 }`}
               >
-                <User className="h-3.5 w-3.5 text-rental-primary" />
-                <span>Minha Conta ({firstName})</span>
+                <span>{firstName}</span>
               </Link>
 
               <ThemeToggle showLabel={false} />
@@ -256,7 +234,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                   className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-2.5 py-1.5 text-xs font-semibold text-rental-muted transition-colors hover:border-[var(--rs-error)]/40 hover:text-[var(--rs-error)]"
                   title="Sair da conta"
                 >
-                  <LogOut className="h-3.5 w-3.5" />
                   <span>Sair</span>
                 </button>
               )}
@@ -274,14 +251,14 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                 href="/entrar?mode=signup"
                 className="inline-flex items-center gap-1.5 rounded-xl bg-rental-primary px-3.5 py-1.5 text-xs font-bold text-[var(--rs-primary-text)] shadow-primary transition-colors hover:bg-[var(--rs-primary-hover)]"
               >
-                Cadastre-se
+                Criar conta
               </Link>
             </>
           )}
         </div>
 
         {/* Controles Mobile (< 768px) */}
-        <div className="flex items-center gap-2 md:hidden">
+        <div className="flex items-center gap-2 lg:hidden">
           {isAuthenticated && (role === 'client' || role === 'professional') && (
             <NotificationBell />
           )}
@@ -294,7 +271,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             }}
             aria-label={mobileMenuOpen ? 'Fechar menu de navegação' : 'Abrir menu de navegação'}
             aria-expanded={mobileMenuOpen}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-rental-border bg-rental-surface text-rental-ink transition-colors hover:border-rental-primary"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-rental-border bg-rental-surface text-rental-ink transition-colors hover:border-rental-primary"
           >
             {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
@@ -305,11 +282,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       {mobileMenuOpen && (
         <div
           aria-label="Menu de navegação móvel"
-          className="border-t border-rental-border bg-rental-surface px-4 py-4 shadow-lg md:hidden animate-fadeIn"
+          className="border-t border-rental-border bg-rental-surface px-4 py-4 shadow-lg lg:hidden animate-fadeIn"
         >
           <nav className="flex flex-col gap-1.5">
             {navItems.map((item) => {
-              const Icon = item.icon;
               if (item.onClick) {
                 return (
                   <button
@@ -319,9 +295,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                       setMobileMenuOpen(false);
                       item.onClick?.();
                     }}
-                    className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-rental-ink hover:bg-rental-surface2"
+                    className="flex items-center gap-2.5 min-h-[44px] rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-rental-ink hover:bg-rental-surface2"
                   >
-                    <Icon className="h-4 w-4 text-rental-primary" />
                     <span>{item.label}</span>
                   </button>
                 );
@@ -330,13 +305,11 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                 <Link
                   key={item.label}
                   href={item.href}
+                  aria-current={pathname === item.href ? 'page' : undefined}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-xs font-semibold text-rental-ink hover:bg-rental-surface2"
+                  className="flex min-h-[44px] items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-rental-ink hover:bg-rental-surface2"
                 >
-                  <span className="flex items-center gap-2.5">
-                    <Icon className="h-4 w-4 text-rental-primary" />
-                    <span>{item.label}</span>
-                  </span>
+                  <span>{item.label}</span>
                   {typeof item.badge === 'number' && item.badge > 0 && (
                     <span className="inline-flex min-w-[20px] items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
                       {item.badge > 99 ? '99+' : item.badge}
@@ -353,8 +326,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-2.5 rounded-xl bg-rental-primary/10 px-3 py-2.5 text-xs font-bold text-rental-primary"
                 >
-                  <User className="h-4 w-4" />
-                  <span>Minha Conta ({firstName})</span>
+                  <span>Minha conta ({firstName})</span>
                 </Link>
 
                 <div className="mt-2 border-t border-rental-border pt-2">
@@ -386,7 +358,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                       onClick={() => setConfirmingLogout(true)}
                       className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-xs font-semibold text-rental-muted hover:bg-red-500/10 hover:text-[var(--rs-error)]"
                     >
-                      <LogOut className="h-4 w-4" />
                       <span>Sair da conta</span>
                     </button>
                   )}
@@ -406,7 +377,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                   onClick={() => setMobileMenuOpen(false)}
                   className="w-full rounded-xl bg-rental-primary py-2.5 text-center text-xs font-bold text-[var(--rs-primary-text)] shadow-primary"
                 >
-                  Cadastre-se
+                  Criar conta
                 </Link>
               </div>
             )}

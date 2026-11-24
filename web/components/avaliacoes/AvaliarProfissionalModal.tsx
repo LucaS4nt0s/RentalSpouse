@@ -220,7 +220,6 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
                 Avaliar Atendimento
               </h2>
               <p className="text-xs text-rental-muted flex items-center gap-1 mt-0.5">
-                <User className="h-3 w-3" />
                 <span>Profissional: {professionalName}</span>
               </p>
             </div>
@@ -242,9 +241,6 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
         <div className="p-6">
           {isSuccess ? (
             <div className="text-center py-6 space-y-4 animate-fadeIn">
-              <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                <CheckCircle2 className="h-8 w-8" />
-              </div>
               <div className="space-y-1">
                 <h3 className="text-lg font-bold text-rental-ink">
                   Avaliação enviada com sucesso!
@@ -299,7 +295,7 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
 
               {/* Seletor de Estrelas */}
               <div className="rounded-2xl border border-rental-border/70 bg-rental-surface2/30 p-5 text-center space-y-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-rental-muted">
+                <label className="block text-xs font-bold text-rental-muted">
                   Como você avalia o serviço prestado? <span className="text-rose-500">*</span>
                 </label>
                 <div className="py-2">
@@ -325,7 +321,6 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
                   className="flex items-center justify-between text-xs font-bold text-rental-ink"
                 >
                   <span className="flex items-center gap-1.5">
-                    <MessageSquare className="h-3.5 w-3.5 text-rental-muted" />
                     Deixe um comentário (opcional)
                   </span>
                   <span
@@ -384,7 +379,6 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
                     </>
                   ) : (
                     <>
-                      <Send className="h-3.5 w-3.5" />
                       <span>Publicar Avaliação</span>
                     </>
                   )}

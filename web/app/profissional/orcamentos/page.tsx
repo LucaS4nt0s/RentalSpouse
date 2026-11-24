@@ -112,9 +112,6 @@ export default function ProfissionalOrcamentosPage() {
     return (
       <main className="min-h-screen bg-rental-bg text-rental-ink flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full rounded-3xl border border-rental-border bg-rental-surface p-8 text-center space-y-5 shadow-panel animate-fadeIn">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-            <Lock className="h-7 w-7" />
-          </div>
           <div className="space-y-2">
             <h1 className="text-xl font-extrabold text-rental-ink">Acesso Restrito ao Prestador</h1>
             <p className="text-sm text-rental-muted leading-relaxed">
@@ -150,28 +147,24 @@ export default function ProfissionalOrcamentosPage() {
       case 'aceito':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold text-emerald-500">
-            <CheckCircle2 className="h-3.5 w-3.5" />
             Aceito
           </span>
         );
       case 'respondido':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/15 px-3 py-1 text-xs font-bold text-blue-500">
-            <Clock className="h-3.5 w-3.5" />
             Respondido
           </span>
         );
       case 'recusado':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 px-3 py-1 text-xs font-bold text-rose-500">
-            <XCircle className="h-3.5 w-3.5" />
             Recusado
           </span>
         );
       case 'cancelado':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-500/15 px-3 py-1 text-xs font-bold text-slate-500 dark:text-slate-300">
-            <Ban className="h-3.5 w-3.5" />
             Cancelado pelo Cliente
           </span>
         );
@@ -198,7 +191,6 @@ export default function ProfissionalOrcamentosPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-rental-border">
             <div className="space-y-1">
               <h1 className="text-2xl sm:text-3xl font-black text-rental-ink tracking-tight flex items-center gap-2.5">
-                <Briefcase className="h-7 w-7 text-rental-primary" />
                 Gestão de Orçamentos e Capacidade
               </h1>
               <p className="text-xs sm:text-sm text-rental-muted">
@@ -211,7 +203,6 @@ export default function ProfissionalOrcamentosPage() {
                 href="/profissional/ganhos"
                 className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 transition-colors hover:bg-emerald-500/20"
               >
-                <Wallet className="h-3.5 w-3.5" />
                 <span>Meus Ganhos</span>
               </Link>
             </div>
@@ -223,9 +214,6 @@ export default function ProfissionalOrcamentosPage() {
           className="rounded-3xl border border-emerald-500/25 bg-emerald-500/5 p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4"
         >
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-500">
-              <TrendingUp className="h-5 w-5" />
-            </div>
             <div>
               <h2 className="text-sm font-extrabold text-rental-ink">Resumo dos Seus Ganhos</h2>
               <p className="text-xs text-rental-muted">
@@ -236,7 +224,7 @@ export default function ProfissionalOrcamentosPage() {
 
           <div className="grid grid-cols-3 gap-4 sm:gap-6">
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-rental-muted block">
+              <span className="text-[11px] font-bold text-rental-muted block">
                 Semana
               </span>
               <span className="text-sm sm:text-base font-black text-rental-ink">
@@ -244,7 +232,7 @@ export default function ProfissionalOrcamentosPage() {
               </span>
             </div>
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-rental-muted block">
+              <span className="text-[11px] font-bold text-rental-muted block">
                 Mês Atual
               </span>
               <span className="text-sm sm:text-base font-black text-blue-600 dark:text-blue-400">
@@ -252,7 +240,7 @@ export default function ProfissionalOrcamentosPage() {
               </span>
             </div>
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-rental-muted block">
+              <span className="text-[11px] font-bold text-rental-muted block">
                 Acumulado
               </span>
               <span className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400">
@@ -262,7 +250,7 @@ export default function ProfissionalOrcamentosPage() {
           </div>
 
           <Link href="/profissional/ganhos" className="shrink-0">
-            <Button variant="secondary" size="sm" leftIcon={<Wallet className="h-3.5 w-3.5 text-emerald-500" />}>
+            <Button variant="secondary" size="sm">
               Ver Painel Financeiro
             </Button>
           </Link>
@@ -276,7 +264,7 @@ export default function ProfissionalOrcamentosPage() {
             {/* Card: Pendentes */}
             <div className="rounded-3xl border border-amber-500/30 bg-amber-500/5 p-5 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
                   Pendentes
                 </span>
                 <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
@@ -290,7 +278,7 @@ export default function ProfissionalOrcamentosPage() {
             {/* Card: Aceitos (Capacidade Ativa) */}
             <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/5 p-5 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
                   Aceitos
                 </span>
                 <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -304,7 +292,7 @@ export default function ProfissionalOrcamentosPage() {
             {/* Card: Recusados */}
             <div className="rounded-3xl border border-rose-500/30 bg-rose-500/5 p-5 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
+                <span className="text-xs font-bold text-rose-600 dark:text-rose-400">
                   Recusados
                 </span>
                 <XCircle className="h-4 w-4 text-rose-500" />
@@ -318,7 +306,7 @@ export default function ProfissionalOrcamentosPage() {
             {/* Card: Total */}
             <div className="rounded-3xl border border-rental-border bg-rental-surface p-5 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-rental-muted">
+                <span className="text-xs font-bold text-rental-muted">
                   Total Geral
                 </span>
                 <Briefcase className="h-4 w-4 text-rental-primary" />
@@ -335,7 +323,6 @@ export default function ProfissionalOrcamentosPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-bold text-rental-muted flex items-center gap-1.5 mr-1">
-              <Filter className="h-3.5 w-3.5" />
               Filtrar por:
             </span>
             {(
@@ -429,7 +416,6 @@ export default function ProfissionalOrcamentosPage() {
                       {getStatusBadge(orcamento.status)}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-rental-muted">
-                      <Clock className="h-3.5 w-3.5" />
                       <span>Recebido em {new Date(orcamento.criado_em).toLocaleString('pt-BR')}</span>
                     </div>
                   </div>
@@ -437,16 +423,13 @@ export default function ProfissionalOrcamentosPage() {
                   {/* Informações do Cliente */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-rental-ink/90 bg-rental-surface2/30 p-3 rounded-2xl">
                     <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-rental-primary shrink-0" />
                       <span className="font-semibold">{orcamento.cliente_nome}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Mail className="h-4 w-4 text-rental-primary shrink-0" />
                       <span className="truncate">{orcamento.cliente_email}</span>
                     </div>
                     {orcamento.cliente_telefone && (
                       <div className="flex items-center gap-2">
-                        <Phone className="h-4 w-4 text-rental-primary shrink-0" />
                         <span>{orcamento.cliente_telefone}</span>
                       </div>
                     )}
@@ -454,7 +437,7 @@ export default function ProfissionalOrcamentosPage() {
 
                   {/* Descrição do Pedido */}
                   <div className="space-y-1.5">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-rental-muted">
+                    <span className="text-[11px] font-bold text-rental-muted">
                       Descrição do Serviço Solicitado
                     </span>
                     <p className="text-sm text-rental-ink leading-relaxed whitespace-pre-wrap bg-rental-surface2/15 p-3.5 rounded-2xl border border-rental-border/40">
@@ -465,8 +448,7 @@ export default function ProfissionalOrcamentosPage() {
                   {/* Fotos em Miniatura */}
                   {orcamento.fotos && orcamento.fotos.length > 0 && (
                     <div className="space-y-2">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-rental-muted flex items-center gap-1.5">
-                        <ImageIcon className="h-3.5 w-3.5 text-rental-primary" />
+                      <span className="text-[11px] font-bold text-rental-muted flex items-center gap-1.5">
                         Fotos Anexadas ({orcamento.fotos.length})
                       </span>
                       <div className="flex flex-wrap gap-2.5">
@@ -502,7 +484,6 @@ export default function ProfissionalOrcamentosPage() {
                     <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs space-y-1.5">
                       <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 font-extrabold">
                         <span className="flex items-center gap-1.5">
-                          <CheckCircle2 className="h-4 w-4" />
                           Orçamento Aceito
                         </span>
                         {orcamento.valor_estimado && (
@@ -523,7 +504,6 @@ export default function ProfissionalOrcamentosPage() {
                   {orcamento.status === 'recusado' && (
                     <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs space-y-1.5">
                       <div className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400 font-extrabold">
-                        <XCircle className="h-4 w-4" />
                         <span>Orçamento Recusado: {orcamento.motivo_recusa}</span>
                       </div>
                       {orcamento.justificativa_recusa && (
@@ -540,7 +520,6 @@ export default function ProfissionalOrcamentosPage() {
                   {orcamento.status === 'cancelado' && (
                     <div className="rounded-2xl border border-slate-500/30 bg-slate-500/10 p-4 text-xs space-y-1.5">
                       <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-extrabold">
-                        <Ban className="h-4 w-4" />
                         <span>Solicitação Cancelada pelo Cliente</span>
                       </div>
                       {(orcamento.justificativa_recusa || orcamento.motivo_recusa) && (
@@ -561,7 +540,6 @@ export default function ProfissionalOrcamentosPage() {
                     <div className="text-xs text-rental-muted">
                       {orcamento.valor_estimado ? (
                         <span className="font-extrabold text-rental-primary flex items-center gap-1">
-                          <DollarSign className="h-3.5 w-3.5" />
                           Estimativa: R$ {orcamento.valor_estimado.toFixed(2)}
                         </span>
                       ) : (

@@ -19,9 +19,6 @@ export const SearchErrorState: React.FC<SearchErrorStateProps> = ({
       role="alert"
       className="flex flex-col items-center justify-center rounded-3xl border border-rental-error/30 bg-rental-surface p-8 text-center shadow-panel animate-fadeIn"
     >
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rental-error/10 text-rental-error mb-4">
-        <WifiOff className="h-7 w-7" />
-      </div>
 
       <h3 className="text-lg font-bold text-rental-ink">
         Ops! Algo deu errado ao carregar os dados

@@ -116,7 +116,7 @@ export const Calendario: React.FC<CalendarioProps> = ({
               }`}
             >
               <span
-                className={`text-[11px] font-semibold uppercase tracking-wider ${
+                className={`text-[11px] font-semibold ${
                   ativo ? 'text-white/90' : 'text-rental-muted'
                 }`}
               >

@@ -125,9 +125,6 @@ export function CancelarAgendamentoModal({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-rental-border px-6 py-4">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/10 text-red-600 dark:text-red-400">
-              <CalendarX className="h-5 w-5" />
-            </span>
             <div>
               <h2
                 id="cancelar-modal-title"
