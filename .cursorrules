@@ -205,6 +205,16 @@ Como **[cliente | profissional | administrador]**, quero **[ação clara]**, par
 
 ## 5. Padrão Oficial de Pull Request e Code Review
 
+### 5.1 Metadados Obrigatórios do Pull Request (SEMPRE preencher)
+Nenhum Pull Request pode ser aberto "pelado" (sem metadados). Ao criar ou editar um PR (via interface do GitHub ou `gh pr create`), o agente ou desenvolvedor **SEMPRE DEVE** preencher obrigatoriamente:
+- **Assignee (`--assignee`)**: Atribuir ao autor/responsável pela entrega (ex.: `@me`).
+- **Labels (`--label`)**: Aplicar obrigatoriamente ao menos 1 label de tipo (`enhancement`, `bug`, `documentation`, `accessibility`) e, quando aplicável, a label de prioridade (`essencial`, `importante`, `desejável`) ou status (`frontend-done`, `blocked`).
+- **Reviewers (`--reviewer`)**: Solicitar revisão de pelo menos **1 a 2 colaboradores** do time antes do merge.
+- **Linked Issue (`Closes #<id>`) / Milestone / Projects**: Vincular sempre a Issue correspondente no corpo do PR e associar ao Project/Milestone ativo quando disponível.
+
+> ⚠️ **A mesma regra de metadados vale para Issues**: toda Issue criada deve conter **Labels** (tipo + prioridade) e **Assignee** quando já houver responsável definido.
+
+### 5.2 Template Oficial de Pull Request
 Toda entrega gerada ou auxiliada por IA deve preencher integralmente o template abaixo (espelhado em `.github/PULL_REQUEST_TEMPLATE.md`):
 
 ```markdown
@@ -247,6 +257,7 @@ Closes #<numero-da-issue>
 - [ ] Novos endpoints e regras de negócio possuem testes em `backend/tests/` (sucesso, `401/403`, `404`, `422`).
 - [ ] Sem uso de `any` no TypeScript; contratos `schemas.py` e tipos TS estão sincronizados.
 - [ ] A branch alvo é `dev` (nunca `main` diretamente, exceto `release/*` ou `hotfix/*` autorizado).
+- [ ] Metadados do PR preenchidos no GitHub (**Assignee**, **Labels**, **Reviewers** e **Issue/Project** vinculados).
 ```
 
 ---

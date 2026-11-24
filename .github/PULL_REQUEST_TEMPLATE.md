@@ -37,3 +37,4 @@ Closes #<numero-da-issue>
 - [ ] Novos endpoints e regras possuem testes em `backend/tests/` (sucesso, `401/403`, `404`, `422`) usando SQLite em memória.
 - [ ] Sem uso de `any` no TypeScript; contratos `schemas.py` e interfaces TS estão sincronizados.
 - [ ] A branch alvo é `dev` (integração via `feat/*` ou `fix/*` -> `dev`, nunca `main` direta).
+- [ ] Metadados da PR preenchidos no GitHub (**Assignee**, **Labels**, **Reviewers** e **Issue/Project** vinculados).
