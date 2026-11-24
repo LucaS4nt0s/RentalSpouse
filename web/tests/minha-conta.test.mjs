@@ -46,3 +46,30 @@ test('Página /minha-conta renderiza abas de edição de dados, preferências de
   assert.match(source, /Preferências & Segurança/, 'Página Minha Conta deve exibir aba de Preferências e Segurança');
   assert.match(source, /Alterar Senha de Acesso/, 'Página Minha Conta deve permitir alteração de senha');
 });
+
+test('Página /minha-conta integra useAddressLookup e substitui endereço antigo ao trocar CEP', () => {
+  const minhaContaSource = fs.readFileSync(
+    path.join(webRoot, 'app', 'minha-conta', 'page.tsx'),
+    'utf-8'
+  );
+  const hookSource = fs.readFileSync(
+    path.join(webRoot, 'hooks', 'useAddressLookup.ts'),
+    'utf-8'
+  );
+  const addressSectionSource = fs.readFileSync(
+    path.join(webRoot, 'components', 'sections', 'AddressSection.tsx'),
+    'utf-8'
+  );
+
+  assert.match(minhaContaSource, /useAddressLookup\(/, 'Minha Conta deve usar useAddressLookup para buscar ViaCEP');
+  assert.match(minhaContaSource, /syncCep\(/, 'Minha Conta deve sincronizar CEP carregado via syncCep sem busca duplicada');
+  assert.match(minhaContaSource, /setLogradouro\(result\.logradouro\)/, 'Deve substituir logradouro ao buscar novo CEP');
+  assert.match(minhaContaSource, /setBairro\(result\.bairro\)/, 'Deve substituir bairro ao buscar novo CEP');
+  assert.match(minhaContaSource, /setCidade\(result\.cidade\)/, 'Deve substituir cidade do cliente ao buscar novo CEP');
+  assert.match(minhaContaSource, /setEstado\(result\.estado_uf\)/, 'Deve substituir UF do cliente ao buscar novo CEP');
+  assert.match(minhaContaSource, /setCity\(result\.cidade\)/, 'Deve substituir city do profissional ao buscar novo CEP');
+  assert.match(minhaContaSource, /setStateUf\(result\.estado_uf\)/, 'Deve substituir stateUf do profissional ao buscar novo CEP');
+  assert.match(hookSource, /setLastSearchedCep\(''\)/, 'useAddressLookup deve limpar último CEP consultado ao editar dígitos');
+  assert.match(hookSource, /syncCep/, 'useAddressLookup deve expor syncCep');
+  assert.doesNotMatch(addressSectionSource, /if\s*\(result\.logradouro\)/, 'AddressSection deve sobrescrever logradouro antigo mesmo se vazio no novo CEP');
+});

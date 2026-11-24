@@ -382,6 +382,16 @@ def update_me(
             cliente.estado = payload.estado
         elif payload.state is not None:
             cliente.estado = payload.state
+        if payload.latitude is not None or payload.longitude is not None:
+            if payload.latitude is not None:
+                cliente.latitude = payload.latitude
+            if payload.longitude is not None:
+                cliente.longitude = payload.longitude
+        elif payload.model_fields_set & {
+            "cep", "logradouro", "numero", "bairro", "cidade", "city", "estado", "state"
+        }:
+            cliente.latitude = None
+            cliente.longitude = None
 
     elif current_user.role == models.UserRole.PROFESSIONAL.value:
         if prof is None:
@@ -404,13 +414,13 @@ def update_me(
             prof.specialties = payload.specialties
         if payload.cep is not None:
             prof.cep = payload.cep
-        if payload.logradouro is not None:
+        if "logradouro" in payload.model_fields_set:
             prof.logradouro = payload.logradouro
-        if payload.numero is not None:
+        if "numero" in payload.model_fields_set:
             prof.numero = payload.numero
         if "complemento" in payload.model_fields_set:
             prof.complemento = payload.complemento
-        if payload.bairro is not None:
+        if "bairro" in payload.model_fields_set:
             prof.bairro = payload.bairro
         if payload.city is not None:
             prof.city = payload.city
@@ -420,6 +430,16 @@ def update_me(
             prof.state = payload.state
         elif payload.estado is not None:
             prof.state = payload.estado
+        if payload.latitude is not None or payload.longitude is not None:
+            if payload.latitude is not None:
+                prof.latitude = payload.latitude
+            if payload.longitude is not None:
+                prof.longitude = payload.longitude
+        elif payload.model_fields_set & {
+            "cep", "logradouro", "numero", "bairro", "cidade", "city", "estado", "state"
+        }:
+            prof.latitude = None
+            prof.longitude = None
         prof.update_normalized_fields()
 
     else:
