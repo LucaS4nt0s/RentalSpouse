@@ -321,7 +321,7 @@ export default function MinhaContaPage() {
       });
       return;
     }
-    if (novaSenha.length < 8) {
+    if (novaSenha.length < 8 || !/[A-Za-zÀ-ÖØ-öø-ÿ]/.test(novaSenha) || !/\d/.test(novaSenha)) {
       setFeedbackBanner({
         type: 'error',
         message: 'A nova senha deve conter no mínimo 8 caracteres (com letras e números).',

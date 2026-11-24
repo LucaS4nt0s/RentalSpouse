@@ -481,16 +481,11 @@ export default function CadastroClientePage() {
 
           {/* Ações Subsequentes */}
           <div className="flex flex-col sm:flex-row gap-3 w-full pt-2">
-            <Button
-              variant="primary"
-              size="lg"
-              className="flex-1"
-              onClick={() => {
-                alert('Fluxo para Solicitar um Serviço iniciado!');
-              }}
-            >
-              Solicitar um Serviço Agora
-            </Button>
+            <Link href="/profissionais" className="flex-1">
+              <Button variant="primary" size="lg" className="w-full">
+                Solicitar um Serviço Agora
+              </Button>
+            </Link>
             <Link href="/entrar?mode=signin" className="flex-1">
               <Button variant="glass" size="lg" className="w-full">
                 Ir para Minha Conta / Login
