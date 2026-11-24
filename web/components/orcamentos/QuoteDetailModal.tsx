@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import Link from 'next/link';
 import {
   X,
   Clock,
@@ -19,22 +21,31 @@ import {
   ThumbsUp,
   ThumbsDown,
   ArrowLeft,
+  Briefcase,
+  CreditCard,
+  Ban,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { acquireBodyScrollLock } from '../../lib/scrollLock';
 import {
   Orcamento,
   obterOrcamento,
   responderOrcamento,
   aceitarOrcamento,
   recusarOrcamento,
+  aprovarEstimativaOrcamento,
+  cancelarOrcamentoCliente,
   obterFotoUrl,
 } from '../../services/orcamentos';
+import { mensagemErro } from '../../services/apiError';
 import { Button } from '../ui/Button';
 
 interface QuoteDetailModalProps {
   orcamentoId: number;
   onClose: () => void;
-  onResponded?: () => void;
+  onResponded?: (feedback?: string) => void;
+  onOpenCheckout?: (orcamento: Orcamento) => void;
+  initialAction?: 'visualizar' | 'aprovar_estimativa' | 'cancelar_cliente';
 }
 
 const MOTIVOS_RECUSA_PREDEFINIDOS = [
@@ -45,21 +56,33 @@ const MOTIVOS_RECUSA_PREDEFINIDOS = [
   'Outro motivo',
 ];
 
+const MOTIVOS_CANCELAMENTO_CLIENTE = [
+  'Valor acima do meu orçamento disponível',
+  'Prazo incompatível com minha necessidade',
+  'Já contratei outro profissional',
+  'Não preciso mais do serviço no momento',
+];
+
 export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
   orcamentoId,
   onClose,
   onResponded,
+  onOpenCheckout,
+  initialAction = 'visualizar',
 }) => {
   const { token, user } = useAuth();
   const isProfessional = Boolean(
-    user && (user.tipo === 'profissional' || user.role === 'professional' || user.role === 'admin')
+    user && (user.tipo === 'profissional' || user.role === 'professional')
   );
   const [orcamento, setOrcamento] = useState<Orcamento | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState<boolean>(false);
 
-  // Modo de Ação: 'visualizar' | 'aceitar' | 'recusar' | 'responder'
-  const [actionMode, setActionMode] = useState<'visualizar' | 'aceitar' | 'recusar' | 'responder'>('visualizar');
+  // Modo de Ação: profissional ('aceitar' | 'recusar' | 'responder') ou cliente ('aprovar_estimativa' | 'cancelar_cliente')
+  const [actionMode, setActionMode] = useState<
+    'visualizar' | 'aceitar' | 'recusar' | 'responder' | 'aprovar_estimativa' | 'cancelar_cliente'
+  >(initialAction);
 
   // Formulário de Resposta com Estimativa
   const [valorInput, setValorInput] = useState<string>('');
@@ -75,12 +98,23 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
   const [motivoOutroInput, setMotivoOutroInput] = useState<string>('');
   const [justificativaRecusaInput, setJustificativaRecusaInput] = useState<string>('');
 
+  // Formulários de Decisão do Cliente (Issue #98)
+  const [mensagemAprovacaoCliente, setMensagemAprovacaoCliente] = useState<string>('');
+  const [motivoCancelamentoCliente, setMotivoCancelamentoCliente] = useState<string>('');
+
   // Estados de Envio
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
 
   // Visualizador ampliado de foto (Lightbox)
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+    const release = acquireBodyScrollLock();
+    return () => release();
+  }, []);
 
   const carregarDetalhes = async () => {
     setIsLoading(true);
@@ -96,7 +130,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
         setRespostaInput(data.resposta_profissional);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao carregar orçamento';
+      const msg = mensagemErro(err, 'Falha ao carregar orçamento');
       setError(msg);
     } finally {
       setIsLoading(false);
@@ -104,8 +138,11 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
   };
 
   useEffect(() => {
+    setActionMode(initialAction);
+    setSubmitError(null);
+    setSubmitSuccess(null);
     carregarDetalhes();
-  }, [orcamentoId, token]);
+  }, [orcamentoId, token, initialAction]);
 
   // Fechar ao pressionar Escape
   useEffect(() => {
@@ -154,7 +191,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
         onResponded();
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao aceitar orçamento.';
+      const msg = mensagemErro(err, 'Erro ao aceitar orçamento.');
       setSubmitError(msg);
     } finally {
       setIsSubmitting(false);
@@ -189,7 +226,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
         onResponded();
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao recusar orçamento.';
+      const msg = mensagemErro(err, 'Erro ao recusar orçamento.');
       setSubmitError(msg);
     } finally {
       setIsSubmitting(false);
@@ -226,11 +263,80 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
       );
       setOrcamento(updated);
       setActionMode('visualizar');
+      setSubmitSuccess('Estimativa enviada ao cliente para aprovação!');
       if (onResponded) {
-        onResponded();
+        onResponded('Estimativa enviada ao cliente com sucesso!');
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao enviar proposta.';
+      const msg = mensagemErro(err, 'Erro ao enviar proposta.');
+      setSubmitError(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleAprovarEstimativaCliente = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const effectiveToken =
+      token || (typeof window !== 'undefined' ? localStorage.getItem('rentalspouse_token') : null);
+    if (!effectiveToken) {
+      setSubmitError('Você precisa estar autenticado como o cliente autor para aprovar a estimativa.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+
+    try {
+      const updated = await aprovarEstimativaOrcamento(orcamentoId, effectiveToken, {
+        mensagem: mensagemAprovacaoCliente.trim() || undefined,
+      });
+      setOrcamento(updated);
+      setActionMode('visualizar');
+      setSubmitSuccess('Estimativa aprovada! Agora você já pode realizar o pagamento ou agendar o horário.');
+      if (onResponded) {
+        onResponded('Estimativa aprovada com sucesso! O profissional foi notificado.');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao aprovar estimativa.';
+      setSubmitError(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelarOrcamentoCliente = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const effectiveToken =
+      token || (typeof window !== 'undefined' ? localStorage.getItem('rentalspouse_token') : null);
+    if (!effectiveToken) {
+      setSubmitError('Você precisa estar autenticado como o cliente autor para cancelar a solicitação.');
+      return;
+    }
+
+    const motivoLimpo = motivoCancelamentoCliente.trim();
+    if (motivoLimpo.length < 3) {
+      setSubmitError('Informe o motivo do cancelamento ou recusa com pelo menos 3 caracteres.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+    setSubmitSuccess(null);
+
+    try {
+      const updated = await cancelarOrcamentoCliente(orcamentoId, effectiveToken, {
+        motivo: motivoLimpo,
+      });
+      setOrcamento(updated);
+      setActionMode('visualizar');
+      setSubmitSuccess('Solicitação cancelada. O profissional foi notificado.');
+      if (onResponded) {
+        onResponded('Solicitação de orçamento cancelada com sucesso.');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao cancelar solicitação.';
       setSubmitError(msg);
     } finally {
       setIsSubmitting(false);
@@ -249,22 +355,25 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
       case 'aceito':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold text-emerald-500">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            Orçamento Aceito
+            Confirmado / Aceito
           </span>
         );
       case 'respondido':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/15 px-3 py-1 text-xs font-bold text-blue-500">
-            <Clock className="h-3.5 w-3.5" />
             Estimativa Enviada
           </span>
         );
       case 'recusado':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 px-3 py-1 text-xs font-bold text-rose-500">
-            <XCircle className="h-3.5 w-3.5" />
             Orçamento Recusado
+          </span>
+        );
+      case 'cancelado':
+        return (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-500/15 px-3 py-1 text-xs font-bold text-slate-500 dark:text-slate-300">
+            Cancelado pelo Cliente
           </span>
         );
       default:
@@ -276,8 +385,17 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+  if (!mounted || typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm"
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh' }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Detalhes do Orçamento #${orcamentoId}`}
+      onClick={onClose}
+    >
       <div
         className="relative flex flex-col w-full max-w-2xl max-h-[90vh] rounded-3xl border border-rental-border bg-rental-surface shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -313,44 +431,58 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
             <div className="py-8 text-center space-y-4">
               <AlertCircle className="mx-auto h-10 w-10 text-[var(--rs-error)]" />
               <p className="text-sm text-rental-muted">{error || 'Não foi possível carregar os dados.'}</p>
-              <Button variant="secondary" size="sm" onClick={carregarDetalhes} leftIcon={<RefreshCw className="h-4 w-4" />}>
+              <Button variant="secondary" size="sm" onClick={carregarDetalhes}>
                 Tentar novamente
               </Button>
             </div>
           ) : (
             <>
-              {/* Informações do Cliente Solicitante */}
-              <div className="rounded-2xl border border-rental-border bg-rental-surface2/30 p-4 space-y-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-rental-muted">
-                  Cliente Solicitante
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="flex items-center gap-2 text-rental-ink">
-                    <User className="h-4 w-4 text-rental-primary shrink-0" />
-                    <span className="font-semibold">{orcamento.cliente_nome}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-rental-ink">
-                    <Mail className="h-4 w-4 text-rental-primary shrink-0" />
-                    <span className="truncate">{orcamento.cliente_email}</span>
-                  </div>
-                  {orcamento.cliente_telefone && (
-                    <div className="flex items-center gap-2 text-rental-ink">
-                      <Phone className="h-4 w-4 text-rental-primary shrink-0" />
-                      <span>{orcamento.cliente_telefone}</span>
+              {/* Participantes: Profissional e Cliente */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Cartão do Profissional Destinatário */}
+                <div className="rounded-2xl border border-rental-border bg-rental-surface2/30 p-4 space-y-2">
+                  <span className="text-xs font-bold text-rental-muted flex items-center gap-1.5">
+                    Profissional Destinatário
+                  </span>
+                  <div className="text-xs space-y-1">
+                    <div className="font-extrabold text-sm text-rental-ink">
+                      {orcamento.professional_name || `Profissional #${orcamento.professional_id}`}
                     </div>
-                  )}
-                  <div className="flex items-center gap-2 text-rental-muted">
-                    <Clock className="h-4 w-4 text-rental-muted shrink-0" />
-                    <span>
-                      Solicitado em {new Date(orcamento.criado_em).toLocaleString('pt-BR')}
+                    <span className="text-rental-muted text-[11px] block">
+                      Prestador parceiro RentalSpouse
                     </span>
+                  </div>
+                </div>
+
+                {/* Cartão do Cliente Solicitante */}
+                <div className="rounded-2xl border border-rental-border bg-rental-surface2/30 p-4 space-y-2">
+                  <span className="text-xs font-bold text-rental-muted flex items-center gap-1.5">
+                    Cliente Solicitante
+                  </span>
+                  <div className="text-xs space-y-1 text-rental-ink">
+                    <div className="font-semibold text-rental-ink">{orcamento.cliente_nome}</div>
+                    <div className="flex items-center gap-1.5 text-rental-muted truncate">
+                      <span className="truncate">{orcamento.cliente_email}</span>
+                    </div>
+                    {orcamento.cliente_telefone && (
+                      <div className="flex items-center gap-1.5 text-rental-muted">
+                        <span>{orcamento.cliente_telefone}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
+              {/* Data da Solicitação */}
+              <div className="flex items-center gap-2 text-xs text-rental-muted px-1">
+                <span>
+                  Solicitado em {new Date(orcamento.criado_em).toLocaleString('pt-BR')}
+                </span>
+              </div>
+
               {/* Descrição do Problema */}
               <div className="space-y-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-rental-muted">
+                <span className="text-xs font-bold text-rental-muted">
                   Descrição do Problema / Serviço
                 </span>
                 <div className="rounded-2xl border border-rental-border bg-rental-surface p-4 text-sm text-rental-ink leading-relaxed whitespace-pre-wrap">
@@ -361,8 +493,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
               {/* Fotos Anexadas */}
               {orcamento.fotos && orcamento.fotos.length > 0 && (
                 <div className="space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-rental-muted flex items-center gap-1.5">
-                    <ImageIcon className="h-4 w-4 text-rental-primary" />
+                  <span className="text-xs font-bold text-rental-muted flex items-center gap-1.5">
                     Fotos Anexadas ({orcamento.fotos.length})
                   </span>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -398,8 +529,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                   <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-emerald-500 font-extrabold text-sm">
-                        <CheckCircle2 className="h-5 w-5" />
-                        <span>Orçamento Aceito pelo Prestador</span>
+                        <span>Orçamento Confirmado</span>
                       </div>
                       {orcamento.valor_estimado && (
                         <span className="text-base font-black text-emerald-500">
@@ -409,7 +539,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                     </div>
                     {orcamento.data_prevista && (
                       <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                        <Calendar className="h-4 w-4" />
                         <span>Previsão de Atendimento: {new Date(orcamento.data_prevista).toLocaleString('pt-BR')}</span>
                       </div>
                     )}
@@ -423,8 +552,33 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                     )}
                     {orcamento.decidido_em && (
                       <span className="text-[11px] text-rental-muted block">
-                        Aceito em {new Date(orcamento.decidido_em).toLocaleString('pt-BR')}
+                        Confirmado em {new Date(orcamento.decidido_em).toLocaleString('pt-BR')}
                       </span>
+                    )}
+                    {!isProfessional && (
+                      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-emerald-500/20">
+                        {onOpenCheckout && (orcamento.valor_estimado ?? 0) > 0 && (
+                          <Button
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            onClick={() => onOpenCheckout(orcamento)}
+                          >
+                            Pagar / Ver Comprovante
+                          </Button>
+                        )}
+                        <Link
+                          href={`/profissionais/${orcamento.professional_id}/agendar?orcamento_id=${orcamento.id}`}
+                        >
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                          >
+                            Agendar Horário com este Orçamento
+                          </Button>
+                        </Link>
+                      </div>
                     )}
                   </div>
                 )}
@@ -433,8 +587,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                 {orcamento.status === 'recusado' && (
                   <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-5 space-y-3">
                     <div className="flex items-center gap-2 text-rose-500 font-extrabold text-sm">
-                      <XCircle className="h-5 w-5" />
-                      <span>Orçamento Recusado</span>
+                      <span>Orçamento Recusado pelo Prestador</span>
                     </div>
                     {orcamento.motivo_recusa && (
                       <div className="text-xs text-rental-ink/90 bg-rental-surface/60 rounded-xl p-3 border border-rental-border/40 space-y-1">
@@ -455,13 +608,34 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                   </div>
                 )}
 
+                {/* 2b. Status: Cancelado pelo Cliente */}
+                {orcamento.status === 'cancelado' && (
+                  <div className="rounded-2xl border border-slate-500/30 bg-slate-500/10 p-5 space-y-3">
+                    <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 font-extrabold text-sm">
+                      <span>Solicitação Cancelada pelo Cliente</span>
+                    </div>
+                    {(orcamento.justificativa_recusa || orcamento.motivo_recusa) && (
+                      <div className="text-xs text-rental-ink/90 bg-rental-surface/60 rounded-xl p-3 border border-rental-border/40 space-y-1">
+                        <span className="font-bold block text-rental-muted text-[11px]">
+                          Motivo Informado:
+                        </span>
+                        <p>{orcamento.justificativa_recusa || orcamento.motivo_recusa}</p>
+                      </div>
+                    )}
+                    {orcamento.decidido_em && (
+                      <span className="text-[11px] text-rental-muted block">
+                        Cancelado em {new Date(orcamento.decidido_em).toLocaleString('pt-BR')}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* 3. Status: Respondido */}
                 {orcamento.status === 'respondido' && (
                   <div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-5 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-blue-500 font-extrabold text-sm">
-                        <Clock className="h-5 w-5" />
-                        <span>Estimativa Preliminar Enviada</span>
+                        <span>Estimativa Enviada — Aguardando Decisão do Cliente</span>
                       </div>
                       {orcamento.valor_estimado && (
                         <span className="text-base font-black text-blue-500">
@@ -480,15 +654,255 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                   </div>
                 )}
 
+                {/* 4. Status: Pendente (visão do cliente) */}
+                {orcamento.status === 'pendente' && !isProfessional && (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 space-y-2">
+                    <div className="flex items-center gap-2 text-amber-500 font-extrabold text-sm">
+                      <span>Aguardando Análise do Profissional</span>
+                    </div>
+                    <p className="text-xs text-rental-ink/80 leading-relaxed">
+                      Sua solicitação de orçamento foi enviada ao profissional. Assim que ele avaliar a descrição e fotos anexadas, você receberá uma notificação aqui com o parecer técnico e a estimativa de valor.
+                    </p>
+                  </div>
+                )}
+
+                {/* Mensagem de Sucesso */}
+                {submitSuccess && (
+                  <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                    <span>{submitSuccess}</span>
+                  </div>
+                )}
+
                 {/* Mensagem de Erro Geral de Envio */}
                 {submitError && (
                   <div className="rounded-xl border border-[var(--rs-error)]/40 bg-[var(--rs-error)]/10 p-3 text-xs text-[var(--rs-error)] flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
                     <span>{submitError}</span>
                   </div>
                 )}
 
-                {/* Formulários e Ações para Orçamentos Pendentes (exclusivo para profissionais) */}
+                {/* Ações Bilaterais do Cliente (Issue #98) */}
+                {!isProfessional && (orcamento.status === 'respondido' || orcamento.status === 'pendente') && (
+                  <>
+                    {actionMode === 'visualizar' && (
+                      <div className="rounded-2xl border border-rental-border bg-rental-surface2/30 p-4 space-y-3">
+                        <div>
+                          <span className="text-sm font-extrabold text-rental-ink block">
+                            {orcamento.status === 'respondido'
+                              ? 'O que você deseja fazer com esta estimativa?'
+                              : 'Gerenciar Solicitação'}
+                          </span>
+                          <span className="text-xs text-rental-muted">
+                            {orcamento.status === 'respondido'
+                              ? 'Aprove o valor estimado para confirmar com o profissional, realize o pagamento ou cancele caso não tenha interesse.'
+                              : 'Você pode cancelar esta solicitação enquanto aguarda a análise do profissional.'}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                          {orcamento.status === 'respondido' && (
+                            <>
+                              <Button
+                                type="button"
+                                variant="primary"
+                                size="md"
+                                onClick={() => {
+                                  setActionMode('aprovar_estimativa');
+                                  setSubmitError(null);
+                                }}
+                              >
+                                Aprovar Estimativa
+                              </Button>
+                              {onOpenCheckout && (orcamento.valor_estimado ?? 0) > 0 && (
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="md"
+                                  onClick={() => onOpenCheckout(orcamento)}
+                                >
+                                  Pagar Agora
+                                </Button>
+                              )}
+                              <Link
+                                href={`/profissionais/${orcamento.professional_id}/agendar?orcamento_id=${orcamento.id}`}
+                              >
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="md"
+                                >
+                                  Agendar Horário
+                                </Button>
+                              </Link>
+                            </>
+                          )}
+                          <Button
+                            type="button"
+                            variant="danger"
+                            size="md"
+                            onClick={() => {
+                              setActionMode('cancelar_cliente');
+                              setSubmitError(null);
+                            }}
+                          >
+                            {orcamento.status === 'respondido' ? 'Recusar Proposta / Cancelar' : 'Cancelar Solicitação'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Formulário Cliente: Aprovar Estimativa */}
+                    {actionMode === 'aprovar_estimativa' && orcamento.status === 'respondido' && (
+                      <form
+                        onSubmit={handleAprovarEstimativaCliente}
+                        className="space-y-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 sm:p-5"
+                      >
+                        <div className="flex items-center justify-between border-b border-rental-border/40 pb-2">
+                          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-extrabold text-sm">
+                            <span>Aprovar Estimativa de Orçamento</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActionMode('visualizar');
+                              setSubmitError(null);
+                            }}
+                            className="text-xs text-rental-muted hover:text-rental-ink flex items-center gap-1"
+                          >
+                            <ArrowLeft className="h-3.5 w-3.5" />
+                            Voltar
+                          </button>
+                        </div>
+
+                        <p className="text-xs text-rental-muted leading-relaxed">
+                          Ao aprovar a estimativa{orcamento.valor_estimado ? ` de R$ ${orcamento.valor_estimado.toFixed(2)}` : ''}, o status passará para <strong>Confirmado / Aceito</strong> e o profissional será notificado em tempo real.
+                        </p>
+
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-rental-ink">
+                            Observação ou Combinado ao Profissional (Opcional)
+                          </label>
+                          <textarea
+                            rows={2}
+                            maxLength={1000}
+                            value={mensagemAprovacaoCliente}
+                            onChange={(e) => setMensagemAprovacaoCliente(e.target.value)}
+                            placeholder="Ex: Estimativa aprovada! Podemos agendar para esta semana."
+                            className="w-full rounded-xl border border-rental-border bg-rental-surface px-3.5 py-2 text-sm text-rental-ink focus:border-rental-primary focus:outline-none resize-none"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-end gap-3 pt-1">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="md"
+                            onClick={() => setActionMode('visualizar')}
+                            disabled={isSubmitting}
+                          >
+                            Cancelar
+                          </Button>
+                          <Button
+                            type="submit"
+                            variant="primary"
+                            size="md"
+                            disabled={isSubmitting}
+                          >
+                            {isSubmitting ? 'Confirmando...' : 'Confirmar Aprovação'}
+                          </Button>
+                        </div>
+                      </form>
+                    )}
+
+                    {/* Formulário Cliente: Cancelar / Recusar Estimativa */}
+                    {actionMode === 'cancelar_cliente' && (
+                      <form
+                        onSubmit={handleCancelarOrcamentoCliente}
+                        className="space-y-4 rounded-2xl border border-rose-500/30 bg-rose-500/5 p-4 sm:p-5"
+                      >
+                        <div className="flex items-center justify-between border-b border-rental-border/40 pb-2">
+                          <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-extrabold text-sm">
+                            <span>
+                              {orcamento.status === 'respondido'
+                                ? 'Recusar Estimativa / Cancelar Orçamento'
+                                : 'Cancelar Solicitação de Orçamento'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActionMode('visualizar');
+                              setSubmitError(null);
+                            }}
+                            className="text-xs text-rental-muted hover:text-rental-ink flex items-center gap-1"
+                          >
+                            <ArrowLeft className="h-3.5 w-3.5" />
+                            Voltar
+                          </button>
+                        </div>
+
+                        <div className="space-y-2">
+                          <span className="text-xs font-bold text-rental-ink block">
+                            Selecione um motivo rápido ou descreva abaixo *
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {MOTIVOS_CANCELAMENTO_CLIENTE.map((sugestao) => (
+                              <button
+                                key={sugestao}
+                                type="button"
+                                onClick={() => setMotivoCancelamentoCliente(sugestao)}
+                                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold border transition-colors ${
+                                  motivoCancelamentoCliente === sugestao
+                                    ? 'border-rose-500 bg-rose-500/15 text-rose-500'
+                                    : 'border-rental-border bg-rental-surface text-rental-muted hover:text-rental-ink'
+                                }`}
+                              >
+                                {sugestao}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-rental-ink">
+                            Motivo do Cancelamento / Recusa *
+                          </label>
+                          <textarea
+                            rows={3}
+                            required
+                            minLength={3}
+                            maxLength={500}
+                            value={motivoCancelamentoCliente}
+                            onChange={(e) => setMotivoCancelamentoCliente(e.target.value)}
+                            placeholder="Descreva o motivo (ex: valor acima do previsto, mudança de planos...)"
+                            className="w-full rounded-xl border border-rental-border bg-rental-surface px-3.5 py-2 text-sm text-rental-ink focus:border-rental-primary focus:outline-none resize-none"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-end gap-3 pt-1">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="md"
+                            onClick={() => setActionMode('visualizar')}
+                            disabled={isSubmitting}
+                          >
+                            Voltar
+                          </Button>
+                          <Button
+                            type="submit"
+                            variant="danger"
+                            size="md"
+                            disabled={isSubmitting}
+                          >
+                            {isSubmitting ? 'Cancelando...' : 'Confirmar Cancelamento'}
+                          </Button>
+                        </div>
+                      </form>
+                    )}
+                  </>
+                )}
+
+                {/* Formulários e Ações para Orçamentos (exclusivo para profissionais) */}
                 {isProfessional && (orcamento.status === 'pendente' || orcamento.status === 'respondido') && (
                   <>
                     {/* Modo 0: Seleção de Ação */}
@@ -497,10 +911,14 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <div>
                             <span className="text-sm font-extrabold text-rental-ink block">
-                              Gerenciar Capacidade de Trabalho
+                              {orcamento.status === 'respondido'
+                                ? 'Estimativa Enviada — Ações Disponíveis'
+                                : 'Responder Solicitação de Orçamento'}
                             </span>
                             <span className="text-xs text-rental-muted">
-                              Aceite para assumir o serviço, recuse para manter sua agenda livre, ou envie estimativa.
+                              {orcamento.status === 'respondido'
+                                ? 'Você pode atualizar a estimativa para o cliente, confirmar o aceite direto ou recusar o serviço.'
+                                : 'Envie uma estimativa de valor + parecer técnico para aprovação do cliente, aceite diretamente ou recuse.'}
                             </span>
                           </div>
                         </div>
@@ -510,28 +928,25 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             type="button"
                             variant="primary"
                             size="md"
-                            onClick={() => setActionMode('aceitar')}
-                            leftIcon={<ThumbsUp className="h-4 w-4" />}
+                            onClick={() => setActionMode('responder')}
                           >
-                            Aceitar Orçamento
+                            {orcamento.status === 'respondido' ? 'Atualizar Estimativa' : 'Enviar Estimativa'}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="md"
+                            onClick={() => setActionMode('aceitar')}
+                          >
+                            Aceitar Diretamente
                           </Button>
                           <Button
                             type="button"
                             variant="danger"
                             size="md"
                             onClick={() => setActionMode('recusar')}
-                            leftIcon={<ThumbsDown className="h-4 w-4" />}
                           >
-                            Recusar Orçamento
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="md"
-                            onClick={() => setActionMode('responder')}
-                            leftIcon={<Send className="h-4 w-4" />}
-                          >
-                            Enviar Estimativa
+                            Recusar
                           </Button>
                         </div>
                       </div>
@@ -542,7 +957,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                       <form onSubmit={handleConfirmarAceite} className="space-y-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 sm:p-5">
                         <div className="flex items-center justify-between border-b border-rental-border/40 pb-2">
                           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-extrabold text-sm">
-                            <CheckCircle2 className="h-5 w-5" />
                             <span>Confirmar Aceite da Solicitação</span>
                           </div>
                           <button
@@ -565,7 +979,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="space-y-1.5">
                             <label className="text-xs font-bold text-rental-ink flex items-center gap-1">
-                              <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
                               Valor Estimado Inicial (R$) (Opcional)
                             </label>
                             <input
@@ -581,11 +994,11 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
 
                           <div className="space-y-1.5">
                             <label className="text-xs font-bold text-rental-ink flex items-center gap-1">
-                              <Calendar className="h-3.5 w-3.5 text-emerald-500" />
                               Data / Horário Sugerido (Opcional)
                             </label>
                             <input
                               type="datetime-local"
+                              min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
                               value={dataPrevistaAceiteInput}
                               onChange={(e) => setDataPrevistaAceiteInput(e.target.value)}
                               className="w-full rounded-xl border border-rental-border bg-rental-surface px-3.5 py-2 text-sm text-rental-ink focus:border-rental-primary focus:outline-none"
@@ -622,7 +1035,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             variant="primary"
                             size="md"
                             disabled={isSubmitting}
-                            leftIcon={<CheckCircle2 className="h-4 w-4" />}
                           >
                             {isSubmitting ? 'Confirmando...' : 'Confirmar Aceite'}
                           </Button>
@@ -635,7 +1047,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                       <form onSubmit={handleConfirmarRecusa} className="space-y-4 rounded-2xl border border-rose-500/30 bg-rose-500/5 p-4 sm:p-5">
                         <div className="flex items-center justify-between border-b border-rental-border/40 pb-2">
                           <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-extrabold text-sm">
-                            <XCircle className="h-5 w-5" />
                             <span>Recusar Solicitação de Orçamento</span>
                           </div>
                           <button
@@ -719,7 +1130,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             variant="danger"
                             size="md"
                             disabled={isSubmitting}
-                            leftIcon={<XCircle className="h-4 w-4" />}
                           >
                             {isSubmitting ? 'Confirmando...' : 'Confirmar Recusa'}
                           </Button>
@@ -749,7 +1159,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
 
                         <div className="space-y-1.5">
                           <label className="text-xs font-bold text-rental-ink flex items-center gap-1">
-                            <DollarSign className="h-3.5 w-3.5 text-rental-primary" />
                             Valor Estimado (R$) *
                           </label>
                           <input
@@ -798,7 +1207,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             variant="primary"
                             size="md"
                             disabled={isSubmitting}
-                            leftIcon={<Send className="h-4 w-4" />}
                           >
                             {isSubmitting ? 'Enviando...' : 'Enviar Proposta'}
                           </Button>
@@ -835,6 +1243,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
           />
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 };

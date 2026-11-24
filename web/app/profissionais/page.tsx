@@ -2,55 +2,62 @@
 
 import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import {
-  Zap,
-  User,
-  LogOut,
-  MessageSquare,
-  Sparkles,
-  Briefcase,
-} from 'lucide-react';
-import { ThemeToggle } from '../../components/ui/ThemeToggle';
-import { useAuth } from '../../context/AuthContext';
+import { Sparkles } from 'lucide-react';
+import { AppHeader } from '../../components/layout/AppHeader';
 import { useDebounce } from '../../hooks/useDebounce';
 import { useUrlFilters } from '../../hooks/useUrlFilters';
 import { useProfessionalsSearch } from '../../hooks/useProfessionalsSearch';
 import { SearchHeader } from '../../components/profissionais/SearchHeader';
 import { CategoryChipsBar } from '../../components/profissionais/CategoryChipsBar';
 import { FilterActionBar } from '../../components/profissionais/FilterActionBar';
-import { ProfessionalCard } from '../../components/profissionais/ProfessionalCard';
+import { ActiveFilterChips, ActiveFilter } from '../../components/profissionais/ActiveFilterChips';
+import {
+  ProfessionalCard,
+  ProfessionalRatingSummary,
+} from '../../components/profissionais/ProfessionalCard';
 import { ProfessionalCardSkeleton } from '../../components/profissionais/ProfessionalCardSkeleton';
 import { SearchEmptyState } from '../../components/profissionais/SearchEmptyState';
 import { SearchErrorState } from '../../components/profissionais/SearchErrorState';
 import { QuoteModal } from '../../components/profissionais/QuoteModal';
+import { ProfessionalProfileModal } from '../../components/profissionais/ProfessionalProfileModal';
 import { DenunciaModal } from '../../components/denuncias/DenunciaModal';
-import { NotificationBell } from '../../components/notificacoes/NotificationBell';
+import { AvaliacoesProfissionalModal } from '../../components/avaliacoes/AvaliacoesProfissionalModal';
 import { Professional } from '../../types/professional';
+import { ProfissionalAvaliacoesResumo } from '../../types/avaliacoes';
 
 function ProfissionaisSearchContent() {
-  const { user, isAuthenticated, logout } = useAuth();
   const {
     specialty,
     city,
+    state,
     q,
+    radius,
+    orderBy,
     setSpecialty,
     setCity,
     setQ,
+    setRadius,
+    setOrderBy,
     clearFilters,
     hasActiveFilters,
   } = useUrlFilters();
 
-  // Estados locais para inputs com debounce de 350ms (requisito PRD)
+  // Estado local para busca textual com debounce de 350ms (requisito PRD); cidade é instantânea
   const [searchInput, setSearchInput] = useState<string>(q);
-  const [cityInput, setCityInput] = useState<string>(city);
   const debouncedSearch = useDebounce(searchInput, 350);
-  const debouncedCity = useDebounce(cityInput, 350);
+
+  // Modal de Perfil Detalhado do Profissional (issue #96)
+  const [profileTarget, setProfileTarget] = useState<Professional | null>(null);
 
   // Modal de Solicitação de Orçamento
   const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
 
   // Modal de Denúncia do Profissional (issue #68)
   const [reportTarget, setReportTarget] = useState<Professional | null>(null);
+
+  // Modal de Avaliações e Comentários do Profissional (issue #21)
+  const [reviewsTarget, setReviewsTarget] = useState<Professional | null>(null);
+  const [ratingsCache, setRatingsCache] = useState<Record<number, ProfessionalRatingSummary>>({});
 
   // Sincroniza estado de digitação do input com a URL e busca apenas quando houver alteração
   useEffect(() => {
@@ -59,26 +66,19 @@ function ProfissionaisSearchContent() {
     }
   }, [debouncedSearch, q, setQ]);
 
-  useEffect(() => {
-    if (debouncedCity !== city) {
-      setCity(debouncedCity);
-    }
-  }, [debouncedCity, city, setCity]);
-
-  // Se a URL mudou externamente (ex: botão limpar filtros), atualiza inputs locais
+  // Se a URL mudou externamente (ex: botão limpar filtros), atualiza input local
   useEffect(() => {
     setSearchInput(q);
   }, [q]);
 
-  useEffect(() => {
-    setCityInput(city);
-  }, [city]);
-
   // Hook central de busca e gestão dos 3 estados
   const { data, isLoading, isRetrying, error, isEmpty, detectedSuggestion, retry } = useProfessionalsSearch({
     specialty,
-    city: debouncedCity,
+    city,
+    state,
     q: debouncedSearch,
+    radius,
+    orderBy,
   });
 
   // Paginação progressiva sob demanda (LoadMoreControl - PRD §3.1)
@@ -86,13 +86,27 @@ function ProfissionaisSearchContent() {
 
   useEffect(() => {
     setVisibleCount(12);
-  }, [specialty, debouncedCity, debouncedSearch]);
+  }, [specialty, city, state, debouncedSearch, radius, orderBy]);
 
   const handleClearAll = () => {
     setSearchInput('');
-    setCityInput('');
     clearFilters();
   };
+
+  const activeFilters: ActiveFilter[] = [
+    q && { key: 'q', label: `"${q}"`, onRemove: () => { setSearchInput(''); setQ(''); } },
+    specialty && specialty !== 'Todas' && { key: 'specialty', label: specialty, onRemove: () => setSpecialty('') },
+    city && { key: 'city', label: city, onRemove: () => setCity('') },
+    radius && { key: 'radius', label: `Até ${radius} km`, onRemove: () => setRadius('') },
+  ].filter(Boolean) as ActiveFilter[];
+
+  const handleOpenProfileModal = useCallback((prof: Professional) => {
+    setProfileTarget(prof);
+  }, []);
+
+  const handleCloseProfileModal = useCallback(() => {
+    setProfileTarget(null);
+  }, []);
 
   const handleOpenQuoteModal = useCallback((prof: Professional) => {
     setSelectedProfessional(prof);
@@ -110,67 +124,31 @@ function ProfissionaisSearchContent() {
     setReportTarget(null);
   }, []);
 
+  const handleOpenReviewsModal = useCallback((prof: Professional) => {
+    setReviewsTarget(prof);
+  }, []);
+
+  const handleCloseReviewsModal = useCallback(() => {
+    setReviewsTarget(null);
+  }, []);
+
+  const handleResumoAvaliacoesCarregado = useCallback(
+    (resumo: ProfissionalAvaliacoesResumo) => {
+      setRatingsCache((prev) => ({
+        ...prev,
+        [resumo.professional_id]: {
+          media_notas: resumo.media_notas,
+          total_avaliacoes: resumo.total_avaliacoes,
+        },
+      }));
+    },
+    [],
+  );
+
   return (
     <div className="flex min-h-screen flex-col bg-rental-bg text-rental-ink">
-      {/* Header Global da Aplicação */}
-      <header className="sticky top-0 z-30 bg-rental-bg/90 backdrop-blur-md">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 sm:px-6 py-4">
-          <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-90">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rental-primary text-[var(--rs-primary-text)]">
-              <Zap className="h-5 w-5" />
-            </span>
-            <span className="text-lg font-extrabold tracking-tight">RentalSpouse</span>
-          </Link>
-
-          <nav className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="hidden sm:inline-block text-xs font-semibold text-rental-muted hover:text-rental-primary transition-colors"
-            >
-              Início
-            </Link>
-
-            {isAuthenticated && user && (user.tipo === 'profissional' || user.role === 'professional') && (
-              <Link
-                href="/profissional/orcamentos"
-                className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
-              >
-                <Briefcase className="h-3.5 w-3.5" />
-                <span>Meus Orçamentos</span>
-              </Link>
-            )}
-
-            {isAuthenticated && user ? (
-              <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-rental-primary/10 text-rental-primary text-xs font-bold">
-                  {user.nome.charAt(0).toUpperCase()}
-                </span>
-                <span className="hidden md:inline text-xs font-semibold text-rental-ink">
-                  {user.nome.split(' ')[0]}
-                </span>
-                <NotificationBell />
-                <button
-                  type="button"
-                  onClick={logout}
-                  className="rounded-xl border border-rental-border p-1.5 text-rental-muted hover:text-[var(--rs-error)] transition-colors"
-                  title="Sair"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ) : (
-              <Link
-                href="/entrar"
-                className="rounded-xl bg-rental-primary px-3.5 py-1.5 text-xs font-bold text-[var(--rs-primary-text)] shadow-primary hover:bg-[var(--rs-primary-hover)] transition-colors"
-              >
-                Entrar
-              </Link>
-            )}
-
-            <ThemeToggle />
-          </nav>
-        </div>
-      </header>
+      {/* Header Global Unificado da Aplicação */}
+      <AppHeader />
 
       {/* Conteúdo Principal */}
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 sm:px-6 py-8 space-y-6">
@@ -191,19 +169,24 @@ function ProfissionaisSearchContent() {
 
         {/* Seção 3: Barra de Ações e Filtros Secundários */}
         <FilterActionBar
-          city={cityInput}
-          onCityChange={setCityInput}
+          city={city}
+          onCityChange={setCity}
+          radius={radius}
+          onRadiusChange={setRadius}
+          orderBy={orderBy}
+          onOrderByChange={setOrderBy}
           resultsCount={data.length}
           isLoading={isLoading}
           hasActiveFilters={hasActiveFilters}
           onClearAllFilters={handleClearAll}
         />
 
+        <ActiveFilterChips filters={activeFilters} />
+
         {/* Banner de Busca Inteligente / Sugestão de Aproximação (Estilo YouTube / Spotify) */}
         {!isLoading && !error && searchInput.trim() && detectedSuggestion && (
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-rental-primary/30 bg-rental-primary/5 p-4 text-xs sm:text-sm animate-fadeIn">
             <div className="flex items-center gap-2.5 text-rental-ink flex-wrap">
-              <Sparkles className="h-4 w-4 text-rental-primary shrink-0" />
               <span>
                 Mostrando resultados para <strong className="text-rental-primary font-semibold">"{searchInput}"</strong>
                 {detectedSuggestion.toLowerCase() !== searchInput.trim().toLowerCase() && (
@@ -257,8 +240,12 @@ function ProfissionaisSearchContent() {
                     professional={prof}
                     activeSpecialty={specialty}
                     onSpecialtyClick={setSpecialty}
+                    onViewProfile={handleOpenProfileModal}
                     onRequestQuote={handleOpenQuoteModal}
+                    onViewReviews={handleOpenReviewsModal}
+                    ratingSummary={ratingsCache[prof.id]}
                     onReportProfessional={handleOpenReportModal}
+                    scheduleHref={`/profissionais/${prof.id}/agendar`}
                   />
                 ))}
               </div>
@@ -279,6 +266,16 @@ function ProfissionaisSearchContent() {
         </section>
       </main>
 
+      {/* Modal de Perfil Detalhado do Profissional (issue #96) */}
+      <ProfessionalProfileModal
+        professional={profileTarget}
+        onClose={handleCloseProfileModal}
+        onRequestQuote={handleOpenQuoteModal}
+        onReportProfessional={handleOpenReportModal}
+        onSpecialtyClick={setSpecialty}
+        onResumoCarregado={handleResumoAvaliacoesCarregado}
+      />
+
       {/* Modal de Solicitação de Orçamento Acessível com Focus Trap */}
       <QuoteModal
         professional={selectedProfessional}
@@ -289,6 +286,14 @@ function ProfissionaisSearchContent() {
       <DenunciaModal
         professional={reportTarget}
         onClose={handleCloseReportModal}
+      />
+
+      {/* Modal de Avaliações e Comentários do Profissional (issue #21) */}
+      <AvaliacoesProfissionalModal
+        professional={reviewsTarget}
+        onClose={handleCloseReviewsModal}
+        onResumoCarregado={handleResumoAvaliacoesCarregado}
+        onRequestQuote={handleOpenQuoteModal}
       />
 
       {/* Footer */}

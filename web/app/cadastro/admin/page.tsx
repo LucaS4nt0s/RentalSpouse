@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { mensagemErro } from '../../../services/apiError';
 import {
   ShieldCheck,
   UserPlus,
@@ -19,7 +20,7 @@ import {
   Shield,
   Sparkles,
 } from 'lucide-react';
-import { ThemeToggle } from '../../../components/ui/ThemeToggle';
+import { AppHeader } from '../../../components/layout/AppHeader';
 import { Button } from '../../../components/ui/Button';
 import { TextInput } from '../../../components/ui/TextInput';
 import { PasswordInput } from '../../../components/ui/PasswordInput';
@@ -27,9 +28,13 @@ import { FormFieldWrapper } from '../../../components/ui/FormFieldWrapper';
 import { PasswordStrengthMeter } from '../../../components/ui/PasswordStrengthMeter';
 import { usePasswordStrength } from '../../../hooks/usePasswordStrength';
 import { validateEmail, validatePasswordMatch } from '../../../utils/validators';
+import {
+  useAuth,
+  TOKEN_STORAGE_KEY,
+  LEGACY_ADMIN_TOKEN_KEY,
+} from '../../../context/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
-const STORAGE_KEY = 'rentalspouse_admin_token';
 const isDevEnvironment = process.env.NODE_ENV === 'development';
 
 interface AdminUser {
@@ -42,6 +47,7 @@ interface AdminUser {
 }
 
 export default function CadastroAdminPage() {
+  const { token: contextToken, login: authLogin, logout: authLogout } = useAuth();
   // Estado da sessão do administrador autenticado
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
@@ -79,16 +85,18 @@ export default function CadastroAdminPage() {
   // Medidor de força da senha
   const passwordEvaluation = usePasswordStrength(newPassword);
 
-  // Logout do administrador
+  // Logout do administrador (consolidado com AuthContext)
   const handleLogout = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
     setAuthToken(null);
     setCurrentAdmin(null);
     setCreatedAdmin(null);
     setAdminsList([]);
-  }, []);
+    authLogout();
+  }, [authLogout]);
 
-  // 1. Carrega sessão salva no localStorage ao montar a página
+  // 1. Carrega sessão consolidada salva no localStorage/AuthContext ao montar a página
   const verifySession = useCallback(async (token: string) => {
     try {
       const res = await fetch(`${API_URL}/api/auth/me`, {
@@ -106,23 +114,38 @@ export default function CadastroAdminPage() {
 
       setCurrentAdmin(user);
       setAuthToken(token);
+      authLogin(
+        {
+          id: user.id,
+          nome: user.name,
+          name: user.name,
+          email: user.email,
+          tipo: 'admin',
+          role: 'admin',
+        },
+        token
+      );
       return true;
     } catch {
-      handleLogout();
+      setAuthToken(null);
+      setCurrentAdmin(null);
       return false;
     } finally {
       setIsValidatingSession(false);
     }
-  }, [handleLogout]);
+  }, [authLogin]);
 
   useEffect(() => {
-    const savedToken = localStorage.getItem(STORAGE_KEY);
+    const savedToken =
+      contextToken ||
+      localStorage.getItem(TOKEN_STORAGE_KEY) ||
+      localStorage.getItem(LEGACY_ADMIN_TOKEN_KEY);
     if (savedToken) {
       verifySession(savedToken);
     } else {
       setIsValidatingSession(false);
     }
-  }, [verifySession]);
+  }, [contextToken, verifySession]);
 
   // 2. Busca lista de administradores com tratamento correto de 401/403
   const fetchAdmins = useCallback(async (token: string) => {
@@ -183,8 +206,6 @@ export default function CadastroAdminPage() {
       }
 
       const token = data.access_token;
-      localStorage.setItem(STORAGE_KEY, token);
-
       const isValid = await verifySession(token);
       if (!isValid) {
         setLoginError('A conta autenticada não possui permissão de administrador.');
@@ -192,7 +213,7 @@ export default function CadastroAdminPage() {
       // Não chamamos fetchAdmins(token) aqui para evitar chamada duplicada:
       // verifySession já define authToken que aciona o useEffect.
     } catch (err) {
-      setLoginError(err instanceof Error ? err.message : 'Falha ao autenticar.');
+      setLoginError(mensagemErro(err, 'Falha ao autenticar.'));
     } finally {
       setIsLoggingIn(false);
     }
@@ -285,7 +306,7 @@ export default function CadastroAdminPage() {
 
       throw new Error(data?.detail || `Erro ${res.status}: Não foi possível cadastrar o administrador.`);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Falha na conexão com o servidor.');
+      setFormError(mensagemErro(err, 'Falha na conexão com o servidor.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -297,52 +318,14 @@ export default function CadastroAdminPage() {
       <div className="absolute top-0 left-1/3 w-96 h-96 bg-[#1D4ED8]/10 dark:bg-[#1D4ED8]/10 rounded-full blur-[140px] pointer-events-none" />
       <div className="absolute bottom-10 right-1/4 w-96 h-96 bg-[#16263F]/10 dark:bg-[var(--rs-surface)]/30 rounded-full blur-[160px] pointer-events-none" />
 
-      {/* Topo / Barra de Navegação */}
-      <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6 border-b border-rental-border">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-rental-primary text-[var(--rs-primary-text)] shadow-primary transition-transform hover:scale-105"
-            title="Voltar ao início"
-          >
-            <Zap className="h-5 w-5" />
-          </Link>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-extrabold tracking-tight">RentalSpouse</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-rental-primary/10 border border-rental-primary/20 px-2 py-0.5 text-[11px] font-bold text-rental-primary">
-                <Shield className="h-3 w-3" /> Admin
-              </span>
-            </div>
-            <p className="text-xs text-rental-muted">Portal de Gestão e Segurança</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 sm:gap-4">
-          <Link
-            href="/admin/moderacao"
-            className="inline-flex items-center gap-1 text-xs font-bold text-rental-muted hover:text-rental-primary transition-colors"
-          >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Moderação de Documentos
-          </Link>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-rental-muted hover:text-rental-primary transition-colors"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Voltar
-          </Link>
-          <ThemeToggle showLabel={false} />
-        </div>
-      </header>
+      {/* Topo / Barra de Navegação Unificada */}
+      <AppHeader onCustomLogout={authToken ? handleLogout : undefined} />
 
       <div className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 lg:py-12">
         {/* Cabeçalho da Página */}
         <div className="mb-8 text-center sm:text-left sm:flex sm:items-center sm:justify-between border-b border-rental-border pb-6">
           <div>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-rental-border bg-rental-surface px-3 py-1 text-xs font-semibold text-rental-muted">
-              <ShieldCheck className="h-3.5 w-3.5 text-rental-primary" />
               Camada de Segurança • Issue #37
             </span>
             <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
@@ -369,9 +352,6 @@ export default function CadastroAdminPage() {
         {!isValidatingSession && !authToken && (
           <div className="glass-panel-elevated rounded-3xl p-6 sm:p-10 max-w-xl mx-auto animate-fadeIn border border-rental-border">
             <div className="flex items-center gap-3 text-rental-primary mb-2">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rental-primary/10 border border-rental-primary/20">
-                <Lock className="h-6 w-6" />
-              </div>
               <div>
                 <h2 className="text-xl font-bold">Autenticação Obrigatória</h2>
                 <p className="text-xs text-rental-muted">Acesso restrito a administradores</p>
@@ -385,7 +365,6 @@ export default function CadastroAdminPage() {
 
             {loginError && (
               <div className="mb-5 flex items-start gap-2.5 rounded-2xl bg-red-500/10 border border-red-500/20 p-3.5 text-xs text-rental-error animate-shake">
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>{loginError}</span>
               </div>
             )}
@@ -398,7 +377,6 @@ export default function CadastroAdminPage() {
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
                   placeholder="admin@empresa.com"
-                  leftIcon={<Mail className="h-4 w-4" />}
                   required
                 />
               </FormFieldWrapper>
@@ -421,7 +399,6 @@ export default function CadastroAdminPage() {
                   className="w-full"
                   isLoading={isLoggingIn}
                   loadingText="Autenticando..."
-                  leftIcon={<KeyRound className="h-4 w-4" />}
                 >
                   Entrar como Administrador
                 </Button>
@@ -432,7 +409,6 @@ export default function CadastroAdminPage() {
             {isDevEnvironment && (
               <div className="mt-6 rounded-2xl border border-dashed border-rental-border bg-rental-surface2/60 p-4 text-xs">
                 <div className="flex items-center gap-1.5 font-bold text-rental-primary mb-1">
-                  <Sparkles className="h-3.5 w-3.5" />
                   Atalho de Desenvolvimento
                 </div>
                 <p className="text-rental-muted text-[11px] leading-relaxed mb-3">
@@ -461,9 +437,6 @@ export default function CadastroAdminPage() {
             {/* Banner de Sessão Ativa */}
             <div className="glass-card-subtle rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border border-rental-border">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500">
-                  <ShieldCheck className="h-5 w-5" />
-                </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-rental-muted">Sessão Ativa:</span>
@@ -483,7 +456,6 @@ export default function CadastroAdminPage() {
                 variant="secondary"
                 size="sm"
                 onClick={handleLogout}
-                leftIcon={<LogOut className="h-3.5 w-3.5" />}
               >
                 Encerrar Sessão
               </Button>
@@ -494,9 +466,6 @@ export default function CadastroAdminPage() {
               <div className="lg:col-span-7">
                 <div className="glass-panel-elevated rounded-3xl p-6 sm:p-8 border border-rental-border">
                   <div className="flex items-center gap-2.5 mb-6">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rental-primary/10 text-rental-primary">
-                      <UserPlus className="h-5 w-5" />
-                    </div>
                     <div>
                       <h2 className="text-lg font-bold">Novo Administrador</h2>
                       <p className="text-xs text-rental-muted">Preencha as credenciais de acesso</p>
@@ -507,7 +476,6 @@ export default function CadastroAdminPage() {
                   {createdAdmin && (
                     <div className="mb-6 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 p-4 text-xs animate-fadeIn">
                       <div className="flex items-center gap-2 font-bold text-emerald-600 dark:text-emerald-400 text-sm mb-1">
-                        <CheckCircle2 className="h-5 w-5" />
                         Administrador cadastrado com sucesso!
                       </div>
                       <p className="text-rental-muted mb-2">
@@ -533,7 +501,6 @@ export default function CadastroAdminPage() {
                   {/* Feedback de Erro */}
                   {formError && (
                     <div className="mb-6 flex items-start gap-2.5 rounded-2xl bg-red-500/10 border border-red-500/20 p-4 text-xs text-rental-error animate-shake">
-                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                       <span>{formError}</span>
                     </div>
                   )}
@@ -553,7 +520,6 @@ export default function CadastroAdminPage() {
                           if (fieldErrors.name) setFieldErrors((prev) => ({ ...prev, name: undefined }));
                         }}
                         placeholder="Ex: Carlos Oliveira"
-                        leftIcon={<User className="h-4 w-4" />}
                         hasError={!!fieldErrors.name}
                         required
                       />
@@ -574,7 +540,6 @@ export default function CadastroAdminPage() {
                           if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: undefined }));
                         }}
                         placeholder="carlos.admin@rentalspouse.com"
-                        leftIcon={<Mail className="h-4 w-4" />}
                         hasError={!!fieldErrors.email}
                         required
                       />
@@ -632,7 +597,6 @@ export default function CadastroAdminPage() {
                         className="w-full"
                         isLoading={isSubmitting}
                         loadingText="Gravando administrador..."
-                        leftIcon={<UserPlus className="h-4 w-4" />}
                       >
                         Cadastrar Novo Administrador
                       </Button>

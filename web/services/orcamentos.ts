@@ -1,3 +1,5 @@
+import { parseErrorMessage } from './apiError';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 export interface OrcamentoFoto {
@@ -17,6 +19,7 @@ export interface Orcamento {
   cliente_email: string;
   cliente_telefone?: string | null;
   professional_id: number;
+  professional_name?: string | null;
   descricao: string;
   status: 'pendente' | 'aceito' | 'respondido' | 'recusado' | 'cancelado' | string;
   valor_estimado?: number | null;
@@ -79,7 +82,7 @@ export async function criarOrcamento(
     let errorDetail = 'Falha ao enviar solicitação de orçamento.';
     try {
       const errJson = await response.json();
-      errorDetail = errJson.detail || errorDetail;
+      errorDetail = parseErrorMessage(errJson, errorDetail);
     } catch {
       // Ignora erro de parse
     }
@@ -128,7 +131,7 @@ export async function obterOrcamento(
     let err = 'Falha ao buscar detalhes do orçamento.';
     try {
       const errJson = await res.json();
-      err = errJson.detail || err;
+      err = parseErrorMessage(errJson, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -162,7 +165,7 @@ export async function responderOrcamento(
     let err = 'Falha ao responder orçamento.';
     try {
       const errJson = await res.json();
-      err = errJson.detail || err;
+      err = parseErrorMessage(errJson, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -201,7 +204,7 @@ export async function aceitarOrcamento(
     let err = 'Falha ao aceitar orçamento.';
     try {
       const errJson = await res.json();
-      err = errJson.detail || err;
+      err = parseErrorMessage(errJson, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -235,7 +238,7 @@ export async function recusarOrcamento(
     let err = 'Falha ao recusar orçamento.';
     try {
       const errJson = await res.json();
-      err = errJson.detail || err;
+      err = parseErrorMessage(errJson, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -267,7 +270,7 @@ export async function obterResumoCapacidade(
     let err = 'Falha ao obter resumo de capacidade.';
     try {
       const errJson = await res.json();
-      err = errJson.detail || err;
+      err = parseErrorMessage(errJson, err);
     } catch {
       // Ignora erro de JSON
     }
@@ -277,4 +280,100 @@ export async function obterResumoCapacidade(
   return res.json();
 }
 
+export interface AprovarEstimativaPayload {
+  mensagem?: string | null;
+  observacoes?: string | null;
+}
 
+export async function aprovarEstimativaOrcamento(
+  id: number,
+  token?: string | null,
+  payload?: AprovarEstimativaPayload
+): Promise<Orcamento> {
+  const authToken =
+    token ||
+    (typeof window !== 'undefined' ? localStorage.getItem('rentalspouse_token') : null) ||
+    '';
+
+  const bodyData: Record<string, unknown> = {};
+  const msg = payload?.mensagem ?? payload?.observacoes;
+  if (msg && typeof msg === 'string' && msg.trim()) {
+    bodyData.mensagem = msg.trim();
+  }
+
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  const res = await fetch(`${API_BASE_URL}/api/orcamentos/${id}/aprovar-estimativa`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(bodyData),
+  });
+
+  if (!res.ok) {
+    let err = 'Falha ao aprovar estimativa do orçamento.';
+    try {
+      const errJson = await res.json();
+      err = parseErrorMessage(errJson, err);
+    } catch {
+      // Ignora erro de JSON
+    }
+    throw new Error(err);
+  }
+
+  return res.json();
+}
+
+export interface CancelarOrcamentoPayload {
+  motivo?: string | null;
+  motivo_cancelamento?: string | null;
+}
+
+export async function cancelarOrcamentoCliente(
+  id: number,
+  token?: string | null,
+  payload?: CancelarOrcamentoPayload
+): Promise<Orcamento> {
+  const authToken =
+    token ||
+    (typeof window !== 'undefined' ? localStorage.getItem('rentalspouse_token') : null) ||
+    '';
+
+  const bodyData: Record<string, unknown> = {};
+  const motivo = payload?.motivo ?? payload?.motivo_cancelamento;
+  if (motivo && typeof motivo === 'string' && motivo.trim()) {
+    bodyData.motivo = motivo.trim();
+  }
+
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  const res = await fetch(`${API_BASE_URL}/api/orcamentos/${id}/cancelar`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(bodyData),
+  });
+
+  if (!res.ok) {
+    let err = 'Falha ao cancelar solicitação de orçamento.';
+    try {
+      const errJson = await res.json();
+      err = parseErrorMessage(errJson, err);
+    } catch {
+      // Ignora erro de JSON
+    }
+    throw new Error(err);
+  }
+
+  return res.json();
+}

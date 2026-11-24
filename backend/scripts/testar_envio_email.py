@@ -5,10 +5,10 @@ Uso:
     python backend/scripts/testar_envio_email.py seu-email@exemplo.com
 
 Diagnóstico em 4 etapas:
-    [1/4] Análise de Configurações e Resolução de Parâmetros
-    [2/4] Conectividade de Socket TCP puro (Teste de Firewall / Porta)
+    [1/4] Análise de Configurações, Descoberta do .env e Resolução de Parâmetros
+    [2/4] Conectividade de Socket TCP puro com Diagnóstico de Portas (587 / 465)
     [3/4] Handshake TLS/SSL e Autenticação SMTP
-    [4/4] Disparo Transacional e Medição de Latência
+    [4/4] Disparo Transacional e Medição de Latência com Entrega Real
 """
 
 import os
@@ -30,6 +30,7 @@ backend_dir = Path(__file__).resolve().parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
+import env_loader
 import email_service
 import security
 
@@ -56,14 +57,27 @@ def diagnosticar_e_enviar(destinatario: str) -> bool:
     print(" 🛠️  DIAGNÓSTICO E VALIDAÇÃO DE E-MAIL TRANSACIONAL — RENTAL SPOUSE")
     print("═" * 70)
 
-    # 1. Configurações
+    # 1. Configurações e detecção de .env
+    arquivo_env = env_loader.ARQUIVO_ENV_CARREGADO
     backend = email_service.backend_configurado()
-    nome_remetente, endereco_remetente = email_service.remetente()
     cfg = email_service.ConfiguracaoSmtp.do_ambiente()
+    nome_remetente, endereco_remetente = email_service.remetente()
     base_url = email_service.app_base_url()
     reply_to = os.getenv("EMAIL_REPLY_TO", "(mesmo do remetente)")
 
+    # Se o usuário configurou SMTP_HOST mas esqueceu EMAIL_BACKEND=console no .env:
+    if backend == "console" and cfg.host:
+        print("\n  💡 [AVISO]: Detectado SMTP_HOST configurado no .env, porém EMAIL_BACKEND estava 'console'.")
+        print(f"     Alternando automaticamente para transporte 'smtp' ({cfg.host}) para permitir teste real!")
+        os.environ["EMAIL_BACKEND"] = "smtp"
+        backend = "smtp"
+
     print("\n[1/4] Análise de Configurações Ativas:")
+    if arquivo_env:
+        print(f"  • Arquivo .env:        {arquivo_env} (carregado com sucesso)")
+    else:
+        print("  • Arquivo .env:        Nenhum arquivo .env encontrado (usando variáveis de ambiente do SO)")
+
     print(f"  • EMAIL_BACKEND:       {backend}")
     print(f"  • APP_BASE_URL:        {base_url}")
     print(f"  • Remetente Oficial:   {nome_remetente} <{endereco_remetente}>")
@@ -78,6 +92,24 @@ def diagnosticar_e_enviar(destinatario: str) -> bool:
         print(f"  • Política de Retries: {cfg.max_tentativas} tentativas (Timeout: {cfg.timeout}s)")
     print("-" * 70)
 
+    # Caso continue como console (sem SMTP_HOST configurado)
+    if backend == "console":
+        print("\n  ⚠️  [TRANSPORTE 'console' ATIVO — NENHUM E-MAIL FOI ENVIADO PELA REDE]")
+        print("  O sistema está em modo console: o conteúdo é apenas registrado no log local.")
+        print(f"  A mensagem NÃO foi entregue à caixa postal real de '{destinatario}'.")
+        print("\n  📝 Para configurar o envio real para sua caixa postal:")
+        print("     1. Crie ou configure seu arquivo .env (copiando de .env.example):")
+        print("        EMAIL_BACKEND=smtp")
+        print("        SMTP_HOST=smtp.gmail.com   (ou outro provedor SMTP)")
+        print("        SMTP_PORT=587              (ou 465)")
+        print("        SMTP_USER=seu-email@gmail.com")
+        print("        SMTP_PASSWORD=xxxx xxxx xxxx xxxx  (Senha de App Google de 16 letras)")
+        print("        SMTP_USE_TLS=true")
+        print("        SMTP_USE_SSL=false         (ou true na porta 465)")
+        print("     2. Execute este utilitário novamente após preencher o .env.")
+        print("═" * 70 + "\n")
+        return False
+
     # 2. Teste de Socket TCP (se SMTP)
     if backend == "smtp":
         print("\n[2/4] Teste de Conectividade de Socket TCP:")
@@ -90,12 +122,21 @@ def diagnosticar_e_enviar(destinatario: str) -> bool:
             print(f"  ✅ Conexão TCP estabelecida com {cfg.host}:{cfg.porta} em {latencia:.1f}ms")
         else:
             print(f"  ❌ [FALHA DE REDE] {msg}")
-            print("\n  💡 Dicas:")
-            print("     - Se estiver usando Gmail: confirme se a porta 465 ou 587 não está bloqueada pelo seu antivírus/provedor.")
-            print("     - Se estiver usando Docker local com Mailpit: verifique se o container está rodando e use SMTP_HOST=localhost.")
+            # Diagnóstico cruzado de portas 587 vs 465
+            porta_alternativa = 465 if cfg.porta == 587 else 587
+            print(f"  🔍 Testando porta alternativa {porta_alternativa}...")
+            ok_alt, _, lat_alt = testar_conectividade_tcp(cfg.host, porta_alternativa, timeout=cfg.timeout)
+            if ok_alt:
+                print(f"  💡 A porta {porta_alternativa} está aberta e respondeu em {lat_alt:.1f}ms!")
+                if porta_alternativa == 465:
+                    print("     Sugestão: Altere no seu .env para usar SMTP_PORT=465 e SMTP_USE_SSL=true.")
+                else:
+                    print("     Sugestão: Altere no seu .env para usar SMTP_PORT=587 e SMTP_USE_TLS=true.")
+            else:
+                print("  💡 Dicas:")
+                print("     - Se estiver usando Gmail: confirme se a porta 465 ou 587 não está bloqueada pelo seu firewall/provedor.")
+                print("     - Se estiver usando Mailpit local em Docker: use SMTP_HOST=localhost e SMTP_PORT=1025.")
             return False
-    else:
-        print(f"\n[2/4] Transporte '{backend}' não requer verificação de socket TCP de rede.")
 
     # 3. Geração de Token e Composição
     print("\n[3/4] Composição de Mensagem com Headers RFC 5322:")
@@ -119,16 +160,18 @@ def diagnosticar_e_enviar(destinatario: str) -> bool:
     try:
         email_service.obter_transporte().enviar(msg)
         duracao_total = (time.perf_counter() - inicio_disparo) * 1000
-        print(f"  ✅ [SUCESSO] Mensagem despachada com sucesso em {duracao_total:.1f}ms!")
+        print(f"  ✅ [SUCESSO TOTAL] E-mail aceito pelo servidor SMTP ({cfg.host}:{cfg.porta}) em {duracao_total:.1f}ms!")
+        print("     O servidor de e-mail confirmou o recebimento da mensagem (código 250 OK).")
 
         print("\n" + "═" * 70)
         print(" 🎯 GUIA DE VERIFICAÇÃO EM AMBIENTE REAL:")
         print("═" * 70)
-        print(f"  1. Acesse a caixa de entrada de '{destinatario}'.")
+        print(f"  1. Acesse a caixa postal de '{destinatario}'.")
         print("  2. Verifique a Caixa de Entrada Principal.")
-        print("  3. Caso não localize, verifique a pasta de 'Spam' ou 'Lixo Eletrônico'.")
-        print("  4. Clique no botão azul ou no link de contingência para testar a confirmação.")
-        print("  5. Observe o comportamento no navegador (deve retornar confirmação com sucesso).")
+        print("  3. Caso não visualize de imediato, consulte a pasta de 'Spam' ou 'Lixo Eletrônico'.")
+        print("  4. Clique no botão 'Confirmar meu e-mail' ou no link gerado:")
+        print(f"     {link}")
+        print("  5. O frontend web confirmará a verificação e ativará a conta com sucesso!")
         print("═" * 70 + "\n")
         return True
 
@@ -136,9 +179,10 @@ def diagnosticar_e_enviar(destinatario: str) -> bool:
         duracao_total = (time.perf_counter() - inicio_disparo) * 1000
         print(f"  ❌ [ERRO DE TRANSPORTE] (tempo: {duracao_total:.1f}ms): {erro}")
         print("\n  🔍 Diagnóstico rápido de falha:")
-        print("     • Erro 535 / BadCredentials: No Gmail, é obrigatório gerar uma 'Senha de App' de 16 letras.")
-        print("     • Erro 550 / SenderReject: O SMTP_USER precisa coincidir com o remetente da conta autenticada.")
-        print("     • Timeout: Tente alternar entre porta 465 (SMTP_USE_SSL=true) e 587 (SMTP_USE_TLS=true).")
+        print("     • Erro 535 / BadCredentials: No Gmail, é obrigatório gerar uma 'Senha de App' de 16 letras")
+        print("       (em https://myaccount.google.com/apppasswords). Senha convencional de login não funciona.")
+        print("     • Erro 550 / SenderReject: O SMTP_USER precisa coincidir com a conta do remetente autenticado.")
+        print("     • Timeout de conexão: Experimente alternar entre porta 465 (SSL) e 587 (TLS).")
         print("═" * 70 + "\n")
         return False
     except Exception as exc:

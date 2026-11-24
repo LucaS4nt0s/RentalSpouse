@@ -35,6 +35,7 @@ Conectando clientes e prestadores de serviços de forma **ágil**, **segura** e 
 - [Testes Automatizados](#-testes-automatizados)
 - [API](#-api)
 - [Verificação de E-mail](#-verificação-de-e-mail)
+- [Recuperação de Senha](#-recuperação-de-senha-esqueci-minha-senha)
 - [Gestão e Cadastro de Administradores](#-gestão-e-cadastro-de-administradores)
 - [Equipe](#-equipe)
 - [Governança e Contribuição](#-governança-e-contribuição)
@@ -317,6 +318,23 @@ Para disparar e-mails para caixas de entrada reais (Gmail, Outlook, caixas posta
    O sistema injeta automaticamente cabeçalhos RFC 5322 (`Date`, `Message-ID`, `Auto-Submitted`) e fallback de remetente para maximizar a entregabilidade na Caixa de Entrada. Caso o e-mail seja recebido na pasta de Spam / Lixo Eletrônico, basta clicar no link ou botão de confirmação e marcar como "Não é spam" para validar a conta com sucesso.
 
 > ⚙️ Todas as variáveis relacionadas estão documentadas em `.env.example`: `APP_BASE_URL`, `EMAIL_BACKEND`, `EMAIL_FROM_*`, `EMAIL_VERIFICACAO_*` e `SMTP_*`.
+
+---
+
+## 🔑 Recuperação de Senha (Esqueci minha senha)
+
+O fluxo atende clientes, profissionais e administradores pelo e-mail cadastrado:
+
+1. **Solicitação** → o usuário informa o e-mail em `/esqueci-senha`; o backend emite um token aleatório de 256 bits e persiste apenas o hash SHA-256.
+2. **E-mail** → o link recebido aponta para `/redefinir-senha?token=...` e expira em 60 minutos (configurável).
+3. **Redefinição** → a página lê o token da URL e o envia no corpo do POST; a senha é atualizada em todas as tabelas da conta e o token é consumido.
+
+| Endpoint | Corpo | Descrição |
+|---|---|---|
+| `POST /api/auth/esqueci-senha` | `{"email": "..."}` | Solicita o link. Sempre responde `202` com a mesma mensagem, exista ou não a conta |
+| `POST /api/auth/redefinir-senha` | `{"token": "...", "nova_senha": "...", "confirmar_nova_senha": "..."}` | Consome o token e aplica a nova senha. `400` se inválido, usado ou expirado |
+
+**Garantias de segurança:** token de uso único, sem persistência em claro; invalidação automática de links anteriores; intervalo mínimo de 60 s entre solicitações; e resposta genérica para evitar enumeração de e-mails. As variáveis `SENHA_RESET_EXPIRA_MINUTOS` e `SENHA_RESET_REENVIO_SEGUNDOS` controlam a validade e o cooldown.
 
 ---
 

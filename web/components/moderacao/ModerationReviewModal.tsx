@@ -31,6 +31,7 @@ import {
   DocumentType,
 } from '../../types/professionalDocuments';
 import { fetchDocumentBlob, resolveApiUrl } from '../../services/moderation';
+import { mensagemErro } from '../../services/apiError';
 
 interface ModerationReviewModalProps {
   token: string;
@@ -215,7 +216,7 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
       await onReject(review.id, { reason: trimmed });
       setIsRejectingOpen(false);
     } catch (err) {
-      setRejectError(err instanceof Error ? err.message : 'Falha ao rejeitar.');
+      setRejectError(mensagemErro(err, 'Falha ao rejeitar.'));
     } finally {
       setIsRejecting(false);
     }
@@ -252,9 +253,6 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
         {/* ========================================================================= */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-rental-border bg-rental-surface2/50 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rental-primary/10 text-rental-primary shrink-0">
-              <FileCheck className="h-5 w-5" />
-            </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 id="modal-review-title" className="text-base sm:text-lg font-bold truncate">
@@ -262,7 +260,7 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
                 </h2>
                 {review && (
                   <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
                       review.approval_status === 'approved'
                         ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
                         : review.approval_status === 'rejected'
@@ -310,7 +308,7 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
                 {/* Cartão de Dados Pessoais */}
                 <div className="rounded-2xl p-4 bg-rental-surface2/60 border border-rental-border space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-rental-border">
-                    <span className="text-xs font-bold text-rental-muted uppercase tracking-wider">
+                    <span className="text-xs font-bold text-rental-muted">
                       Dados Cadastrais
                     </span>
                     <span className="text-xs font-mono font-bold text-rental-primary">
@@ -320,19 +318,16 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
 
                   <div className="space-y-2 text-xs">
                     <div className="flex items-center gap-2 text-rental-ink">
-                      <Mail className="h-3.5 w-3.5 text-rental-muted shrink-0" />
                       <span className="truncate">{review.email}</span>
                     </div>
 
                     {review.phone && (
                       <div className="flex items-center gap-2 text-rental-ink">
-                        <Phone className="h-3.5 w-3.5 text-rental-muted shrink-0" />
                         <span>{review.phone}</span>
                       </div>
                     )}
 
                     <div className="flex items-center gap-2 text-rental-ink">
-                      <MapPin className="h-3.5 w-3.5 text-rental-muted shrink-0" />
                       <span>
                         {review.city || 'Cidade não informada'} - {review.state || 'UF'}
                         {review.service_radius_km && (
@@ -366,7 +361,6 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
                             key={spec}
                             className="inline-flex items-center gap-1 rounded-lg bg-rental-primary/10 border border-rental-primary/20 px-2 py-0.5 text-[11px] font-semibold text-rental-primary"
                           >
-                            <Briefcase className="h-2.5 w-2.5" />
                             {spec}
                           </span>
                         ))}
@@ -389,7 +383,7 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
 
                 {/* Checklist de Documentos Obrigatórios */}
                 <div className="rounded-2xl p-4 bg-rental-surface2/60 border border-rental-border space-y-2.5">
-                  <span className="text-xs font-bold text-rental-muted uppercase tracking-wider block">
+                  <span className="text-xs font-bold text-rental-muted block">
                     Conformidade Documental
                   </span>
 
@@ -458,7 +452,6 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
                 {review.approval_notes && (
                   <div className="rounded-2xl p-4 bg-red-500/10 border border-red-500/20 text-xs">
                     <div className="flex items-center gap-1.5 font-bold text-red-600 dark:text-red-400 mb-1">
-                      <AlertTriangle className="h-3.5 w-3.5" />
                       Última Justificativa de Reprovação Registrada:
                     </div>
                     <p className="text-rental-muted leading-relaxed whitespace-pre-wrap bg-rental-surface p-2.5 rounded-xl border border-red-500/10 mt-1">
@@ -470,7 +463,6 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
                 {review.approved_at && (
                   <div className="rounded-2xl p-4 bg-emerald-500/10 border border-emerald-500/20 text-xs">
                     <div className="flex items-center gap-1.5 font-bold text-emerald-600 dark:text-emerald-400 mb-1">
-                      <ShieldCheck className="h-3.5 w-3.5" />
                       Profissional Aprovado Anteriormente:
                     </div>
                     <p className="text-rental-muted">
@@ -507,7 +499,6 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
                               : 'bg-rental-surface2 text-rental-muted hover:text-rental-ink hover:bg-rental-surface'
                           }`}
                         >
-                          <FileText className="h-3.5 w-3.5" />
                           <span>{meta?.title || doc.document_type}</span>
                           <span
                             className={`text-[10px] px-1.5 py-0.2 rounded-md ${
@@ -585,7 +576,6 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-rental-primary hover:bg-rental-primary/10 border border-rental-primary/30 transition-colors"
                             title="Baixar arquivo"
                           >
-                            <Download className="h-3.5 w-3.5" />
                             <span>Baixar</span>
                           </a>
                         </>
@@ -603,7 +593,6 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
                     </div>
                   ) : !activeDocument ? (
                     <div className="text-center text-rental-muted text-xs p-8">
-                      <FileText className="h-10 w-10 mx-auto text-rental-muted/40 mb-2" />
                       Nenhum documento selecionado para conferência.
                     </div>
                   ) : isImageDoc ? (
@@ -635,7 +624,6 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rental-primary text-[var(--rs-primary-text)] font-bold text-xs hover:bg-[var(--rs-primary-hover)] shadow-sm transition-colors"
                         >
-                          <ExternalLink className="h-3.5 w-3.5" />
                           Visualizar PDF em Nova Guia
                         </a>
                         <a
@@ -643,7 +631,6 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
                           download={activeDocument.file_name}
                           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rental-surface border border-rental-border text-rental-ink font-bold text-xs hover:bg-rental-surface2 transition-colors"
                         >
-                          <Download className="h-3.5 w-3.5" />
                           Baixar PDF
                         </a>
                       </div>
@@ -657,7 +644,6 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
                         download={activeDocument.file_name}
                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rental-primary text-[var(--rs-primary-text)] font-bold text-xs"
                       >
-                        <Download className="h-3.5 w-3.5" />
                         Baixar Arquivo
                       </a>
                     </div>
@@ -771,7 +757,6 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
             /* Botões Padrão de Decisão */
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="flex items-center gap-2 text-xs text-rental-muted">
-                <Info className="h-4 w-4 text-rental-primary shrink-0" />
                 <span>
                   {canApprove
                     ? 'Todos os documentos obrigatórios foram detectados.'
@@ -794,7 +779,6 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
                   onClick={() => setIsRejectingOpen(true)}
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400 font-bold text-xs hover:bg-red-500/20 transition-colors"
                 >
-                  <AlertCircle className="h-3.5 w-3.5" />
                   Rejeitar Documentos
                 </button>
 
@@ -810,7 +794,6 @@ export const ModerationReviewModal: React.FC<ModerationReviewModalProps> = ({
                   }
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <CheckCircle2 className="h-3.5 w-3.5" />
                   Aprovar Cadastro
                 </button>
               </div>

@@ -9,6 +9,7 @@ import React, {
   useState,
 } from 'react';
 import { useAuth } from './AuthContext';
+import { mensagemErro } from '../services/apiError';
 import {
   Notificacao,
   listarNotificacoes,
@@ -64,11 +65,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
   const reconnectAttemptsRef = useRef<number>(0);
   const isMountedRef = useRef<boolean>(true);
 
-  const isProfessional = Boolean(
-    isAuthenticated &&
-      (user?.tipo === 'profissional' || user?.role === 'professional')
-  );
-
   // 1. Carregamento inicial via REST
   const refreshNotifications = useCallback(async () => {
     if (!token || !isAuthenticated) return;
@@ -80,7 +76,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({
       const unread = data.filter((item) => !item.lida).length;
       setUnreadCount(unread);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro ao listar notificações';
+      const msg = mensagemErro(err, 'Erro ao listar notificações');
       setError(msg);
     } finally {
       setIsLoading(false);

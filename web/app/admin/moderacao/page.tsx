@@ -16,7 +16,11 @@ import {
   AlertTriangle,
   Users,
 } from 'lucide-react';
-import { useAuth } from '../../../context/AuthContext';
+import {
+  useAuth,
+  TOKEN_STORAGE_KEY,
+  LEGACY_ADMIN_TOKEN_KEY,
+} from '../../../context/AuthContext';
 import { AdminNavigationHeader } from '../../../components/moderacao/AdminNavigationHeader';
 import { ModerationTable } from '../../../components/moderacao/ModerationTable';
 import { ModerationReviewModal } from '../../../components/moderacao/ModerationReviewModal';
@@ -37,10 +41,9 @@ import {
   approveProfessional,
   rejectProfessional,
 } from '../../../services/moderation';
+import { mensagemErro } from '../../../services/apiError';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
-const ADMIN_STORAGE_KEY = 'rentalspouse_admin_token';
-const GENERAL_STORAGE_KEY = 'rentalspouse_token';
 const isDevEnvironment = process.env.NODE_ENV === 'development';
 
 interface AdminSessionUser {
@@ -51,7 +54,7 @@ interface AdminSessionUser {
 }
 
 export default function AdminModerationPage() {
-  const { user: authUser, token: contextToken, logout: authLogout } = useAuth();
+  const { user: authUser, token: contextToken, login: authLogin, logout: authLogout } = useAuth();
 
   // Sessão Administrativa
   const [adminToken, setAdminToken] = useState<string | null>(null);
@@ -91,9 +94,10 @@ export default function AdminModerationPage() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // 1. Validação de Sessão Administrativa
+  // 1. Validação de Sessão Administrativa Consolidada
   const handleLogout = useCallback(() => {
-    localStorage.removeItem(ADMIN_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
     setAdminToken(null);
     setAdminUser(null);
     setProfessionals([]);
@@ -114,34 +118,36 @@ export default function AdminModerationPage() {
 
       setAdminUser(data);
       setAdminToken(token);
+      authLogin(
+        {
+          id: data.id,
+          nome: data.name || data.nome || '',
+          name: data.name,
+          email: data.email,
+          tipo: 'admin',
+          role: 'admin',
+        },
+        token
+      );
       return true;
     } catch {
-      handleLogout();
+      setAdminToken(null);
+      setAdminUser(null);
       return false;
     } finally {
       setIsValidatingSession(false);
     }
-  }, [handleLogout]);
+  }, [authLogin]);
 
   useEffect(() => {
     const checkSession = async () => {
-      // Prioridade 1: Token do AuthContext (se for admin)
-      if (contextToken && authUser?.role === 'admin') {
-        const ok = await verifyAdminToken(contextToken);
-        if (ok) return;
-      }
+      const candidateToken =
+        contextToken ||
+        localStorage.getItem(TOKEN_STORAGE_KEY) ||
+        localStorage.getItem(LEGACY_ADMIN_TOKEN_KEY);
 
-      // Prioridade 2: Token exclusivo de admin no localStorage
-      const savedAdminToken = localStorage.getItem(ADMIN_STORAGE_KEY);
-      if (savedAdminToken) {
-        const ok = await verifyAdminToken(savedAdminToken);
-        if (ok) return;
-      }
-
-      // Prioridade 3: Token geral no localStorage
-      const savedGeneralToken = localStorage.getItem(GENERAL_STORAGE_KEY);
-      if (savedGeneralToken) {
-        const ok = await verifyAdminToken(savedGeneralToken);
+      if (candidateToken) {
+        const ok = await verifyAdminToken(candidateToken);
         if (ok) return;
       }
 
@@ -149,7 +155,7 @@ export default function AdminModerationPage() {
     };
 
     checkSession();
-  }, [contextToken, authUser, verifyAdminToken]);
+  }, [contextToken, authUser?.role, verifyAdminToken]);
 
   // 2. Busca lista de profissionais para moderação
   const loadProfessionals = useCallback(async (token: string) => {
@@ -165,7 +171,7 @@ export default function AdminModerationPage() {
         setLoginError('Sua sessão de administrador expirou. Faça login novamente.');
         return;
       }
-      setListError(err instanceof Error ? err.message : 'Falha ao carregar profissionais.');
+      setListError(mensagemErro(err, 'Falha ao carregar profissionais.'));
     } finally {
       setIsLoadingList(false);
     }
@@ -199,14 +205,12 @@ export default function AdminModerationPage() {
       }
 
       const token = data.access_token;
-      localStorage.setItem(ADMIN_STORAGE_KEY, token);
-
       const isValid = await verifyAdminToken(token);
       if (!isValid) {
         setLoginError('A conta autenticada não possui permissão de administrador.');
       }
     } catch (err) {
-      setLoginError(err instanceof Error ? err.message : 'Falha ao autenticar.');
+      setLoginError(mensagemErro(err, 'Falha ao autenticar.'));
     } finally {
       setIsLoggingIn(false);
     }
@@ -226,7 +230,7 @@ export default function AdminModerationPage() {
       addToast({
         type: 'error',
         title: 'Falha ao carregar auditoria',
-        message: err instanceof Error ? err.message : 'Não foi possível carregar os documentos.',
+        message: mensagemErro(err, 'Não foi possível carregar os documentos.'),
       });
     } finally {
       setIsLoadingReview(false);
@@ -249,7 +253,7 @@ export default function AdminModerationPage() {
       addToast({
         type: 'error',
         title: 'Erro na aprovação',
-        message: err instanceof Error ? err.message : 'Não foi possível concluir a aprovação.',
+        message: mensagemErro(err, 'Não foi possível concluir a aprovação.'),
       });
       throw err;
     }
@@ -271,7 +275,7 @@ export default function AdminModerationPage() {
       addToast({
         type: 'error',
         title: 'Erro na reprovação',
-        message: err instanceof Error ? err.message : 'Não foi possível registrar a reprovação.',
+        message: mensagemErro(err, 'Não foi possível registrar a reprovação.'),
       });
       throw err;
     }
@@ -321,9 +325,6 @@ export default function AdminModerationPage() {
           <div className="max-w-md mx-auto my-12 animate-fadeIn">
             <div className="glass-panel-elevated rounded-3xl p-6 sm:p-8 border border-rental-border shadow-xl">
               <div className="flex items-center gap-3 text-rental-primary mb-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rental-primary/10 border border-rental-primary/20">
-                  <Lock className="h-6 w-6" />
-                </div>
                 <div>
                   <h2 className="text-xl font-bold">Moderação Restrita</h2>
                   <p className="text-xs text-rental-muted">Acesso exclusivo para administradores</p>
@@ -337,7 +338,6 @@ export default function AdminModerationPage() {
 
               {loginError && (
                 <div className="mb-5 flex items-start gap-2.5 rounded-2xl bg-red-500/10 border border-red-500/20 p-3.5 text-xs text-rental-error animate-shake">
-                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                   <span>{loginError}</span>
                 </div>
               )}
@@ -350,7 +350,6 @@ export default function AdminModerationPage() {
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     placeholder="admin@rentalspouse.com"
-                    leftIcon={<Mail className="h-4 w-4" />}
                     required
                   />
                 </FormFieldWrapper>
@@ -373,7 +372,6 @@ export default function AdminModerationPage() {
                     className="w-full"
                     isLoading={isLoggingIn}
                     loadingText="Autenticando..."
-                    leftIcon={<KeyRound className="h-4 w-4" />}
                   >
                     Acessar Fila de Moderação
                   </Button>
@@ -384,7 +382,6 @@ export default function AdminModerationPage() {
               {isDevEnvironment && (
                 <div className="mt-6 rounded-2xl border border-dashed border-rental-border bg-rental-surface2/60 p-4 text-xs">
                   <div className="flex items-center gap-1.5 font-bold text-rental-primary mb-1">
-                    <Sparkles className="h-3.5 w-3.5" />
                     Atalho de Desenvolvimento
                   </div>
                   <p className="text-rental-muted text-[11px] mb-3">
@@ -415,7 +412,6 @@ export default function AdminModerationPage() {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-rental-border pb-6">
               <div>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-rental-border bg-rental-surface px-3 py-1 text-xs font-semibold text-rental-muted">
-                  <ShieldCheck className="h-3.5 w-3.5 text-rental-primary" />
                   Moderação de Documentos • Issue #64 &amp; #17
                 </span>
                 <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
@@ -432,7 +428,6 @@ export default function AdminModerationPage() {
                   href="/cadastro/admin"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-rental-border bg-rental-surface hover:bg-rental-surface2 text-xs font-bold text-rental-ink transition-colors shadow-sm"
                 >
-                  <Users className="h-4 w-4 text-rental-primary" />
                   Cadastrar Admins
                 </Link>
               </div>
@@ -450,12 +445,9 @@ export default function AdminModerationPage() {
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                  <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
                     Aguardando Moderação
                   </span>
-                  <div className="h-8 w-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-                    <Clock className="h-4 w-4" />
-                  </div>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
                   <span className="text-3xl font-extrabold font-mono text-rental-ink">
@@ -477,12 +469,9 @@ export default function AdminModerationPage() {
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
                     Aprovados e Ativos
                   </span>
-                  <div className="h-8 w-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
-                    <CheckCircle2 className="h-4 w-4" />
-                  </div>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
                   <span className="text-3xl font-extrabold font-mono text-rental-ink">
@@ -502,12 +491,9 @@ export default function AdminModerationPage() {
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
+                  <span className="text-xs font-bold text-red-600 dark:text-red-400">
                     Rejeitados / Ajustes
                   </span>
-                  <div className="h-8 w-8 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center">
-                    <AlertTriangle className="h-4 w-4" />
-                  </div>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
                   <span className="text-3xl font-extrabold font-mono text-rental-ink">
@@ -527,12 +513,9 @@ export default function AdminModerationPage() {
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-rental-primary">
+                  <span className="text-xs font-bold text-rental-primary">
                     Total Registrado
                   </span>
-                  <div className="h-8 w-8 rounded-xl bg-rental-primary/10 text-rental-primary flex items-center justify-center">
-                    <FileCheck2 className="h-4 w-4" />
-                  </div>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
                   <span className="text-3xl font-extrabold font-mono text-rental-ink">

@@ -13,7 +13,6 @@ import {
   User,
   Wrench,
   ShieldCheck,
-  Zap,
   PaintRoller,
   Hammer,
   Droplets,
@@ -22,12 +21,17 @@ import {
   AlertCircle,
   RefreshCw,
   LogOut,
+  Calendar,
 } from 'lucide-react';
 import { ThemeToggle } from '../../components/ui/ThemeToggle';
 import { Button } from '../../components/ui/Button';
-import { ProfessionalDocumentsLink } from '../../components/documentos/ProfessionalDocumentsLink';
+import {
+  ProfessionalDocumentsLink,
+  useIsProfessional,
+} from '../../components/documentos/ProfessionalDocumentsLink';
 import { useAuth, AuthUser } from '../../context/AuthContext';
 import { validateEmail } from '../../utils/validators';
+import { BrandMark } from '../../components/brand/BrandMark';
 
 type Mode = 'signin' | 'signup';
 
@@ -71,8 +75,8 @@ function EntrarPageContent() {
 
           <div className="relative flex items-center gap-2">
             <Link href="/" className="inline-flex items-center gap-2 transition-opacity hover:opacity-90">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
-                <Zap className="h-5 w-5" />
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#0e1b2e]">
+                <BrandMark size={22} />
               </span>
               <span className="text-lg font-extrabold tracking-tight">RentalSpouse</span>
             </Link>
@@ -103,7 +107,6 @@ function EntrarPageContent() {
           </div>
 
           <div className="relative flex items-center gap-2 text-xs text-white/80">
-            <ShieldCheck className="h-4 w-4" />
             Pagamento protegido e profissionais verificados
           </div>
         </section>
@@ -124,9 +127,7 @@ function EntrarPageContent() {
           {/* Marca no mobile */}
           <div className="mb-6 flex items-center gap-2 md:hidden">
             <Link href="/" className="inline-flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rental-primary text-white">
-                <Zap className="h-5 w-5" />
-              </span>
+              <BrandMark size={28} className="text-rental-ink" />
               <span className="text-lg font-extrabold tracking-tight">RentalSpouse</span>
             </Link>
           </div>
@@ -197,11 +198,11 @@ function EntrarPageContent() {
 function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
   const router = useRouter();
   const { user, login, logout, isAuthenticated, isLoading: authLoading } = useAuth();
+  const isProfessional = useIsProfessional();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [forgotPasswordNotice, setForgotPasswordNotice] = useState(false);
 
   // Estados de formulário e validação
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
@@ -227,27 +228,35 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
   if (isAuthenticated && user && !loginSuccess) {
     return (
       <div className="animate-fadeIn rounded-2xl border border-rental-border bg-rental-surface p-6 text-center">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rental-primary/10 text-rental-primary">
-          <User className="h-7 w-7" />
-        </div>
         <h2 className="mt-4 text-xl font-extrabold text-rental-ink">Você já está conectado</h2>
         <p className="mt-1 text-sm text-rental-muted">
           Conectado como <strong className="text-rental-ink">{user.nome}</strong> ({user.email})
         </p>
 
         <div className="mt-6 flex flex-col gap-2.5">
-          <Link href="/">
+          <Link href="/minha-conta">
             <Button variant="primary" size="md" className="w-full" rightIcon={<ArrowRight className="h-4 w-4" />}>
+              Acessar Minha Conta
+            </Button>
+          </Link>
+          <Link href="/">
+            <Button variant="secondary" size="md" className="w-full">
               Ir para a Página Inicial
             </Button>
           </Link>
+          {isProfessional && (
+            <Link href="/profissional/agenda">
+              <Button variant="secondary" size="md" className="w-full">
+                Configurar Minha Agenda
+              </Button>
+            </Link>
+          )}
           <ProfessionalDocumentsLink variant="card" />
           <Button
             variant="secondary"
             size="md"
             onClick={logout}
             className="w-full"
-            leftIcon={<LogOut className="h-4 w-4" />}
           >
             Sair ou entrar com outra conta
           </Button>
@@ -260,9 +269,6 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
   if (loginSuccess) {
     return (
       <div className="animate-fadeIn rounded-2xl border border-[var(--rs-success)]/30 bg-rental-surface p-6 text-center shadow-lg">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--rs-success)]/10 text-[var(--rs-success)]">
-          <CheckCircle2 className="h-8 w-8" />
-        </div>
         <h2 className="mt-4 text-xl font-extrabold text-rental-ink">Bem-vindo(a) de volta!</h2>
         <p className="mt-1.5 text-sm text-rental-muted">
           Olá, <strong className="text-rental-ink">{loginSuccess.nome}</strong>. Seu login foi realizado com sucesso.
@@ -278,6 +284,13 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
           >
             Acessar Plataforma
           </Button>
+          {isProfessional && (
+            <Link href="/profissional/agenda">
+              <Button variant="secondary" size="md" className="w-full">
+                Configurar Minha Agenda
+              </Button>
+            </Link>
+          )}
           <ProfessionalDocumentsLink variant="card" />
         </div>
       </div>
@@ -397,13 +410,20 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
             <span className="font-semibold block">{serverError.message}</span>
             {serverError.type === 'invalid_credentials' && (
               <span className="mt-1 block text-rental-muted">
-                Esqueceu sua senha ou não tem cadastro?{' '}
+                Esqueceu sua senha?{' '}
+                <Link
+                  href="/esqueci-senha"
+                  className="font-bold text-rental-primary hover:underline ml-1"
+                >
+                  Recuperar acesso
+                </Link>
+                {' '}ou{' '}
                 <button
                   type="button"
                   onClick={onSwitchToSignUp}
-                  className="font-bold text-rental-primary hover:underline ml-1"
+                  className="font-bold text-rental-primary hover:underline"
                 >
-                  Cadastre-se aqui
+                  crie uma conta
                 </button>
               </span>
             )}
@@ -425,7 +445,6 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
               onClick={handleRetry}
               className="inline-flex items-center gap-1 font-bold text-rental-primary hover:underline shrink-0"
             >
-              <RefreshCw className="h-3 w-3" />
               Tentar
             </button>
           )}
@@ -436,7 +455,7 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
         {/* Campo E-mail */}
         <div>
           <div className="mb-1.5 flex items-center justify-between">
-            <label htmlFor="login-email" className="text-xs font-bold uppercase tracking-wide text-rental-muted">
+            <label htmlFor="login-email" className="text-xs font-bold text-rental-muted">
               E-mail
             </label>
           </div>
@@ -465,7 +484,6 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
           </div>
           {fieldErrors.email && (
             <div className="mt-1 flex items-center gap-1.5 text-xs text-[var(--rs-error)] animate-fadeIn">
-              <AlertCircle className="h-3.5 w-3.5" />
               <span>{fieldErrors.email}</span>
             </div>
           )}
@@ -474,30 +492,16 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
         {/* Campo Senha */}
         <div>
           <div className="mb-1.5 flex items-center justify-between">
-            <label htmlFor="login-password" className="text-xs font-bold uppercase tracking-wide text-rental-muted">
+            <label htmlFor="login-password" className="text-xs font-bold text-rental-muted">
               Senha
             </label>
-            <button
-              type="button"
-              tabIndex={-1}
-              onClick={() => setForgotPasswordNotice((v) => !v)}
+            <Link
+              href="/esqueci-senha"
               className="text-xs font-semibold text-rental-primary hover:underline"
             >
               Esqueci minha senha
-            </button>
+            </Link>
           </div>
-          {forgotPasswordNotice && (
-            <div className="mb-2 flex items-start gap-2.5 rounded-xl border border-rental-border bg-rental-surface2 p-3 text-xs text-rental-ink animate-fadeIn">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rental-primary" />
-              <div>
-                <span className="font-bold text-rental-ink">Recuperação de conta</span>
-                <p className="mt-0.5 text-rental-muted">
-                  O fluxo automatizado de redefinição de senha está em desenvolvimento. Para redefinir sua senha agora, solicite via{' '}
-                  <span className="font-semibold text-rental-primary">suporte@rentalspouse.com</span>.
-                </p>
-              </div>
-            </div>
-          )}
           <div className="relative">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-rental-muted">
               <Lock className="h-4 w-4" />
@@ -532,7 +536,6 @@ function SignIn({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
           </div>
           {fieldErrors.password && (
             <div className="mt-1 flex items-center gap-1.5 text-xs text-[var(--rs-error)] animate-fadeIn">
-              <AlertCircle className="h-3.5 w-3.5" />
               <span>{fieldErrors.password}</span>
             </div>
           )}

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { traduzirMensagemErro } from '../../../services/apiError';
 import {
   PersonalInfoSection,
   PersonalInfoData,
@@ -154,7 +155,7 @@ export default function CadastroClientePage() {
     detail.forEach((item) => {
       const loc = item.loc ?? [];
       const field = loc[loc.length - 1];
-      const message = item.msg || 'Valor inválido.';
+      const message = traduzirMensagemErro(item.msg || 'Valor inválido.');
       switch (field) {
         case 'nome_completo':
         case 'nome':
@@ -480,16 +481,11 @@ export default function CadastroClientePage() {
 
           {/* Ações Subsequentes */}
           <div className="flex flex-col sm:flex-row gap-3 w-full pt-2">
-            <Button
-              variant="primary"
-              size="lg"
-              className="flex-1"
-              onClick={() => {
-                alert('Fluxo para Solicitar um Serviço iniciado!');
-              }}
-            >
-              Solicitar um Serviço Agora
-            </Button>
+            <Link href="/profissionais" className="flex-1">
+              <Button variant="primary" size="lg" className="w-full">
+                Solicitar um Serviço Agora
+              </Button>
+            </Link>
             <Link href="/entrar?mode=signin" className="flex-1">
               <Button variant="glass" size="lg" className="w-full">
                 Ir para Minha Conta / Login

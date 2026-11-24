@@ -30,13 +30,15 @@ de fundo executa).
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import NamedTuple, Optional, Tuple
+from typing import NamedTuple, Optional, Tuple, Union
 
 from sqlalchemy.orm import Session
 
 import email_service
 import models
 from security import gerar_token_verificacao, hash_token
+
+ContaVerificavel = Union[models.Cliente, models.Professional]
 
 logger = logging.getLogger("rentalspouse.verificacao")
 
@@ -128,9 +130,14 @@ def utcnow() -> datetime:
 # ---------------------------------------------------------------------------
 
 
-def preparar_verificacao(db: Session, cliente: models.Cliente) -> EmailPendente:
+def _nome_da_conta(conta: ContaVerificavel) -> str:
+    """Extrai o nome de exibição tanto de `Cliente` (`nome`) quanto de `Professional` (`name`)."""
+    return getattr(conta, "nome", None) or getattr(conta, "name", "")
+
+
+def preparar_verificacao(db: Session, conta: ContaVerificavel) -> EmailPendente:
     """
-    Gera um token novo, persiste o estado e devolve os dados do e-mail.
+    Gera um token novo, persiste o estado (em `Cliente` ou `Professional`) e devolve os dados do e-mail.
 
     O token em claro existe apenas em memória: o banco recebe somente o hash.
     Um novo token sempre substitui o anterior, invalidando links antigos.
@@ -139,17 +146,17 @@ def preparar_verificacao(db: Session, cliente: models.Cliente) -> EmailPendente:
     agora = utcnow()
     horas = expiracao_horas()
 
-    cliente.verificacao_token_hash = hash_token(token)
-    cliente.verificacao_expira_em = agora + timedelta(hours=horas)
-    cliente.verificacao_enviada_em = agora
+    conta.verificacao_token_hash = hash_token(token)
+    conta.verificacao_expira_em = agora + timedelta(hours=horas)
+    conta.verificacao_enviada_em = agora
 
-    db.add(cliente)
+    db.add(conta)
     db.commit()
-    db.refresh(cliente)
+    db.refresh(conta)
 
     return EmailPendente(
-        destinatario=cliente.email,
-        nome=cliente.nome,
+        destinatario=conta.email,
+        nome=_nome_da_conta(conta),
         token=token,
         expira_horas=horas,
     )
@@ -167,6 +174,7 @@ def enviar_email_de_verificacao(pendente: EmailPendente) -> bool:
 
     Retorna `True` quando a mensagem foi efetivamente entregue ao transporte.
     """
+    destinatario_mascarado = email_service.mascarar_email(pendente.destinatario)
     try:
         email_service.enviar_email_verificacao(
             destinatario=pendente.destinatario,
@@ -177,7 +185,14 @@ def enviar_email_de_verificacao(pendente: EmailPendente) -> bool:
     except email_service.ErroEnvioEmail as erro:
         logger.error(
             "Não foi possível enviar o e-mail de verificação para %s: %s",
-            pendente.destinatario,
+            destinatario_mascarado,
+            erro,
+        )
+        return False
+    except Exception as erro:
+        logger.exception(
+            "Erro inesperado ao despachar e-mail de verificação para %s: %s",
+            destinatario_mascarado,
             erro,
         )
         return False
@@ -202,17 +217,41 @@ def iniciar_verificacao(
 # ---------------------------------------------------------------------------
 
 
-def _limpar_token(cliente: models.Cliente) -> None:
+def _limpar_token(conta: ContaVerificavel) -> None:
     """Remove o token de verificação da entidade (torna o link inutilizável)."""
-    cliente.verificacao_token_hash = None
-    cliente.verificacao_expira_em = None
+    conta.verificacao_token_hash = None
+    conta.verificacao_expira_em = None
 
 
-def confirmar_verificacao(db: Session, token: str) -> Tuple[models.Cliente, bool]:
+def _buscar_conta_por_token_hash(db: Session, token_hash_val: str) -> Optional[ContaVerificavel]:
+    """Localiza `Cliente` ou `Professional` pelo hash SHA-256 do token de verificação."""
+    cliente = (
+        db.query(models.Cliente)
+        .filter(models.Cliente.verificacao_token_hash == token_hash_val)
+        .first()
+    )
+    if cliente is not None:
+        return cliente
+    return (
+        db.query(models.Professional)
+        .filter(models.Professional.verificacao_token_hash == token_hash_val)
+        .first()
+    )
+
+
+def _sincronizar_email_verificado_user(db: Session, email: str) -> None:
+    """Reflete `email_verificado=True` na tabela central `users` caso o registro já exista."""
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if user is not None and not user.email_verificado:
+        user.email_verificado = True
+        db.add(user)
+
+
+def confirmar_verificacao(db: Session, token: str) -> Tuple[ContaVerificavel, bool]:
     """
-    Confirma o e-mail do cliente a partir de um token.
+    Confirma o e-mail do cliente ou profissional a partir de um token.
 
-    Retorna a tupla `(cliente, ja_estava_verificado)`.
+    Retorna a tupla `(conta, ja_estava_verificado)`.
 
     Levanta `ErroVerificacao` quando o token não existe ou expirou.
 
@@ -228,39 +267,36 @@ def confirmar_verificacao(db: Session, token: str) -> Tuple[models.Cliente, bool
     if not token:
         raise ErroVerificacao(MENSAGEM_TOKEN_INVALIDO)
 
-    cliente = (
-        db.query(models.Cliente)
-        .filter(models.Cliente.verificacao_token_hash == hash_token(token))
-        .first()
-    )
+    conta = _buscar_conta_por_token_hash(db, hash_token(token))
 
-    if cliente is None:
+    if conta is None:
         raise ErroVerificacao(MENSAGEM_TOKEN_INVALIDO)
 
-    expira_em = cliente.verificacao_expira_em
+    expira_em = conta.verificacao_expira_em
     expirado = expira_em is None or expira_em < utcnow()
 
     # Reacesso idempotente: F5, clique repetido ou e-mail reaberto.
-    if cliente.email_verificado:
+    if conta.email_verificado:
         if expirado:
-            _limpar_token(cliente)
-            db.add(cliente)
+            _limpar_token(conta)
+            db.add(conta)
             db.commit()
-        return cliente, True
+        return conta, True
 
     if expirado:
-        _limpar_token(cliente)
-        db.add(cliente)
+        _limpar_token(conta)
+        db.add(conta)
         db.commit()
         raise ErroVerificacao(MENSAGEM_TOKEN_EXPIRADO)
 
-    cliente.email_verificado = True
-    db.add(cliente)
+    conta.email_verificado = True
+    db.add(conta)
+    _sincronizar_email_verificado_user(db, conta.email)
     db.commit()
-    db.refresh(cliente)
+    db.refresh(conta)
 
-    logger.info("E-mail verificado com sucesso: %s", cliente.email)
-    return cliente, False
+    logger.info("E-mail verificado com sucesso: %s", conta.email)
+    return conta, False
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +306,8 @@ def confirmar_verificacao(db: Session, token: str) -> Tuple[models.Cliente, bool
 
 def solicitar_reenvio(db: Session, email: str) -> Optional[EmailPendente]:
     """
-    Prepara um novo e-mail de verificação, respeitando o intervalo mínimo.
+    Prepara um novo e-mail de verificação (para `Cliente` ou `Professional`),
+    respeitando o intervalo mínimo.
 
     Retorna o `EmailPendente` quando um novo e-mail deve ser despachado, ou
     `None` quando nada deve sair. A rota é quem efetivamente envia (em
@@ -283,26 +320,32 @@ def solicitar_reenvio(db: Session, email: str) -> Optional[EmailPendente]:
     if not email_normalizado:
         return None
 
-    cliente = (
+    conta: Optional[ContaVerificavel] = (
         db.query(models.Cliente)
         .filter(models.Cliente.email == email_normalizado)
         .first()
     )
+    if conta is None:
+        conta = (
+            db.query(models.Professional)
+            .filter(models.Professional.email == email_normalizado)
+            .first()
+        )
 
-    if cliente is None or cliente.email_verificado:
+    if conta is None or conta.email_verificado:
         return None
 
     # Intervalo mínimo entre reenvios (anti-spam). Em vez de responder 429 — o
     # que permitiria enumerar e-mails cadastrados — simplesmente não reenviamos.
-    enviado_em = cliente.verificacao_enviada_em
+    enviado_em = conta.verificacao_enviada_em
     if enviado_em is not None:
         decorrido = (utcnow() - enviado_em).total_seconds()
         if decorrido < intervalo_reenvio_segundos():
             logger.info(
                 "Reenvio ignorado para %s: intervalo mínimo de %ss ainda não decorrido.",
-                cliente.email,
+                conta.email,
                 intervalo_reenvio_segundos(),
             )
             return None
 
-    return preparar_verificacao(db, cliente)
+    return preparar_verificacao(db, conta)

@@ -1,6 +1,24 @@
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, event
+from typing import Optional
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    String,
+    Text,
+    Time,
+    UniqueConstraint,
+    event,
+    text,
+)
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -63,6 +81,8 @@ class Cliente(Base):
     bairro = Column(String(100), nullable=False)
     cidade = Column(String(100), nullable=False)
     estado = Column(String(2), nullable=False)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
 
     criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -90,6 +110,26 @@ class Cliente(Base):
             "cidade": self.cidade,
             "estado": self.estado,
         }
+
+
+class RecuperacaoSenhaToken(Base):
+    """
+    Token de uso único para redefinição de senha (issue #75).
+
+    A tabela é independente de `users`, `clientes` e `professionals` para que o
+    mesmo fluxo atenda qualquer tipo de conta pelo e-mail informado. Assim como
+    na verificação de e-mail, o token em claro nunca é persistido: guardamos
+    apenas o hash SHA-256, e o link expira após um intervalo configurável.
+    """
+
+    __tablename__ = "recuperacao_senha_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    expira_em = Column(DateTime, nullable=False)
+    criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    usado_em = Column(DateTime, nullable=True)
 
 
 class DocumentType(str, enum.Enum):
@@ -121,10 +161,21 @@ class Professional(Base):
     bio = Column(Text, nullable=False)
     service_radius_km = Column(Float, nullable=False)
     specialties = Column(JSON, nullable=False)
+    cep = Column(String(8), nullable=True)
+    logradouro = Column(String(255), nullable=True)
+    numero = Column(String(50), nullable=True)
+    complemento = Column(String(255), nullable=True)
+    bairro = Column(String(100), nullable=True)
     city = Column(String(100), nullable=True)
     state = Column(String(2), nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
     senha_hash = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    email_verificado = Column(Boolean, default=False, nullable=False, index=True)
+    verificacao_token_hash = Column(String(64), nullable=True, index=True)
+    verificacao_expira_em = Column(DateTime, nullable=True)
+    verificacao_enviada_em = Column(DateTime, nullable=True)
     approval_status = Column(
         String(50),
         default=ProfessionalApprovalStatus.PENDING.value,
@@ -162,7 +213,36 @@ class Professional(Base):
         self.normalized_city = normalize_text(self.city)
         specs = " ".join(normalize_text(s) for s in (self.specialties or []) if isinstance(s, str))
         self.normalized_specialties = specs
-        self.normalized_search = f"{normalize_text(self.name)} {normalize_text(self.bio)} {self.normalized_city} {specs}".strip()
+        bairro_norm = normalize_text(self.bairro)
+        self.normalized_search = f"{normalize_text(self.name)} {normalize_text(self.bio)} {self.normalized_city} {bairro_norm} {specs}".strip()
+
+    @property
+    def distance_km(self) -> Optional[float]:
+        """Distância calculada em km entre o endereço do cliente e o profissional."""
+        return getattr(self, "_distance_km", None)
+
+    @distance_km.setter
+    def distance_km(self, val: Optional[float]):
+        self._distance_km = val
+
+    @property
+    def average_rating(self) -> Optional[float]:
+        """Nota média das avaliações do profissional (1.0 a 5.0) ou None se não avaliado."""
+        return getattr(self, "_average_rating", None)
+
+    @average_rating.setter
+    def average_rating(self, val: Optional[float]):
+        self._average_rating = val
+
+    @property
+    def reviews_count(self) -> int:
+        """Quantidade total de avaliações recebidas pelo profissional."""
+        return getattr(self, "_reviews_count", 0)
+
+    @reviews_count.setter
+    def reviews_count(self, val: int):
+        self._reviews_count = val
+
 
 
 @event.listens_for(Professional, "before_insert")
@@ -354,3 +434,370 @@ class Denuncia(Base):
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+
+class AgendamentoStatus(str, enum.Enum):
+    """Status do ciclo de vida de um agendamento de slot (issue #78)."""
+
+    AGENDADO = "agendado"
+    CANCELADO = "cancelado"
+    CONCLUIDO = "concluido"
+
+
+# Status que efetivamente ocupam o horário do profissional. Um agendamento
+# cancelado é histórico: libera o slot para uma nova reserva (o cancelamento em
+# si pertence à issue #24, que só precisa mudar `status`).
+AGENDAMENTO_STATUS_OCUPANTES = (
+    AgendamentoStatus.AGENDADO.value,
+    AgendamentoStatus.CONCLUIDO.value,
+)
+
+
+class DisponibilidadeProfissional(Base):
+    """
+    Janela semanal de atendimento informada pelo profissional (issue #78).
+
+    Cada linha é uma faixa contínua de atendimento em um dia da semana, fatiada
+    em slots de `duracao_slot_min` minutos pela rota de agenda. `dia_semana`
+    segue a convenção de `datetime.weekday()`: 0 = segunda-feira ... 6 = domingo.
+
+    Os horários (`hora_inicio` / `hora_fim`) e os instantes gerados para os slots
+    usam o mesmo padrão naive-UTC das demais colunas de data do projeto (ver
+    `verificacao.utcnow`): `TIMESTAMP WITHOUT TIME ZONE` no PostgreSQL e
+    DATETIME no SQLite dos testes.
+    """
+
+    __tablename__ = "disponibilidade_profissional"
+    __table_args__ = (
+        UniqueConstraint(
+            "professional_id",
+            "dia_semana",
+            "hora_inicio",
+            name="uq_disponibilidade_professional_dia_inicio",
+        ),
+        CheckConstraint(
+            "dia_semana >= 0 AND dia_semana <= 6",
+            name="ck_disponibilidade_dia_semana_valido",
+        ),
+        CheckConstraint("duracao_slot_min > 0", name="ck_disponibilidade_duracao_positiva"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    professional_id = Column(
+        Integer,
+        ForeignKey("professionals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    dia_semana = Column(Integer, nullable=False, index=True)
+    hora_inicio = Column(Time, nullable=False)
+    hora_fim = Column(Time, nullable=False)
+    duracao_slot_min = Column(Integer, default=60, nullable=False)
+    criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    atualizado_em = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    professional = relationship("Professional")
+
+
+class Agendamento(Base):
+    """
+    Reserva de um slot da agenda por um cliente autenticado (issue #78).
+
+    `data_hora_inicio`/`data_hora_fim` são derivados da grade semanal do
+    profissional no momento da reserva (o cliente não escolhe a duração) e
+    seguem o padrão naive-UTC do projeto.
+
+    Anti double-booking: além de o índice `(professional_id, data_hora_inicio)`
+    acelerar a consulta de ocupação, existe um índice único **parcial** que
+    vale apenas para agendamentos não cancelados — assim dois clientes nunca
+    conseguem reservar o mesmo instante, mas um agendamento cancelado (#24)
+    devolve o slot para a agenda. O índice parcial usa a cláusula específica de
+    cada dialeto (SQLite nos testes, PostgreSQL em produção).
+    """
+
+    __tablename__ = "agendamentos"
+    __table_args__ = (
+        Index("ix_agendamentos_professional_data_hora", "professional_id", "data_hora_inicio"),
+        Index(
+            "uq_agendamentos_professional_data_hora_ativo",
+            "professional_id",
+            "data_hora_inicio",
+            unique=True,
+            postgresql_where=text("status <> 'cancelado'"),
+            sqlite_where=text("status <> 'cancelado'"),
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    professional_id = Column(
+        Integer,
+        ForeignKey("professionals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    cliente_id = Column(
+        Integer,
+        ForeignKey("clientes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    orcamento_id = Column(
+        Integer,
+        ForeignKey("orcamentos.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    data_hora_inicio = Column(DateTime, nullable=False)
+    data_hora_fim = Column(DateTime, nullable=False)
+    status = Column(
+        String(30),
+        default=AgendamentoStatus.AGENDADO.value,
+        nullable=False,
+        index=True,
+    )
+    motivo_cancelamento = Column(String(500), nullable=True)
+    cancelado_em = Column(DateTime, nullable=True)
+    criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    professional = relationship("Professional")
+    cliente = relationship("Cliente")
+    orcamento = relationship("Orcamento")
+
+
+class BloqueioAgendaProfissional(Base):
+    """
+    Bloqueio pontual de dia inteiro ou faixa de horário na agenda do profissional (issue #16).
+
+    Permite ao prestador sinalizar folgas, feriados, compromissos médicos ou
+    indisponibilidades específicas sem precisar alterar toda a grade semanal.
+    Os horários seguem o padrão naive-UTC do projeto.
+    """
+
+    __tablename__ = "bloqueios_agenda_profissional"
+    __table_args__ = (
+        Index(
+            "ix_bloqueios_agenda_prof_intervalo",
+            "professional_id",
+            "data_hora_inicio",
+            "data_hora_fim",
+        ),
+        CheckConstraint(
+            "data_hora_fim > data_hora_inicio",
+            name="ck_bloqueio_agenda_intervalo_valido",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    professional_id = Column(
+        Integer,
+        ForeignKey("professionals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    data_hora_inicio = Column(DateTime, nullable=False)
+    data_hora_fim = Column(DateTime, nullable=False)
+    motivo = Column(String(255), nullable=True)
+    created_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        nullable=False,
+    )
+
+    professional = relationship("Professional")
+
+
+class PagamentoMetodo(str, enum.Enum):
+    """Meios de pagamento aceitos via Mercado Pago (issue #18)."""
+
+    PIX = "pix"
+    CARTAO_CREDITO = "cartao_credito"
+
+
+class PagamentoStatus(str, enum.Enum):
+    """Ciclo de vida de uma transação de pagamento (issue #18)."""
+
+    PENDENTE = "pendente"
+    APROVADO = "aprovado"
+    RECUSADO = "recusado"
+    EXPIRADO = "expirado"
+    CANCELADO = "cancelado"
+    ESTORNADO = "estornado"
+
+
+class Pagamento(Base):
+    """Transação de pagamento de orçamento/agendamento via Mercado Pago (issue #18)."""
+
+    __tablename__ = "pagamentos"
+    __table_args__ = (
+        CheckConstraint("valor > 0", name="ck_pagamentos_valor_positivo"),
+        CheckConstraint(
+            "parcelas >= 1 AND parcelas <= 12",
+            name="ck_pagamentos_parcelas_validas",
+        ),
+        Index(
+            "uq_pagamentos_orcamento_aprovado",
+            "orcamento_id",
+            unique=True,
+            postgresql_where=text("status = 'aprovado'"),
+            sqlite_where=text("status = 'aprovado'"),
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    orcamento_id = Column(
+        Integer,
+        ForeignKey("orcamentos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    agendamento_id = Column(
+        Integer,
+        ForeignKey("agendamentos.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    cliente_id = Column(
+        Integer,
+        ForeignKey("clientes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    professional_id = Column(
+        Integer,
+        ForeignKey("professionals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    valor = Column(Float, nullable=False)
+    metodo = Column(String(30), nullable=False, index=True)
+    status = Column(
+        String(30),
+        default=PagamentoStatus.PENDENTE.value,
+        nullable=False,
+        index=True,
+    )
+    parcelas = Column(Integer, default=1, nullable=False)
+    gateway_provider = Column(String(50), default="mercadopago", nullable=False)
+    gateway_txid = Column(String(120), unique=True, index=True, nullable=False)
+    external_reference = Column(String(100), index=True, nullable=False)
+    idempotency_key = Column(String(64), unique=True, index=True, nullable=False)
+    pix_copia_e_cola = Column(Text, nullable=True)
+    pix_qr_code_base64 = Column(Text, nullable=True)
+    pix_expira_em = Column(DateTime, nullable=True)
+    cartao_ultimos_digitos = Column(String(4), nullable=True)
+    cartao_bandeira = Column(String(30), nullable=True)
+    cartao_nome_titular = Column(String(100), nullable=True)
+    mp_status_detail = Column(String(100), nullable=True)
+    motivo_recusa = Column(String(255), nullable=True)
+    pago_em = Column(DateTime, nullable=True)
+    criado_em = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    atualizado_em = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    orcamento = relationship("Orcamento")
+    agendamento = relationship("Agendamento")
+    cliente = relationship("Cliente")
+    professional = relationship("Professional")
+
+
+class PagamentoEvento(Base):
+    """
+    Trilha de auditoria dos webhooks de pagamento (issue #18).
+
+    Registra transições ignoradas e, principalmente, cobranças que precisam de
+    estorno porque não puderam ser aplicadas localmente (webhook duplicado,
+    fora de ordem ou violação do índice único parcial de pagamento aprovado).
+    """
+
+    __tablename__ = "pagamento_eventos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    pagamento_id = Column(
+        Integer,
+        ForeignKey("pagamentos.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    gateway_txid = Column(String(120), nullable=False, index=True)
+    tipo = Column(String(50), nullable=False, index=True)
+    detalhe = Column(Text, nullable=True)
+    payload = Column(Text, nullable=True)
+    criado_em = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
+class Avaliacao(Base):
+    """
+    Avaliação de 1 a 5 estrelas e comentário deixados por um cliente após o
+    serviço prestado por um profissional (issues #19 e #21).
+
+    O autor (`cliente_id`) é sempre derivado do token de autenticação do cliente.
+    Pode ser vinculada opcionalmente a um `agendamento_id` (garantindo no máximo
+    uma avaliação por agendamento via constraint única) ou a um `orcamento_id`.
+    """
+
+    __tablename__ = "avaliacoes"
+    __table_args__ = (
+        CheckConstraint(
+            "nota >= 1 AND nota <= 5",
+            name="ck_avaliacoes_nota_valida",
+        ),
+        UniqueConstraint(
+            "agendamento_id",
+            name="uq_avaliacoes_agendamento",
+        ),
+        Index("ix_avaliacoes_professional_created", "professional_id", "created_at"),
+        Index("ix_avaliacoes_cliente_profissional", "cliente_id", "professional_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    cliente_id = Column(
+        Integer,
+        ForeignKey("clientes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    professional_id = Column(
+        Integer,
+        ForeignKey("professionals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    agendamento_id = Column(
+        Integer,
+        ForeignKey("agendamentos.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    orcamento_id = Column(
+        Integer,
+        ForeignKey("orcamentos.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    nota = Column(Integer, nullable=False, index=True)
+    comentario = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    cliente = relationship("Cliente")
+    professional = relationship("Professional")
+    agendamento = relationship("Agendamento")
+    orcamento = relationship("Orcamento")

@@ -21,10 +21,10 @@ export const AddressSection = ({
     data.cep,
     {
       onSuccess: (result) => {
-        if (result.logradouro) onChange('logradouro', result.logradouro);
-        if (result.bairro) onChange('bairro', result.bairro);
-        if (result.cidade) onChange('cidade', result.cidade);
-        if (result.estado_uf) onChange('estado_uf', result.estado_uf);
+        onChange('logradouro', result.logradouro);
+        onChange('bairro', result.bairro);
+        onChange('cidade', result.cidade);
+        onChange('estado_uf', result.estado_uf);
 
         setTimeout(() => {
           numeroRef.current?.focus();

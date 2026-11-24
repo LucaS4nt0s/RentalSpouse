@@ -46,7 +46,6 @@ export const ProfessionalDocumentsLink: React.FC<ProfessionalDocumentsLinkProps>
         title="Meus documentos"
         className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
       >
-        <FileCheck2 className="h-3.5 w-3.5" />
         <span className="hidden sm:inline">Meus documentos</span>
         <span className="sr-only sm:hidden">Meus documentos</span>
       </Link>
@@ -57,9 +56,8 @@ export const ProfessionalDocumentsLink: React.FC<ProfessionalDocumentsLinkProps>
     return (
       <Link
         href={PROFESSIONAL_DOCUMENTS_HREF}
-        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-rental-border bg-rental-surface px-7 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
+        className="inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-rental-border bg-rental-surface px-6 text-sm font-bold text-rental-ink transition-colors hover:border-[var(--rs-border-strong)]"
       >
-        <FileCheck2 className="h-4 w-4 text-rental-primary" />
         Meus documentos
       </Link>
     );
@@ -71,7 +69,6 @@ export const ProfessionalDocumentsLink: React.FC<ProfessionalDocumentsLinkProps>
         variant="secondary"
         size="md"
         className="w-full"
-        leftIcon={<FileCheck2 className="h-4 w-4" />}
       >
         Enviar meus documentos
       </Button>

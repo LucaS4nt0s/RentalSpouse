@@ -216,3 +216,142 @@ class TestIntelligentSearchAPI:
         resp = client.get("/api/professionals", params={"q": "ar"})
         assert resp.status_code == 200
         assert [x["email"] for x in resp.json()] == ["ar***d@search.com"]
+
+    def test_busca_por_eletrica_encontra_profissional_mesmo_com_muitos_outros_e_sem_normalized_fields(
+        self, client: TestClient, db_session
+    ):
+        for i in range(30):
+            db_session.add(
+                models.Professional(
+                    name=f"Pintor {i}",
+                    email=f"pintor{i}@search.com",
+                    bio="Pintura residencial e textura.",
+                    service_radius_km=20.0,
+                    specialties=["Pintura"],
+                    city="São Paulo",
+                    state="SP",
+                    is_active=True,
+                    approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+                )
+            )
+        p_eletrica = models.Professional(
+            name="João Souza",
+            email="joao.eletrica@search.com",
+            bio="Serviços gerais residenciais.",
+            service_radius_km=20.0,
+            specialties=["Elétrica"],
+            city="São Paulo",
+            state="SP",
+            is_active=True,
+            approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+        )
+        db_session.add(p_eletrica)
+        db_session.commit()
+        # Simula registro legado com campos normalizados nulos/desatualizados
+        db_session.query(models.Professional).filter_by(id=p_eletrica.id).update(
+            {
+                models.Professional.normalized_search: "",
+                models.Professional.normalized_specialties: "",
+            }
+        )
+        db_session.commit()
+
+        resp = client.get("/api/professionals/search", params={"q": "eletrica"})
+        assert resp.status_code == 200
+        data = resp.json()
+        emails = [p["email"] for p in data["items"]]
+        assert "jo***a@search.com" in emails
+
+    def test_distancia_calculada_entre_cliente_e_profissional_e_cobertura_de_raio(
+        self, client: TestClient, db_session
+    ):
+        from datetime import date
+        from security import create_access_token, hash_senha
+
+        cliente = models.Cliente(
+            nome="Cliente Campinas",
+            email="cli.campinas@search.com",
+            cpf="12345678909",
+            data_nascimento=date(1992, 1, 1),
+            senha_hash=hash_senha("SenhaForte123"),
+            cep="13010001",
+            logradouro="Av Francisco Glicério",
+            numero="100",
+            bairro="Centro",
+            cidade="Campinas",
+            estado="SP",
+            email_verificado=True,
+        )
+        db_session.add(cliente)
+
+        # 1. Profissional em Campinas (mesmo bairro/cidade) com raio de 15 km -> deve aparecer com distance_km <= 15
+        p_perto = models.Professional(
+            name="Eletricista Perto",
+            email="perto@search.com",
+            bio="Instalações elétricas residenciais.",
+            service_radius_km=15.0,
+            specialties=["Elétrica"],
+            cep="13010002",
+            logradouro="Rua Barão de Jaguara",
+            numero="200",
+            bairro="Centro",
+            city="Campinas",
+            state="SP",
+            is_active=True,
+            approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+        )
+        # 2. Profissional em São Paulo (~88 km de Campinas) com raio de 20 km -> NÃO cobre Campinas, deve ser filtrado!
+        p_fora_raio = models.Professional(
+            name="Eletricista Longe Demais",
+            email="longe.demais@search.com",
+            bio="Instalações elétricas residenciais.",
+            service_radius_km=20.0,
+            specialties=["Elétrica"],
+            cep="01001000",
+            logradouro="Praça da Sé",
+            numero="10",
+            bairro="Sé",
+            city="São Paulo",
+            state="SP",
+            is_active=True,
+            approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+        )
+        # 3. Profissional em São Paulo (~88 km de Campinas) com raio de 100 km -> cobre Campinas, deve aparecer com distance_km ~ 88
+        p_cobre = models.Professional(
+            name="Eletricista Raio Amplo",
+            email="raio.amplo@search.com",
+            bio="Instalações elétricas em todo o estado.",
+            service_radius_km=100.0,
+            specialties=["Elétrica"],
+            cep="01001000",
+            logradouro="Praça da Sé",
+            numero="10",
+            bairro="Sé",
+            city="São Paulo",
+            state="SP",
+            is_active=True,
+            approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+        )
+        db_session.add_all([p_perto, p_fora_raio, p_cobre])
+        db_session.commit()
+
+        token = create_access_token(data={"sub": cliente.email, "role": "client"})
+        resp = client.get(
+            "/api/professionals/search",
+            params={"q": "eletrica"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        names = [item["name"] for item in items]
+
+        assert "Eletricista Perto" in names
+        assert "Eletricista Raio Amplo" in names
+        assert "Eletricista Longe Demais" not in names
+
+        perto_item = next(item for item in items if item["name"] == "Eletricista Perto")
+        amplo_item = next(item for item in items if item["name"] == "Eletricista Raio Amplo")
+        assert perto_item["distance_km"] is not None
+        assert perto_item["distance_km"] < 15.0
+        assert amplo_item["distance_km"] is not None
+        assert 70.0 <= amplo_item["distance_km"] <= 100.0

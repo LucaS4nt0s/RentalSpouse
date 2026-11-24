@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import {
   X,
   Phone,
@@ -15,7 +16,9 @@ import {
 } from 'lucide-react';
 import { Professional } from '../../types/professional';
 import { useAuth } from '../../context/AuthContext';
+import { acquireBodyScrollLock } from '../../lib/scrollLock';
 import { criarOrcamento } from '../../services/orcamentos';
+import { mensagemErro } from '../../services/apiError';
 
 interface QuoteModalProps {
   professional: Professional | null;
@@ -89,8 +92,7 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
       textareaRef.current?.focus();
     }, 50);
 
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const releaseScrollLock = acquireBodyScrollLock();
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -130,7 +132,7 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
 
     return () => {
       clearTimeout(focusTimeout);
-      document.body.style.overflow = originalOverflow;
+      releaseScrollLock();
       window.removeEventListener('keydown', handleKeyDown);
 
       if (previouslyFocusedElementRef.current) {
@@ -224,7 +226,7 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
         setPhotoPreviews([]);
       }, 3500);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao solicitar orçamento.';
+      const msg = mensagemErro(err, 'Falha ao solicitar orçamento.');
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
@@ -269,6 +271,22 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
                 ✓ {photos.length} foto(s) anexada(s) com sucesso.
               </p>
             )}
+            <div className="mt-5 flex flex-col sm:flex-row items-center gap-2">
+              <Link
+                href="/cliente/orcamentos"
+                onClick={onClose}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-rental-primary px-4 py-2 text-xs font-bold text-white shadow-primary hover:bg-[var(--rs-primary-hover)] transition-all"
+              >
+                Acompanhar Meus Orçamentos
+              </Link>
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl border border-rental-border px-4 py-2 text-xs font-semibold text-rental-muted hover:text-rental-ink transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         ) : (
           <div>
@@ -299,7 +317,6 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
 
             {errorMessage && (
               <div className="mt-4 flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-600 dark:text-red-400">
-                <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{errorMessage}</span>
               </div>
             )}
@@ -374,7 +391,6 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold text-rental-ink flex items-center gap-1.5">
-                    <ImageIcon className="h-3.5 w-3.5 text-rental-primary" />
                     Fotos do problema (opcional):
                   </label>
                   <span className="text-[11px] text-rental-muted">
@@ -437,11 +453,9 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
               {/* Informações de Proteção de Contato */}
               <div className="flex items-center justify-between gap-3 text-xs text-rental-muted pt-1 border-t border-rental-border/40">
                 <span className="flex items-center gap-1" title="Contato protegido">
-                  <Phone className="h-3.5 w-3.5 text-rental-primary" />
                   {maskPhone(professional.phone)}
                 </span>
                 <span className="flex items-center gap-1" title="Contato protegido">
-                  <Mail className="h-3.5 w-3.5 text-rental-primary" />
                   {maskEmail(professional.email)}
                 </span>
               </div>
@@ -468,7 +482,6 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
                     </>
                   ) : (
                     <>
-                      <Send className="h-4 w-4" />
                       <span>Enviar Solicitação</span>
                     </>
                   )}

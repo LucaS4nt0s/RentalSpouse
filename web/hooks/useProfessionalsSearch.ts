@@ -1,19 +1,28 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Professional } from '../types/professional';
-import { filterProfessionalsIntelligent } from '../utils/searchMatching';
+import { cleanText } from '../utils/searchMatching';
+import {
+  RadiusFilterValue,
+  SortOrderValue,
+  buildProfessionalsSearchUrl,
+} from '../lib/professionalsSearchQuery';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 export interface UseProfessionalsSearchOptions {
   specialty?: string;
   city?: string;
+  state?: string;
   q?: string;
+  radius?: RadiusFilterValue;
+  orderBy?: SortOrderValue;
 }
 
 export interface UseProfessionalsSearchResult {
   data: Professional[];
+  total: number;
   isLoading: boolean;
   isRetrying: boolean;
   error: string | null;
@@ -23,17 +32,26 @@ export interface UseProfessionalsSearchResult {
   retry: () => void;
 }
 
+interface PaginatedProfessionalsResponse {
+  items: Professional[];
+  total: number;
+  detected_suggestion?: string | null;
+}
+
 /**
  * Hook central de busca de profissionais no RentalSpouse.
- * Implementa com rigor os 3 estados obrigatórios e busca inteligente com tolerância
- * a erros ortográficos (estilo YouTube/Spotify) e insensibilidade a acentos.
+ * Consulta `specialty`, `state`, `q` e `order_by` no backend e aplica cidade e distância
+ * instantaneamente em memória para zero latência ao digitar ou deslizar a barra.
  */
 export function useProfessionalsSearch({
   specialty = '',
   city = '',
+  state = '',
   q = '',
+  radius = '',
+  orderBy = '',
 }: UseProfessionalsSearchOptions): UseProfessionalsSearchResult {
-  const [data, setData] = useState<Professional[]>([]);
+  const [rawItems, setRawItems] = useState<Professional[]>([]);
   const [detectedSuggestion, setDetectedSuggestion] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRetrying, setIsRetrying] = useState<boolean>(false);
@@ -41,7 +59,6 @@ export function useProfessionalsSearch({
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchData = useCallback(async () => {
-    // Cancela requisição anterior em andamento
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -52,18 +69,30 @@ export function useProfessionalsSearch({
     setError(null);
 
     try {
-      const url = new URL(`${API_BASE_URL}/api/professionals`);
-      if (specialty && specialty !== 'Todas') {
-        url.searchParams.set('specialty', specialty);
-      }
-      url.searchParams.set('approval_status', 'approved');
-      url.searchParams.set('limit', '50');
+      const requestUrl = buildProfessionalsSearchUrl(API_BASE_URL, {
+        specialty,
+        state,
+        q,
+        orderBy,
+        approvalStatus: 'approved',
+        limit: 50,
+      });
 
-      const response = await fetch(url.toString(), {
+      const token =
+        typeof window !== 'undefined'
+          ? window.localStorage.getItem('rentalspouse_token')
+          : null;
+
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetch(requestUrl, {
         signal: controller.signal,
-        headers: {
-          Accept: 'application/json',
-        },
+        headers,
       });
 
       if (!response.ok) {
@@ -72,16 +101,16 @@ export function useProfessionalsSearch({
         );
       }
 
-      const result: Professional[] = await response.json();
+      const payload: PaginatedProfessionalsResponse | Professional[] = await response.json();
 
-      // Motor de busca inteligente: acentos, aproximações (fuzzy), sinônimos e ranking
-      const { results: filtered, detectedSuggestion: sugg } = filterProfessionalsIntelligent(
-        result,
-        { q, specialty, city }
-      );
-
-      setData(filtered);
-      setDetectedSuggestion(sugg);
+      if (Array.isArray(payload)) {
+        setRawItems(payload);
+        setDetectedSuggestion(null);
+      } else {
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        setRawItems(items);
+        setDetectedSuggestion(payload.detected_suggestion ?? null);
+      }
       setIsLoading(false);
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') {
@@ -92,7 +121,7 @@ export function useProfessionalsSearch({
       );
       setIsLoading(false);
     }
-  }, [specialty, city, q]);
+  }, [specialty, state, q, orderBy]);
 
   useEffect(() => {
     fetchData();
@@ -104,6 +133,33 @@ export function useProfessionalsSearch({
     };
   }, [fetchData]);
 
+  // ponytail: filtro instantâneo em memória para cidade/distância sobre a página (limit=50); mover para SQL se > 50 ativos
+  const data = useMemo(() => {
+    let items = rawItems;
+    const normCity = cleanText(city);
+    if (normCity) {
+      items = items.filter((p) => cleanText(p.city).includes(normCity));
+    }
+
+    if (/^\d+$/.test(radius)) {
+      const maxKm = Number(radius);
+      items = items.filter((p) => typeof p.distance_km === 'number' && p.distance_km <= maxKm);
+      if (!orderBy) {
+        items = [...items].sort((a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity));
+      }
+    } else if (radius === 'max_10') {
+      items = items.filter((p) => p.service_radius_km <= 10);
+    } else if (radius === 'min_10') {
+      items = items.filter((p) => p.service_radius_km >= 10);
+    } else if (radius === 'min_25') {
+      items = items.filter((p) => p.service_radius_km >= 25);
+    } else if (radius === 'min_50') {
+      items = items.filter((p) => p.service_radius_km >= 50);
+    }
+
+    return items;
+  }, [rawItems, city, radius, orderBy]);
+
   const retry = useCallback(async () => {
     setIsRetrying(true);
     await fetchData();
@@ -114,6 +170,7 @@ export function useProfessionalsSearch({
 
   return {
     data,
+    total: data.length,
     isLoading,
     isRetrying,
     error,

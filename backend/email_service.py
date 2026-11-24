@@ -1,4 +1,4 @@
-"""
+﻿"""
 Camada de transporte de e-mail transacional do RentalSpouse.
 
 Responsabilidade única: **entregar** uma mensagem de e-mail com alta
@@ -21,6 +21,7 @@ Transportes disponíveis, selecionados pela variável de ambiente `EMAIL_BACKEND
 | `memoria` | Guarda as mensagens em memória (testes automatizados)  |
 """
 
+import env_loader  # noqa: F401
 import html
 import logging
 import os
@@ -150,18 +151,23 @@ class ConfiguracaoSmtp:
 
     @classmethod
     def do_ambiente(cls) -> "ConfiguracaoSmtp":
-        host = os.getenv("SMTP_HOST", "").strip()
+        host = os.getenv("SMTP_HOST", "").strip().strip('"').strip("'")
         porta = _parse_int_seguro(os.getenv("SMTP_PORT"), padrao=587, minimo=1, maximo=65535)
-        usar_ssl = _parse_bool_seguro(os.getenv("SMTP_USE_SSL"), padrao=(porta == 465))
-        usar_tls = _parse_bool_seguro(os.getenv("SMTP_USE_TLS"), padrao=True)
+        usar_ssl = (porta == 465) or _parse_bool_seguro(os.getenv("SMTP_USE_SSL"), padrao=(porta == 465))
+        usar_tls = _parse_bool_seguro(os.getenv("SMTP_USE_TLS"), padrao=(porta != 465))
         timeout = _parse_int_seguro(os.getenv("SMTP_TIMEOUT"), padrao=10, minimo=1, maximo=120)
         max_tentativas = _parse_int_seguro(os.getenv("SMTP_MAX_RETRIES"), padrao=3, minimo=1, maximo=10)
+
+        usuario = os.getenv("SMTP_USER", "").strip().strip('"').strip("'")
+        senha = os.getenv("SMTP_PASSWORD", "").strip().strip('"').strip("'")
+        if "gmail.com" in host.lower() and len(senha.replace(" ", "")) == 16:
+            senha = senha.replace(" ", "")
 
         return cls(
             host=host,
             porta=porta,
-            usuario=os.getenv("SMTP_USER", "").strip(),
-            senha=os.getenv("SMTP_PASSWORD", ""),
+            usuario=usuario,
+            senha=senha,
             usar_tls=usar_tls,
             usar_ssl=usar_ssl,
             timeout=timeout,
@@ -199,7 +205,10 @@ class TransporteSmtp:
         self.backoff_inicial = max(0.01, backoff_inicial)
 
     def _executar_disparo(self, mensagem: EmailMessage) -> None:
-        """Executa um ciclo pontual de conexão e entrega SMTP."""
+        """Executa um ciclo pontual de conexão e entrega SMTP com suporte resiliente a STARTTLS/SSL."""
+        destinatario = str(mensagem.get("To", "")).strip()
+        _, endereco_remetente = remetente()
+
         if self.usar_ssl:
             contexto_ssl = ssl.create_default_context()
             with smtplib.SMTP_SSL(
@@ -211,16 +220,23 @@ class TransporteSmtp:
                 smtp.ehlo()
                 if self.usuario:
                     smtp.login(self.usuario, self.senha)
-                smtp.send_message(mensagem)
+                smtp.send_message(mensagem, from_addr=endereco_remetente, to_addrs=[destinatario])
         else:
             with smtplib.SMTP(self.host, self.porta, timeout=self.timeout) as smtp:
                 smtp.ehlo()
                 if self.usar_tls:
-                    smtp.starttls()
-                    smtp.ehlo()
+                    if smtp.has_extn("STARTTLS"):
+                        smtp.starttls()
+                        smtp.ehlo()
+                    else:
+                        logger.warning(
+                            "Servidor SMTP em %s:%d não anunciou extensão STARTTLS. Continuando sem TLS.",
+                            self.host,
+                            self.porta,
+                        )
                 if self.usuario:
                     smtp.login(self.usuario, self.senha)
-                smtp.send_message(mensagem)
+                smtp.send_message(mensagem, from_addr=endereco_remetente, to_addrs=[destinatario])
 
     def enviar(self, mensagem: EmailMessage) -> None:
         """
@@ -305,8 +321,18 @@ def limpar_caixa_de_saida() -> None:
 
 
 def backend_configurado() -> str:
-    """Nome do transporte selecionado em `EMAIL_BACKEND`."""
-    return os.getenv("EMAIL_BACKEND", BACKEND_PADRAO).strip().lower()
+    """
+    Nome do transporte selecionado em `EMAIL_BACKEND`.
+
+    Caso EMAIL_BACKEND não esteja definido ou seja vazio, mas SMTP_HOST
+    esteja configurado, adota automaticamente 'smtp' para permitir o envio real.
+    """
+    valor = os.getenv("EMAIL_BACKEND", "").strip().lower()
+    if not valor:
+        if os.getenv("SMTP_HOST", "").strip():
+            return "smtp"
+        return BACKEND_PADRAO
+    return valor
 
 
 def app_base_url() -> str:
@@ -321,16 +347,17 @@ def remetente() -> Tuple[str, str]:
     Caso o endereço padrão seja um domínio fictício (ex.: .local) ou vazio,
     e houver um SMTP_USER configurado com formato de e-mail, adota o SMTP_USER
     como remetente para evitar rejeições de envio (ex.: erro 550 por SPF/spoofing).
+    Se não houver SMTP_USER com @, adota um domínio padrão válido (rentalspouse.com).
     """
     nome = (os.getenv("EMAIL_FROM_NAME") or "RentalSpouse").strip()
-    endereco = (os.getenv("EMAIL_FROM_ADDRESS") or "").strip()
-    smtp_user = (os.getenv("SMTP_USER") or "").strip()
+    endereco = (os.getenv("EMAIL_FROM_ADDRESS") or "").strip().strip('"').strip("'")
+    smtp_user = (os.getenv("SMTP_USER") or "").strip().strip('"').strip("'")
 
     if not endereco or endereco.endswith(".local"):
         if "@" in smtp_user:
             endereco = smtp_user
         elif not endereco:
-            endereco = "nao-responda@rentalspouse.local"
+            endereco = "nao-responda@rentalspouse.com"
 
     return (nome, endereco)
 
@@ -363,6 +390,13 @@ def obter_transporte() -> TransporteEmail:
             usar_ssl=cfg.usar_ssl,
             max_tentativas=cfg.max_tentativas,
             backoff_inicial=cfg.backoff_inicial,
+        )
+
+    if backend == "console" and os.getenv("SMTP_HOST", "").strip():
+        logger.warning(
+            "SMTP_HOST='%s' está configurado, mas EMAIL_BACKEND está definido como 'console'. "
+            "Os e-mails serão apenas registrados no log. Para envio real, defina EMAIL_BACKEND=smtp.",
+            os.getenv("SMTP_HOST", "").strip(),
         )
 
     if backend != "console":
@@ -414,13 +448,13 @@ def montar_mensagem_verificacao(
     mensagem = EmailMessage()
     mensagem["Subject"] = "Confirme seu e-mail na RentalSpouse"
     mensagem["From"] = formataddr((nome_remetente, endereco_remetente))
-    mensagem["To"] = destinatario
+    mensagem["To"] = (destinatario or "").strip()
     mensagem["Date"] = formatdate(localtime=True)
 
     dominio = "rentalspouse.com"
     if "@" in endereco_remetente:
         dominio_candidato = endereco_remetente.split("@")[-1].strip()
-        if dominio_candidato and "." in dominio_candidato:
+        if dominio_candidato and "." in dominio_candidato and not dominio_candidato.endswith(".local"):
             dominio = dominio_candidato
 
     mensagem["Message-ID"] = make_msgid(domain=dominio)
@@ -513,5 +547,127 @@ def enviar_email_verificacao(
         nome=nome,
         token=token,
         expira_horas=expira_horas,
+    )
+    transporte.enviar(mensagem)
+
+
+# ---------------------------------------------------------------------------
+# Recuperação de senha (issue #75)
+# ---------------------------------------------------------------------------
+
+
+def montar_link_redefinicao(token: str) -> str:
+    """Monta o link de redefinição de senha enviado por e-mail."""
+    return f"{app_base_url()}/redefinir-senha?token={quote(token)}"
+
+
+def montar_mensagem_redefinicao(
+    destinatario: str,
+    nome: str,
+    token: str,
+    expira_minutos: int,
+) -> EmailMessage:
+    """Compõe o e-mail transacional de redefinição de senha (texto puro + HTML)."""
+    nome_remetente, endereco_remetente = remetente()
+    link = montar_link_redefinicao(token)
+    primeiro_nome_puro = (nome or "").split(" ")[0] or "olá"
+    primeiro_nome_html = html.escape(primeiro_nome_puro)
+    link_html = html.escape(link, quote=True)
+
+    mensagem = EmailMessage()
+    mensagem["Subject"] = "Redefinição de senha na RentalSpouse"
+    mensagem["From"] = formataddr((nome_remetente, endereco_remetente))
+    mensagem["To"] = destinatario
+    mensagem["Date"] = formatdate(localtime=True)
+
+    dominio = "rentalspouse.com"
+    if "@" in endereco_remetente:
+        dominio_candidato = endereco_remetente.split("@")[-1].strip()
+        if dominio_candidato and "." in dominio_candidato:
+            dominio = dominio_candidato
+
+    mensagem["Message-ID"] = make_msgid(domain=dominio)
+    mensagem["Auto-Submitted"] = "auto-generated"
+    mensagem["X-Mailer"] = "RentalSpouse Transacional/1.0"
+
+    reply_to = (os.getenv("EMAIL_REPLY_TO") or "").strip() or endereco_remetente
+    if reply_to and "@" in reply_to:
+        mensagem["Reply-To"] = reply_to
+
+    texto = (
+        f"Olá, {primeiro_nome_puro}!\n\n"
+        "Recebemos uma solicitação para redefinir a senha da sua conta na RentalSpouse.\n"
+        "Crie uma nova senha acessando o link abaixo:\n\n"
+        f"{link}\n\n"
+        f"Este link é de uso único e expira em {expira_minutos} minuto(s).\n\n"
+        "Se você não solicitou essa redefinição, ignore esta mensagem. "
+        "Sua senha atual continua válida.\n\n"
+        "Equipe RentalSpouse"
+    )
+
+    corpo_html = f"""\
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <body style="margin:0;padding:24px;background:#f4f6fb;font-family:Arial,Helvetica,sans-serif;color:#0E1B2E;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="520" cellpadding="0" cellspacing="0"
+                 style="background:#ffffff;border-radius:16px;padding:32px;border:1px solid #e2e8f0;">
+            <tr>
+              <td>
+                <h1 style="margin:0 0 16px;font-size:20px;color:#1E40AF;">Redefinição de senha</h1>
+                <p style="margin:0 0 16px;font-size:14px;line-height:22px;">
+                  Olá, <strong>{primeiro_nome_html}</strong>! Recebemos uma solicitação para
+                  redefinir a senha da sua conta na RentalSpouse.
+                </p>
+                <p style="margin:0 0 24px;font-size:14px;line-height:22px;">
+                  Clique no botão abaixo para criar uma nova senha:
+                </p>
+                <p style="margin:0 0 20px;">
+                  <a href="{link_html}"
+                     style="display:inline-block;background:#1D4ED8;color:#ffffff;text-decoration:none;
+                            font-size:14px;font-weight:bold;padding:12px 24px;border-radius:12px;">
+                    Criar nova senha
+                  </a>
+                </p>
+                <p style="margin:0 0 20px;font-size:12px;line-height:18px;color:#64748B;">
+                  Se o botão não funcionar, copie e cole este link no navegador:<br/>
+                  <a href="{link_html}" style="color:#1D4ED8;word-break:break-all;">{link_html}</a>
+                </p>
+                <p style="margin:0 0 16px;font-size:12px;line-height:20px;color:#64748B;">
+                  Este link é de uso único e expira em {expira_minutos} minuto(s).
+                </p>
+                <p style="margin:0;font-size:12px;line-height:20px;color:#64748B;">
+                  Se você não solicitou essa redefinição, ignore esta mensagem.
+                  Sua senha atual continua válida.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>"""
+
+    mensagem.set_content(texto)
+    mensagem.add_alternative(corpo_html, subtype="html")
+    return mensagem
+
+
+def enviar_email_redefinicao(
+    destinatario: str,
+    nome: str,
+    token: str,
+    expira_minutos: int,
+) -> None:
+    """Compõe e entrega o e-mail de redefinição de senha pelo transporte ativo."""
+    transporte = obter_transporte()
+    mensagem = montar_mensagem_redefinicao(
+        destinatario=destinatario,
+        nome=nome,
+        token=token,
+        expira_minutos=expira_minutos,
     )
     transporte.enviar(mensagem)

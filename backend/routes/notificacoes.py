@@ -1,3 +1,4 @@
+from datetime import timezone
 """
 Rotas de Notificações Persistidas e WebSocket em Tempo Real (Issue #34).
 
@@ -71,7 +72,7 @@ def registrar_e_enviar_notificacao(
         "mensagem": notificacao.mensagem,
         "tipo": notificacao.tipo,
         "referencia_id": notificacao.referencia_id,
-        "criada_em": notificacao.criada_em.isoformat(),
+        "criada_em": (notificacao.criada_em if notificacao.criada_em.tzinfo else notificacao.criada_em.replace(tzinfo=timezone.utc)).isoformat(),
     }
     if payload_extra:
         ws_payload.update(payload_extra)
@@ -99,34 +100,67 @@ def enviar_email_alerta_orcamento(
 ) -> bool:
     """
     Envia e-mail de alerta transacional ao destinatário sobre a solicitação.
+    Inclui headers RFC 5322 anti-spam, diagnóstico claro em logs e fallback seguro
+    para console em ambientes de desenvolvimento caso o SMTP não esteja acessível.
     Nunca levanta exceção para não quebrar a transação de negócio principal.
     """
+    destinatario_limpo = (destinatario_email or "").strip()
+    destinatario_mascarado = email_service.mascarar_email(destinatario_limpo)
+    nome_remetente, endereco_remetente = email_service.remetente()
+
+    msg = email_service.EmailMessage()
+    msg["Subject"] = f"RentalSpouse: {titulo}"
+    msg["From"] = email_service.formataddr((nome_remetente, endereco_remetente))
+    msg["To"] = destinatario_limpo
+    msg["Date"] = email_service.formatdate(localtime=True)
+    dominio = (
+        endereco_remetente.split("@")[-1].strip()
+        if "@" in endereco_remetente and not endereco_remetente.endswith(".local")
+        else "rentalspouse.com"
+    )
+    msg["Message-ID"] = email_service.make_msgid(domain=dominio)
+    msg["Auto-Submitted"] = "auto-generated"
+    msg["X-Mailer"] = "RentalSpouse Transacional/1.0"
+
+    corpo_texto = (
+        f"Olá, {destinatario_nome}!\n\n"
+        f"{titulo}\n\n"
+        f"Detalhes do pedido (Orçamento #{orcamento_id}):\n"
+        f"\"{descricao}\"\n\n"
+        "Acesse a plataforma RentalSpouse para visualizar o pedido completo e enviar sua estimativa:\n"
+        f"{email_service.app_base_url()}/profissionais\n\n"
+        "Atenciosamente,\nEquipe RentalSpouse"
+    )
+    msg.set_content(corpo_texto)
+
     try:
         transporte = email_service.obter_transporte()
-        nome_remetente, endereco_remetente = email_service.remetente()
-
-        msg = email_service.EmailMessage()
-        msg["Subject"] = f"RentalSpouse: {titulo}"
-        msg["From"] = f"{nome_remetente} <{endereco_remetente}>"
-        msg["To"] = destinatario_email
-        msg["Auto-Submitted"] = "auto-generated"
-
-        corpo_texto = (
-            f"Olá, {destinatario_nome}!\n\n"
-            f"{titulo}\n\n"
-            f"Detalhes do pedido (Orçamento #{orcamento_id}):\n"
-            f"\"{descricao}\"\n\n"
-            "Acesse a plataforma RentalSpouse para visualizar o pedido completo e enviar sua estimativa:\n"
-            f"{email_service.app_base_url()}/profissionais\n\n"
-            "Atenciosamente,\nEquipe RentalSpouse"
-        )
-        msg.set_content(corpo_texto)
-
         transporte.enviar(msg)
-        logger.info("E-mail de notificação de orçamento despachado para %s", email_service.mascarar_email(destinatario_email))
+        logger.info(
+            "E-mail de notificação de orçamento #%d despachado com sucesso para %s (backend=%s)",
+            orcamento_id,
+            destinatario_mascarado,
+            email_service.backend_configurado(),
+        )
         return True
     except Exception as exc:
-        logger.warning("Falha ao enviar e-mail de notificação para %s: %s", email_service.mascarar_email(destinatario_email), exc)
+        logger.error(
+            "Falha ao enviar e-mail de notificação de orçamento #%d para %s (backend=%s): %s",
+            orcamento_id,
+            destinatario_mascarado,
+            email_service.backend_configurado(),
+            exc,
+        )
+        if email_service.os.getenv("ENVIRONMENT", "development").lower() != "production":
+            try:
+                email_service.TransporteConsole().enviar(msg)
+                logger.info(
+                    "Fallback TransporteConsole executado para orçamento #%d (%s).",
+                    orcamento_id,
+                    destinatario_mascarado,
+                )
+            except Exception:
+                pass
         return False
 
 

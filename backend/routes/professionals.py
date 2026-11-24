@@ -1,12 +1,14 @@
 from datetime import datetime, timezone
+import logging
 import os
 import re
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -22,10 +24,12 @@ from sqlalchemy import String, case, cast, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import geolocation
 import models
 import notificacoes
 import search
 import storage
+import verificacao
 from database import get_db
 from models import normalize_text
 from rate_limiter import check_contact_rate_limit, check_search_rate_limit
@@ -42,10 +46,11 @@ from schemas import (
     SpecialtyCategoryRead,
     UFS_VALIDAS,
 )
-from security import get_optional_current_user, hash_senha
+from security import get_optional_current_user, hash_senha, verificar_email_disponivel
 
 router = APIRouter(prefix="/api/professionals", tags=["Profissionais"])
 profissionais_router = APIRouter(prefix="/api/profissionais", tags=["Profissionais"])
+logger = logging.getLogger("rentalspouse.professionals")
 
 def _parse_max_search_candidates() -> int:
     try:
@@ -72,68 +77,51 @@ MAX_FALLBACK_CANDIDATES = MAX_SEARCH_CANDIDATES
 )
 def create_professional(
     payload: ProfessionalCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """
     Cria um perfil de profissional com bio detalhada, especialidades e raio de atendimento.
-    Garante unicidade de e-mail e validação das especialidades e raio mínimo (>= 1 km).
+    Garante unicidade cross-table de e-mail, validação das especialidades, raio mínimo (>= 1 km)
+    e disparo do e-mail de verificação/boas-vindas em background.
     """
-    existing_professional = (
-        db.query(models.Professional)
-        .filter(models.Professional.email == payload.email)
-        .first()
+    email_normalizado = verificar_email_disponivel(
+        db,
+        payload.email,
+        detail="E-mail já cadastrado na plataforma.",
     )
-    if existing_professional:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="E-mail já cadastrado para outro profissional.",
-        )
-
-    existing_user = (
-        db.query(models.User)
-        .filter(models.User.email == payload.email)
-        .first()
-    )
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="E-mail já cadastrado na plataforma.",
-        )
-
-    existing_cliente = (
-        db.query(models.Cliente)
-        .filter(models.Cliente.email == payload.email)
-        .first()
-    )
-    if existing_cliente:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="E-mail já cadastrado na plataforma.",
-        )
 
     senha_hash = hash_senha(payload.password) if payload.password else None
 
     professional = models.Professional(
         name=payload.name,
-        email=payload.email,
+        email=email_normalizado,
         phone=payload.phone,
         bio=payload.bio,
         service_radius_km=payload.service_radius_km,
         specialties=payload.specialties,
+        cep=payload.cep,
+        logradouro=payload.logradouro,
+        numero=payload.numero,
+        complemento=payload.complemento,
+        bairro=payload.bairro,
         city=payload.city,
         state=payload.state,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
         senha_hash=senha_hash,
+        email_verificado=False,
     )
     try:
         db.add(professional)
         if senha_hash:
             user = models.User(
                 name=payload.name,
-                email=payload.email,
+                email=email_normalizado,
                 hashed_password=senha_hash,
                 role=models.UserRole.PROFESSIONAL.value,
                 is_active=True,
-                email_verificado=True,
+                email_verificado=False,
             )
             db.add(user)
         db.commit()
@@ -145,6 +133,10 @@ def create_professional(
         )
 
     db.refresh(professional)
+
+    if senha_hash:
+        pendente = verificacao.preparar_verificacao(db, professional)
+        background_tasks.add_task(verificacao.enviar_email_de_verificacao, pendente)
 
     return professional
 
@@ -343,6 +335,181 @@ def get_specialties_catalog(
     return categories_result
 
 
+def _populate_professionals_reputation(
+    db: Session,
+    professionals: Sequence[models.Professional],
+) -> None:
+    """
+    Carrega em lote as estatísticas de reputação (total de avaliações e nota média)
+    para a lista de profissionais fornecida, evitando consultas N+1.
+    """
+    if not professionals:
+        return
+
+    prof_ids = [p.id for p in professionals if p and getattr(p, "id", None)]
+    if not prof_ids:
+        return
+
+    try:
+        stats = (
+            db.query(
+                models.Avaliacao.professional_id,
+                func.count(models.Avaliacao.id).label("total"),
+                func.avg(models.Avaliacao.nota).label("media"),
+            )
+            .filter(models.Avaliacao.professional_id.in_(prof_ids))
+            .group_by(models.Avaliacao.professional_id)
+            .all()
+        )
+    except Exception as exc:
+        logger.warning("Falha ao consultar reputação agregada dos profissionais: %s", exc)
+        return
+
+    stats_map: Dict[int, Tuple[int, Optional[float]]] = {
+        row[0]: (
+            int(row[1]),
+            round(float(row[2]), 1) if row[2] is not None else None,
+        )
+        for row in stats
+    }
+
+    for p in professionals:
+        if p and getattr(p, "id", None) in stats_map:
+            total, media = stats_map[p.id]
+            p.reviews_count = total
+            p.average_rating = media
+        elif p:
+            p.reviews_count = 0
+            p.average_rating = None
+
+
+def _resolve_client_location(
+    db: Session,
+    current_user: Optional[models.User],
+    client_cep: Optional[str] = None,
+    client_city: Optional[str] = None,
+    client_state: Optional[str] = None,
+    client_bairro: Optional[str] = None,
+    client_logradouro: Optional[str] = None,
+    client_numero: Optional[str] = None,
+    client_lat: Optional[float] = None,
+    client_lng: Optional[float] = None,
+) -> Optional[Dict[str, Any]]:
+    """Resolve o endereço de referência do cliente via parâmetros ou cadastro do cliente logado."""
+    location: Dict[str, Any] = {}
+
+    if current_user and current_user.role == models.UserRole.CLIENT.value:
+        cliente = (
+            db.query(models.Cliente)
+            .filter(models.Cliente.email == current_user.email)
+            .first()
+        )
+        if cliente is not None:
+            location = {
+                "cep": cliente.cep,
+                "logradouro": cliente.logradouro,
+                "numero": cliente.numero,
+                "bairro": cliente.bairro,
+                "cidade": cliente.cidade,
+                "estado": cliente.estado,
+                "latitude": cliente.latitude,
+                "longitude": cliente.longitude,
+            }
+    elif current_user and current_user.role == models.UserRole.PROFESSIONAL.value:
+        prof_user = (
+            db.query(models.Professional)
+            .filter(models.Professional.email == current_user.email)
+            .first()
+        )
+        if prof_user is not None:
+            location = {
+                "cep": prof_user.cep,
+                "logradouro": prof_user.logradouro,
+                "numero": prof_user.numero,
+                "bairro": prof_user.bairro,
+                "cidade": prof_user.city,
+                "estado": prof_user.state,
+                "latitude": prof_user.latitude,
+                "longitude": prof_user.longitude,
+            }
+
+    overrides = {
+        "cep": client_cep,
+        "cidade": client_city,
+        "estado": client_state.strip().upper() if client_state else None,
+        "bairro": client_bairro,
+        "logradouro": client_logradouro,
+        "numero": client_numero,
+        "latitude": client_lat,
+        "longitude": client_lng,
+    }
+    for key, val in overrides.items():
+        if val is not None and (not isinstance(val, str) or val.strip()):
+            location[key] = val.strip() if isinstance(val, str) else val
+
+    has_any = any(
+        location.get(k) is not None and (not isinstance(location.get(k), str) or bool(location.get(k).strip()))
+        for k in ("cep", "cidade", "estado", "latitude", "longitude")
+    )
+    return location if has_any else None
+
+
+def _default_reference_location(
+    city: Optional[str] = None,
+    state: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Ponto de referência padrão (São Paulo Centro) quando não há endereço do cliente."""
+    return {
+        "cidade": "São Paulo",
+        "estado": "SP",
+        "latitude": -23.5505,
+        "longitude": -46.6333,
+    }
+
+
+def _professional_location(prof: models.Professional) -> Dict[str, Any]:
+    return {
+        "cep": prof.cep,
+        "logradouro": prof.logradouro,
+        "numero": prof.numero,
+        "bairro": prof.bairro,
+        "cidade": prof.city,
+        "estado": prof.state,
+        "latitude": prof.latitude,
+        "longitude": prof.longitude,
+    }
+
+
+def _apply_distance_and_radius_filter(
+    professionals: Sequence[models.Professional],
+    client_location: Optional[Dict[str, Any]],
+    min_distance_km: Optional[float] = None,
+    max_distance_km: Optional[float] = None,
+) -> List[models.Professional]:
+    """Calcula a distância do cliente ao profissional e mantém só quem cobre a área do cliente."""
+    result: List[models.Professional] = []
+    for prof in professionals:
+        if client_location is None:
+            prof.distance_km = None
+            result.append(prof)
+            continue
+
+        covers, dist_km = geolocation.is_within_service_radius(
+            client_location,
+            _professional_location(prof),
+            prof.service_radius_km,
+        )
+        if not covers or dist_km is None:
+            continue
+        if min_distance_km is not None and dist_km < min_distance_km:
+            continue
+        if max_distance_km is not None and dist_km > max_distance_km:
+            continue
+        prof.distance_km = dist_km
+        result.append(prof)
+    return result
+
+
 def _execute_professionals_search(
     request: Request,
     response: Response,
@@ -354,6 +521,19 @@ def _execute_professionals_search(
     skip: int,
     limit: int,
     db: Session,
+    order_by: Optional[str] = None,
+    min_radius_km: Optional[float] = None,
+    max_radius_km: Optional[float] = None,
+    max_distance_km: Optional[float] = None,
+    current_user: Optional[models.User] = None,
+    client_cep: Optional[str] = None,
+    client_city: Optional[str] = None,
+    client_state: Optional[str] = None,
+    client_bairro: Optional[str] = None,
+    client_logradouro: Optional[str] = None,
+    client_numero: Optional[str] = None,
+    client_lat: Optional[float] = None,
+    client_lng: Optional[float] = None,
 ) -> PaginatedResponse[ProfessionalPublicRead]:
     """
     Executa a busca de profissionais (com pré-filtro SQL + ranqueamento inteligente em memória),
@@ -372,6 +552,32 @@ def _execute_professionals_search(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Estado '{state}' inválido. Deve ser uma sigla de UF brasileira válida.",
             )
+
+    if (
+        min_radius_km is not None
+        and max_radius_km is not None
+        and min_radius_km > max_radius_km
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="O raio mínimo de atendimento não pode ser maior que o raio máximo.",
+        )
+
+    ordenar_por_avaliacao = False
+    if order_by:
+        normalizado = order_by.strip().lower()
+        if normalizado in (
+            "avaliacao",
+            "rating",
+            "melhor_avaliados",
+            "melhores_avaliados",
+            "-avaliacao",
+            "-rating",
+            "rating_desc",
+            "nota",
+            "nota_desc",
+        ):
+            ordenar_por_avaliacao = True
 
     has_query = bool(q and q.strip())
     clean_q = search.clean_text(q) if has_query else ""
@@ -397,21 +603,32 @@ def _execute_professionals_search(
     if approval_status and approval_status.strip().lower() != "all":
         query = query.filter(models.Professional.approval_status == approval_status.strip().lower())
 
+    client_location = _resolve_client_location(
+        db=db,
+        current_user=current_user,
+        client_cep=client_cep,
+        client_city=client_city,
+        client_state=client_state,
+        client_bairro=client_bairro,
+        client_logradouro=client_logradouro,
+        client_numero=client_numero,
+        client_lat=client_lat,
+        client_lng=client_lng,
+    )
+
     if state:
         query = query.filter(models.Professional.state == state.strip().upper())
 
+    if client_location is None:
+        if min_radius_km is not None:
+            query = query.filter(models.Professional.service_radius_km >= min_radius_km)
+
+        if max_radius_km is not None:
+            query = query.filter(models.Professional.service_radius_km <= max_radius_km)
+
     if city and city.strip():
-        norm_city = normalize_text(city)
-        escaped_norm_city = _escape_like(norm_city)
-        escaped_city = _escape_like(city.strip())
-        query = query.filter(
-            or_(
-                models.Professional.normalized_city == norm_city,
-                models.Professional.normalized_city.like(f"{escaped_norm_city}%", escape="\\"),
-                models.Professional.normalized_city.like(f"%{escaped_norm_city}%", escape="\\"),
-                models.Professional.city.ilike(f"%{escaped_city}%", escape="\\"),
-            )
-        )
+        norm_city = _escape_like(normalize_text(city))
+        query = query.filter(models.Professional.normalized_city.like(f"%{norm_city}%", escape="\\"))
 
     if specialty and specialty.strip() and specialty.strip().lower() != "todas":
         norm_spec = normalize_text(specialty)
@@ -422,6 +639,7 @@ def _execute_professionals_search(
                 models.Professional.normalized_specialties.like(f"{escaped_norm_spec}%", escape="\\"),
                 models.Professional.normalized_specialties.like(f"%{escaped_norm_spec}%", escape="\\"),
                 cast(models.Professional.specialties, String).ilike(f"%{escaped_spec}%", escape="\\"),
+                cast(models.Professional.specialties, String).ilike(f"%{escaped_norm_spec}%", escape="\\"),
             )
         )
 
@@ -431,7 +649,7 @@ def _execute_professionals_search(
         suggestion_tuple = search.find_best_category_suggestion(clean_q)
         detected_category = suggestion_tuple[0] if suggestion_tuple else None
 
-        q_terms = {clean_q}
+        q_terms = {clean_q, normalize_text(q), q.strip()}
         for t in clean_q.split():
             if len(t) >= 3:
                 q_terms.add(t)
@@ -439,6 +657,7 @@ def _execute_professionals_search(
                 q_terms.add(t[:4])
 
         if detected_category:
+            q_terms.add(detected_category)
             q_terms.add(search.clean_text(detected_category))
             q_terms.add(normalize_text(detected_category))
             for syn in search.synonyms_for(detected_category):
@@ -451,6 +670,9 @@ def _execute_professionals_search(
             esc = _escape_like(term)
             conditions.append(models.Professional.normalized_search.like(f"%{esc}%", escape="\\"))
             conditions.append(models.Professional.normalized_specialties.like(f"%{esc}%", escape="\\"))
+            conditions.append(cast(models.Professional.specialties, String).ilike(f"%{esc}%", escape="\\"))
+            conditions.append(models.Professional.name.ilike(f"%{esc}%", escape="\\"))
+            conditions.append(models.Professional.bio.ilike(f"%{esc}%", escape="\\"))
 
         filtered_query = query.filter(or_(*conditions))
         # ponytail: teto SEARCH_MAX_CANDIDATES=2000 evita OOM em buscas amplas; migrar ranking para SQL/FTS se base > 50k
@@ -483,6 +705,40 @@ def _execute_professionals_search(
             specialty=specialty or "",
             city=city or "",
         )
+        if max_distance_km is not None:
+            ref_loc = client_location or _default_reference_location(city, state)
+            filtered_ranked = []
+            for p in ranked:
+                dist_km = geolocation.calculate_address_distance_km(ref_loc, _professional_location(p))
+                if dist_km is not None and dist_km <= max_distance_km:
+                    p.distance_km = dist_km
+                    filtered_ranked.append(p)
+            ranked = filtered_ranked
+            if not ordenar_por_avaliacao:
+                ranked.sort(key=lambda p: (p.distance_km if p.distance_km is not None else float("inf"), p.id))
+            hit_candidate_cap = False
+        elif client_location is not None:
+            ranked = _apply_distance_and_radius_filter(
+                ranked,
+                client_location,
+                min_distance_km=min_radius_km,
+                max_distance_km=max_radius_km,
+            )
+            hit_candidate_cap = False
+        else:
+            for p in ranked:
+                p.distance_km = None
+
+        if ordenar_por_avaliacao and ranked:
+            _populate_professionals_reputation(db, ranked)
+            ranked.sort(
+                key=lambda p: (
+                    p.average_rating if p.average_rating is not None else -1.0,
+                    p.reviews_count,
+                    -p.id,
+                ),
+                reverse=True,
+            )
 
         total = (
             len(ranked) + max(0, filtered_query.count() - MAX_SEARCH_CANDIDATES)
@@ -495,16 +751,52 @@ def _execute_professionals_search(
             paged_items = list(ranked[skip : skip + limit])
             missing = limit - len(paged_items)
             if missing > 0 and hit_candidate_cap:
+                fallback_ordered = filtered_query
+                if ordenar_por_avaliacao:
+                    avg_sub = (
+                        db.query(func.coalesce(func.avg(models.Avaliacao.nota), -1.0))
+                        .filter(models.Avaliacao.professional_id == models.Professional.id)
+                        .scalar_subquery()
+                    )
+                    cnt_sub = (
+                        db.query(func.count(models.Avaliacao.id))
+                        .filter(models.Avaliacao.professional_id == models.Professional.id)
+                        .scalar_subquery()
+                    )
+                    fallback_ordered = fallback_ordered.order_by(
+                        avg_sub.desc(), cnt_sub.desc(), models.Professional.id.asc()
+                    )
+                else:
+                    fallback_ordered = fallback_ordered.order_by(models.Professional.id.asc())
+
                 paged_items.extend(
-                    filtered_query.order_by(models.Professional.id.asc())
+                    fallback_ordered
                     .offset(MAX_SEARCH_CANDIDATES)
                     .limit(missing)
                     .all()
                 )
         elif hit_candidate_cap:
             tail_offset = MAX_SEARCH_CANDIDATES + (skip - len(ranked))
+            fallback_ordered = filtered_query
+            if ordenar_por_avaliacao:
+                avg_sub = (
+                    db.query(func.coalesce(func.avg(models.Avaliacao.nota), -1.0))
+                    .filter(models.Avaliacao.professional_id == models.Professional.id)
+                    .scalar_subquery()
+                )
+                cnt_sub = (
+                    db.query(func.count(models.Avaliacao.id))
+                    .filter(models.Avaliacao.professional_id == models.Professional.id)
+                    .scalar_subquery()
+                )
+                fallback_ordered = fallback_ordered.order_by(
+                    avg_sub.desc(), cnt_sub.desc(), models.Professional.id.asc()
+                )
+            else:
+                fallback_ordered = fallback_ordered.order_by(models.Professional.id.asc())
+
             paged_items = (
-                filtered_query.order_by(models.Professional.id.asc())
+                fallback_ordered
                 .offset(tail_offset)
                 .limit(limit)
                 .all()
@@ -512,16 +804,83 @@ def _execute_professionals_search(
         else:
             paged_items = []
         has_more = len(paged_items) > 0 and (skip + len(paged_items)) < total
+    elif client_location is not None or max_distance_km is not None:
+        # Calcula distância (do cliente ou ponto de referência padrão) e filtra por cobertura/distância máxima
+        if ordenar_por_avaliacao:
+            avg_subquery = (
+                db.query(func.coalesce(func.avg(models.Avaliacao.nota), -1.0))
+                .filter(models.Avaliacao.professional_id == models.Professional.id)
+                .scalar_subquery()
+            )
+            count_subquery = (
+                db.query(func.count(models.Avaliacao.id))
+                .filter(models.Avaliacao.professional_id == models.Professional.id)
+                .scalar_subquery()
+            )
+            ordered_query = query.order_by(
+                avg_subquery.desc(),
+                count_subquery.desc(),
+                models.Professional.id.asc(),
+            )
+        else:
+            ordered_query = query.order_by(models.Professional.id.asc())
+
+        all_candidates = ordered_query.limit(MAX_SEARCH_CANDIDATES).all()
+        if max_distance_km is not None:
+            ref_loc = client_location or _default_reference_location(city, state)
+            covered = []
+            for p in all_candidates:
+                dist_km = geolocation.calculate_address_distance_km(ref_loc, _professional_location(p))
+                if dist_km is not None and dist_km <= max_distance_km:
+                    p.distance_km = dist_km
+                    covered.append(p)
+        else:
+            covered = _apply_distance_and_radius_filter(
+                all_candidates,
+                client_location,
+                min_distance_km=min_radius_km,
+                max_distance_km=max_radius_km,
+            )
+        if not ordenar_por_avaliacao:
+            covered.sort(key=lambda p: (p.distance_km if p.distance_km is not None else float("inf"), p.id))
+
+        total = len(covered)
+        page = (skip // limit) + 1 if limit > 0 else 1
+        pages = (total + limit - 1) // limit if total > 0 else 0
+        paged_items = list(covered[skip : skip + limit])
+        has_more = (skip + len(paged_items)) < total
+        detected_suggestion = None
     else:
         total = query.count()
         page = (skip // limit) + 1 if limit > 0 else 1
         pages = (total + limit - 1) // limit if total > 0 else 0
+
+        if ordenar_por_avaliacao:
+            avg_subquery = (
+                db.query(func.coalesce(func.avg(models.Avaliacao.nota), -1.0))
+                .filter(models.Avaliacao.professional_id == models.Professional.id)
+                .scalar_subquery()
+            )
+            count_subquery = (
+                db.query(func.count(models.Avaliacao.id))
+                .filter(models.Avaliacao.professional_id == models.Professional.id)
+                .scalar_subquery()
+            )
+            ordered_query = query.order_by(
+                avg_subquery.desc(),
+                count_subquery.desc(),
+                models.Professional.id.asc(),
+            )
+        else:
+            ordered_query = query.order_by(models.Professional.id.asc())
+
         paged_items = (
-            query.order_by(models.Professional.id.asc())
-            .offset(skip)
+            ordered_query.offset(skip)
             .limit(limit)
             .all()
         )
+        for p in paged_items:
+            p.distance_km = None
         has_more = (skip + len(paged_items)) < total
         detected_suggestion = None
         response.headers["Cache-Control"] = "public, max-age=30, stale-while-revalidate=60"
@@ -533,6 +892,12 @@ def _execute_professionals_search(
     if detected_suggestion:
         response.headers["X-Search-Suggestion"] = normalize_text(detected_suggestion).title()
 
+    ref_loc = client_location or _default_reference_location(city, state)
+    for p in paged_items:
+        if p.distance_km is None:
+            p.distance_km = geolocation.calculate_address_distance_km(ref_loc, _professional_location(p))
+
+    _populate_professionals_reputation(db, paged_items)
     serialized_items = [ProfessionalPublicRead.model_validate(p) for p in paged_items]
 
     return PaginatedResponse[ProfessionalPublicRead](
@@ -573,22 +938,70 @@ def list_professionals(
     state: Optional[str] = Query(
         None, min_length=2, max_length=2, description="Sigla da UF (ex: SP, RJ)"
     ),
+    min_radius_km: Optional[float] = Query(
+        None,
+        gt=0,
+        le=500,
+        description="Raio mínimo de atendimento em km (ex: 10, 25, 50)",
+    ),
+    max_radius_km: Optional[float] = Query(
+        None,
+        gt=0,
+        le=500,
+        description="Raio máximo de atendimento em km (ex: 10)",
+    ),
+    radius_km: Optional[float] = Query(
+        None,
+        gt=0,
+        le=500,
+        include_in_schema=False,
+        description="Alias para min_radius_km.",
+    ),
+    max_distance_km: Optional[float] = Query(
+        None,
+        gt=0,
+        le=500,
+        description="Distância máxima em km (filtro estilo Tinder)",
+    ),
     approval_status: Optional[str] = Query(
         models.ProfessionalApprovalStatus.APPROVED.value,
         description="Filtra por status de aprovação cadastral (padrão: approved; use 'all' para desativar filtro)",
     ),
     skip: int = Query(0, ge=0, description="Número de registros a pular"),
     limit: int = Query(20, ge=1, le=50, description="Limite máximo de registros"),
+    order_by: Optional[str] = Query(
+        None,
+        description="Critério de ordenação: use 'avaliacao' ou 'rating' para ordenar por melhor nota.",
+    ),
+    sort: Optional[str] = Query(
+        None,
+        include_in_schema=False,
+        description="Alias para order_by.",
+    ),
+    sort_by: Optional[str] = Query(
+        None,
+        include_in_schema=False,
+        description="Alias para order_by.",
+    ),
     envelope: bool = Query(
         False,
         deprecated=True,
         description="Depreciado (use GET /api/professionals/search): se true, retorna objeto PaginatedResponse com metadados",
     ),
+    client_cep: Optional[str] = Query(None, max_length=9, description="CEP do cliente para cálculo de distância"),
+    client_city: Optional[str] = Query(None, max_length=100, description="Cidade do cliente para cálculo de distância"),
+    client_state: Optional[str] = Query(None, min_length=2, max_length=2, description="UF do cliente"),
+    client_bairro: Optional[str] = Query(None, max_length=100, description="Bairro do cliente"),
+    client_logradouro: Optional[str] = Query(None, max_length=255, description="Logradouro do cliente"),
+    client_numero: Optional[str] = Query(None, max_length=50, description="Número do cliente"),
+    client_lat: Optional[float] = Query(None, ge=-90.0, le=90.0, description="Latitude do cliente"),
+    client_lng: Optional[float] = Query(None, ge=-180.0, le=180.0, description="Longitude do cliente"),
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_optional_current_user),
 ):
     """
     Lista profissionais cadastrados ativos com suporte a busca inteligente (Tiered Two-Stage Search),
-    filtros por especialidade, cidade, UF, paginação, mascaramento seguro LGPD e cabeçalhos de metadados.
+    filtros por especialidade, cidade, UF, raio de atendimento, ordenação por reputação, paginação, mascaramento seguro LGPD e cabeçalhos de metadados.
     """
     paginated = _execute_professionals_search(
         request=request,
@@ -601,6 +1014,19 @@ def list_professionals(
         skip=skip,
         limit=limit,
         db=db,
+        order_by=order_by or sort or sort_by,
+        min_radius_km=min_radius_km if min_radius_km is not None else radius_km,
+        max_radius_km=max_radius_km,
+        max_distance_km=max_distance_km,
+        current_user=current_user,
+        client_cep=client_cep,
+        client_city=client_city,
+        client_state=client_state,
+        client_bairro=client_bairro,
+        client_logradouro=client_logradouro,
+        client_numero=client_numero,
+        client_lat=client_lat,
+        client_lng=client_lng,
     )
     if envelope:
         return JSONResponse(
@@ -627,10 +1053,37 @@ def search_professionals_enveloped(
     specialty: Optional[str] = Query(None, max_length=100),
     city: Optional[str] = Query(None, max_length=100),
     state: Optional[str] = Query(None, min_length=2, max_length=2),
+    min_radius_km: Optional[float] = Query(None, gt=0, le=500),
+    max_radius_km: Optional[float] = Query(None, gt=0, le=500),
+    radius_km: Optional[float] = Query(None, gt=0, le=500, include_in_schema=False),
+    max_distance_km: Optional[float] = Query(None, gt=0, le=500),
     approval_status: Optional[str] = Query(models.ProfessionalApprovalStatus.APPROVED.value),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
+    order_by: Optional[str] = Query(
+        None,
+        description="Critério de ordenação ('avaliacao', 'rating', 'melhor_avaliados').",
+    ),
+    sort: Optional[str] = Query(
+        None,
+        include_in_schema=False,
+        description="Alias para order_by.",
+    ),
+    sort_by: Optional[str] = Query(
+        None,
+        include_in_schema=False,
+        description="Alias para order_by.",
+    ),
+    client_cep: Optional[str] = Query(None, max_length=9, description="CEP do cliente para cálculo de distância"),
+    client_city: Optional[str] = Query(None, max_length=100, description="Cidade do cliente para cálculo de distância"),
+    client_state: Optional[str] = Query(None, min_length=2, max_length=2, description="UF do cliente"),
+    client_bairro: Optional[str] = Query(None, max_length=100, description="Bairro do cliente"),
+    client_logradouro: Optional[str] = Query(None, max_length=255, description="Logradouro do cliente"),
+    client_numero: Optional[str] = Query(None, max_length=50, description="Número do cliente"),
+    client_lat: Optional[float] = Query(None, ge=-90.0, le=90.0, description="Latitude do cliente"),
+    client_lng: Optional[float] = Query(None, ge=-180.0, le=180.0, description="Longitude do cliente"),
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_optional_current_user),
 ):
     return _execute_professionals_search(
         request=request,
@@ -643,6 +1096,19 @@ def search_professionals_enveloped(
         skip=skip,
         limit=limit,
         db=db,
+        order_by=order_by or sort or sort_by,
+        min_radius_km=min_radius_km if min_radius_km is not None else radius_km,
+        max_radius_km=max_radius_km,
+        max_distance_km=max_distance_km,
+        current_user=current_user,
+        client_cep=client_cep,
+        client_city=client_city,
+        client_state=client_state,
+        client_bairro=client_bairro,
+        client_logradouro=client_logradouro,
+        client_numero=client_numero,
+        client_lat=client_lat,
+        client_lng=client_lng,
     )
 
 
@@ -719,7 +1185,16 @@ def request_professional_contact(
 def get_professional_by_id(
     professional_id: int,
     response: Response,
+    client_cep: Optional[str] = Query(None, max_length=9),
+    client_city: Optional[str] = Query(None, max_length=100),
+    client_state: Optional[str] = Query(None, min_length=2, max_length=2),
+    client_bairro: Optional[str] = Query(None, max_length=100),
+    client_logradouro: Optional[str] = Query(None, max_length=255),
+    client_numero: Optional[str] = Query(None, max_length=50),
+    client_lat: Optional[float] = Query(None, ge=-90.0, le=90.0),
+    client_lng: Optional[float] = Query(None, ge=-180.0, le=180.0),
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_optional_current_user),
 ):
     """
     Busca os detalhes públicos do perfil de um profissional pelo ID com mascaramento LGPD.
@@ -739,6 +1214,25 @@ def get_professional_by_id(
             detail="Profissional não encontrado.",
         )
 
+    client_location = _resolve_client_location(
+        db=db,
+        current_user=current_user,
+        client_cep=client_cep,
+        client_city=client_city,
+        client_state=client_state,
+        client_bairro=client_bairro,
+        client_logradouro=client_logradouro,
+        client_numero=client_numero,
+        client_lat=client_lat,
+        client_lng=client_lng,
+    )
+    professional.distance_km = (
+        geolocation.calculate_address_distance_km(client_location, _professional_location(professional))
+        if client_location is not None
+        else None
+    )
+
+    _populate_professionals_reputation(db, [professional])
     return professional
 
 
@@ -763,24 +1257,32 @@ def update_professional(
             detail="Profissional não encontrado.",
         )
 
-    if payload.email and payload.email != professional.email:
-        existing = (
-            db.query(models.Professional)
-            .filter(
-                models.Professional.email == payload.email,
-                models.Professional.id != professional_id,
-            )
-            .first()
+    old_email = professional.email
+    if payload.email and payload.email != old_email:
+        verificar_email_disponivel(
+            db,
+            payload.email,
+            detail="E-mail já está em uso por outro profissional.",
+            exclude_professional_id=professional_id,
+            exclude_user_email=old_email,
         )
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="E-mail já está em uso por outro profissional.",
-            )
 
     update_fields = payload.model_dump(exclude_unset=True)
     for field_name, value in update_fields.items():
         setattr(professional, field_name, value)
+
+    if (
+        "latitude" not in update_fields
+        and "longitude" not in update_fields
+        and (set(update_fields.keys()) & {"cep", "logradouro", "numero", "bairro", "city", "state"})
+    ):
+        professional.latitude = None
+        professional.longitude = None
+
+    if payload.email and payload.email != old_email:
+        linked_user = db.query(models.User).filter(models.User.email == old_email).first()
+        if linked_user is not None and linked_user.role == models.UserRole.PROFESSIONAL.value:
+            linked_user.email = payload.email
 
     try:
         db.commit()
@@ -1123,3 +1625,373 @@ def delete_professional_document(
     db.commit()
 
     return None
+
+
+DEMO_PROFESSIONALS = [
+    {
+        "name": "Lucas Andrade",
+        "email": "seed.lucas.andrade@rentalspouse.local",
+        "phone": "(11) 99101-1001",
+        "bio": "Eletricista residencial no centro de São Paulo. Troca de disjuntores, tomadas, chuveiros e iluminação LED.",
+        "service_radius_km": 15.0,
+        "specialties": ["Elétrica", "Reparos Gerais"],
+        "cep": "01001000",
+        "bairro": "Sé",
+        "city": "São Paulo",
+        "state": "SP",
+        "latitude": -23.5565,
+        "longitude": -46.6345,
+    },
+    {
+        "name": "Fernanda Costa",
+        "email": "seed.fernanda.costa@rentalspouse.local",
+        "phone": "(11) 99101-1002",
+        "bio": "Encanadora especializada em caça-vazamentos, troca de registros, torneiras e desentupimentos rápidos.",
+        "service_radius_km": 20.0,
+        "specialties": ["Hidráulica"],
+        "cep": "01310100",
+        "bairro": "Bela Vista",
+        "city": "São Paulo",
+        "state": "SP",
+        "latitude": -23.5620,
+        "longitude": -46.6550,
+    },
+    {
+        "name": "Rafael Mendes",
+        "email": "seed.rafael.mendes@rentalspouse.local",
+        "phone": "(11) 99101-1003",
+        "bio": "Montador de móveis planejados e convencionais, painéis de TV, guarda-roupas e estantes em Pinheiros e região.",
+        "service_radius_km": 20.0,
+        "specialties": ["Montagem de Móveis", "Marcenaria"],
+        "cep": "05422000",
+        "bairro": "Pinheiros",
+        "city": "São Paulo",
+        "state": "SP",
+        "latitude": -23.5670,
+        "longitude": -46.6910,
+    },
+    {
+        "name": "Camila Nogueira",
+        "email": "seed.camila.nogueira@rentalspouse.local",
+        "phone": "(11) 99101-1004",
+        "bio": "Limpeza residencial detalhada, pós-obra e higienização de vidros com produtos próprios.",
+        "service_radius_km": 25.0,
+        "specialties": ["Limpeza"],
+        "cep": "04077000",
+        "bairro": "Moema",
+        "city": "São Paulo",
+        "state": "SP",
+        "latitude": -23.6010,
+        "longitude": -46.6660,
+    },
+    {
+        "name": "Bruno Cavalcanti",
+        "email": "seed.bruno.cavalcanti@rentalspouse.local",
+        "phone": "(11) 99101-1005",
+        "bio": "Pintura residencial interna e externa, massa corrida, textura e acabamento fino na Zona Norte.",
+        "service_radius_km": 25.0,
+        "specialties": ["Pintura", "Reparos Gerais"],
+        "cep": "02012000",
+        "bairro": "Santana",
+        "city": "São Paulo",
+        "state": "SP",
+        "latitude": -23.4860,
+        "longitude": -46.6250,
+    },
+    {
+        "name": "Thiago Ferreira",
+        "email": "seed.thiago.ferreira@rentalspouse.local",
+        "phone": "(11) 99101-1006",
+        "bio": "Técnico em climatização, instalação e limpeza de ar-condicionado split e recarga de gás na Zona Sul.",
+        "service_radius_km": 30.0,
+        "specialties": ["Ar-condicionado", "Elétrica"],
+        "cep": "04750000",
+        "bairro": "Santo Amaro",
+        "city": "São Paulo",
+        "state": "SP",
+        "latitude": -23.6520,
+        "longitude": -46.7050,
+    },
+    {
+        "name": "Mariana Rocha",
+        "email": "seed.mariana.rocha@rentalspouse.local",
+        "phone": "(11) 99101-1007",
+        "bio": "Jardinagem, poda ornamental, corte de grama e manutenção de áreas verdes em Guarulhos e Grande SP.",
+        "service_radius_km": 30.0,
+        "specialties": ["Jardinagem"],
+        "cep": "07010000",
+        "bairro": "Centro",
+        "city": "Guarulhos",
+        "state": "SP",
+        "latitude": -23.4543,
+        "longitude": -46.5337,
+    },
+    {
+        "name": "Eduardo Lima",
+        "email": "seed.eduardo.lima@rentalspouse.local",
+        "phone": "(11) 99101-1008",
+        "bio": "Marido de aluguel no ABC Paulista. Instalação de prateleiras, varais, fechaduras e pequenos reparos.",
+        "service_radius_km": 30.0,
+        "specialties": ["Reparos Gerais", "Montagem de Móveis"],
+        "cep": "09010000",
+        "bairro": "Centro",
+        "city": "Santo André",
+        "state": "SP",
+        "latitude": -23.6639,
+        "longitude": -46.5383,
+    },
+    {
+        "name": "Patricia Almeida",
+        "email": "seed.patricia.almeida@rentalspouse.local",
+        "phone": "(11) 99101-1009",
+        "bio": "Marcenaria sob medida, ajuste de portas, gavetas e dobradiças em Osasco e região oeste.",
+        "service_radius_km": 35.0,
+        "specialties": ["Marcenaria", "Montagem de Móveis"],
+        "cep": "06010000",
+        "bairro": "Centro",
+        "city": "Osasco",
+        "state": "SP",
+        "latitude": -23.5325,
+        "longitude": -46.7917,
+    },
+    {
+        "name": "Gustavo Ribeiro",
+        "email": "seed.gustavo.ribeiro@rentalspouse.local",
+        "phone": "(11) 99101-1010",
+        "bio": "Eletricista e técnico de ar-condicionado atendendo São Bernardo do Campo e Grande ABC.",
+        "service_radius_km": 35.0,
+        "specialties": ["Elétrica", "Ar-condicionado"],
+        "cep": "09710000",
+        "bairro": "Centro",
+        "city": "São Bernardo do Campo",
+        "state": "SP",
+        "latitude": -23.6914,
+        "longitude": -46.5646,
+    },
+    {
+        "name": "Juliana Martins",
+        "email": "seed.juliana.martins@rentalspouse.local",
+        "phone": "(11) 99101-1011",
+        "bio": "Pintora profissional para apartamentos e escritórios em Barueri e Alphaville.",
+        "service_radius_km": 40.0,
+        "specialties": ["Pintura", "Limpeza"],
+        "cep": "06401000",
+        "bairro": "Centro",
+        "city": "Barueri",
+        "state": "SP",
+        "latitude": -23.5112,
+        "longitude": -46.8761,
+    },
+    {
+        "name": "Henrique Barbosa",
+        "email": "seed.henrique.barbosa@rentalspouse.local",
+        "phone": "(11) 99101-1012",
+        "bio": "Encanador e reparos hidráulicos completos em Mogi das Cruzes e Alto Tietê.",
+        "service_radius_km": 50.0,
+        "specialties": ["Hidráulica", "Reparos Gerais"],
+        "cep": "08710000",
+        "bairro": "Centro",
+        "city": "Mogi das Cruzes",
+        "state": "SP",
+        "latitude": -23.5225,
+        "longitude": -46.1883,
+    },
+    {
+        "name": "Diego Santana",
+        "email": "seed.diego.santana@rentalspouse.local",
+        "phone": "(13) 99101-1013",
+        "bio": "Especialista em climatização, limpeza de split e elétrica residencial na Baixada Santista.",
+        "service_radius_km": 60.0,
+        "specialties": ["Ar-condicionado", "Elétrica"],
+        "cep": "11010000",
+        "bairro": "Gonzaga",
+        "city": "Santos",
+        "state": "SP",
+        "latitude": -23.9608,
+        "longitude": -46.3336,
+    },
+    {
+        "name": "Renata Cardoso",
+        "email": "seed.renata.cardoso@rentalspouse.local",
+        "phone": "(12) 99101-1014",
+        "bio": "Paisagismo, jardinagem e manutenção de quintais em São José dos Campos e Vale do Paraíba.",
+        "service_radius_km": 80.0,
+        "specialties": ["Jardinagem", "Limpeza"],
+        "cep": "12210000",
+        "bairro": "Centro",
+        "city": "São José dos Campos",
+        "state": "SP",
+        "latitude": -23.2237,
+        "longitude": -45.9009,
+    },
+    {
+        "name": "Marcelo Teixeira",
+        "email": "seed.marcelo.teixeira@rentalspouse.local",
+        "phone": "(19) 99101-1015",
+        "bio": "Marcenaria, montagem de móveis e reparos residenciais em Campinas e região metropolitana.",
+        "service_radius_km": 100.0,
+        "specialties": ["Marcenaria", "Montagem de Móveis", "Reparos Gerais"],
+        "cep": "13010000",
+        "bairro": "Centro",
+        "city": "Campinas",
+        "state": "SP",
+        "latitude": -22.9099,
+        "longitude": -47.0626,
+    },
+    {
+        "name": "André Vasconcelos",
+        "email": "seed.andre.vasconcelos@rentalspouse.local",
+        "phone": "(11) 99101-1016",
+        "bio": "Mestre de obras e marido de aluguel com atendimento em raio máximo (100 km) cobrindo Grande SP, Campinas, Baixada e Interior.",
+        "service_radius_km": 100.0,
+        "specialties": ["Elétrica", "Hidráulica", "Reparos Gerais"],
+        "cep": "01001000",
+        "logradouro": "Praça da Sé",
+        "numero": "100",
+        "bairro": "Sé",
+        "city": "São Paulo",
+        "state": "SP",
+        "latitude": -23.5505,
+        "longitude": -46.6333,
+    },
+    {
+        "name": "Vanessa Monteiro",
+        "email": "seed.vanessa.monteiro@rentalspouse.local",
+        "phone": "(12) 99101-1017",
+        "bio": "Especialista em ar-condicionado, elétrica e limpeza pós-obra com raio máximo de 100 km no Vale do Paraíba e Grande SP.",
+        "service_radius_km": 100.0,
+        "specialties": ["Ar-condicionado", "Elétrica", "Limpeza"],
+        "cep": "12210000",
+        "logradouro": "Av. São José",
+        "numero": "500",
+        "bairro": "Centro",
+        "city": "São José dos Campos",
+        "state": "SP",
+        "latitude": -23.2237,
+        "longitude": -45.9009,
+    },
+    {
+        "name": "Leonardo Silveira",
+        "email": "seed.leonardo.silveira@rentalspouse.local",
+        "phone": "(15) 99101-1018",
+        "bio": "Pintura, marcenaria e montagem de móveis com raio máximo de 100 km atendendo Sorocaba, Itu, Campinas e Grande SP.",
+        "service_radius_km": 100.0,
+        "specialties": ["Pintura", "Marcenaria", "Montagem de Móveis"],
+        "cep": "18010000",
+        "logradouro": "Rua São Bento",
+        "numero": "210",
+        "bairro": "Centro",
+        "city": "Sorocaba",
+        "state": "SP",
+        "latitude": -23.5015,
+        "longitude": -47.4526,
+    },
+    {
+        "name": "Bianca Tavares",
+        "email": "seed.bianca.tavares@rentalspouse.local",
+        "phone": "(13) 99101-1019",
+        "bio": "Hidráulica, jardinagem e reparos gerais com atendimento regional de raio máximo (100 km) na Baixada Santista, ABC e Capital.",
+        "service_radius_km": 100.0,
+        "specialties": ["Hidráulica", "Jardinagem", "Reparos Gerais"],
+        "cep": "11010000",
+        "logradouro": "Av. Ana Costa",
+        "numero": "320",
+        "bairro": "Gonzaga",
+        "city": "Santos",
+        "state": "SP",
+        "latitude": -23.9608,
+        "longitude": -46.3336,
+    },
+    {
+        "name": "Gabriel Rezende",
+        "email": "seed.gabriel.rezende@rentalspouse.local",
+        "phone": "(35) 99101-1020",
+        "bio": "Eletricista, encanador e técnico de climatização com raio máximo de 100 km em Poços de Caldas, Sul de Minas e Leste Paulista.",
+        "service_radius_km": 100.0,
+        "specialties": ["Elétrica", "Hidráulica", "Reparos Gerais", "Ar-condicionado"],
+        "cep": "37701000",
+        "logradouro": "Rua Assis Figueiredo",
+        "numero": "450",
+        "bairro": "Centro",
+        "city": "Poços de Caldas",
+        "state": "MG",
+        "latitude": -21.7878,
+        "longitude": -46.5614,
+    },
+    {
+        "name": "Larissa Paiva",
+        "email": "seed.larissa.paiva@rentalspouse.local",
+        "phone": "(35) 99101-1021",
+        "bio": "Pintura, montagem de móveis, marcenaria, limpeza e jardinagem com raio máximo de 100 km em Poços de Caldas e região.",
+        "service_radius_km": 100.0,
+        "specialties": ["Pintura", "Montagem de Móveis", "Marcenaria", "Limpeza", "Jardinagem"],
+        "cep": "37704032",
+        "logradouro": "Rua Nova Esperança",
+        "numero": "120",
+        "bairro": "Jardim Nova Aparecida",
+        "city": "Poços de Caldas",
+        "state": "MG",
+        "latitude": -21.8020,
+        "longitude": -46.5480,
+    },
+    {
+        "name": "Felipe Azevedo",
+        "email": "seed.felipe.azevedo@rentalspouse.local",
+        "phone": "(21) 99101-1022",
+        "bio": "Atendimento técnico em elétrica, hidráulica e ar-condicionado com raio máximo de 100 km no Rio de Janeiro, Niterói e Baixada.",
+        "service_radius_km": 100.0,
+        "specialties": ["Elétrica", "Hidráulica", "Ar-condicionado", "Reparos Gerais"],
+        "cep": "20040020",
+        "logradouro": "Rua da Assembleia",
+        "numero": "10",
+        "bairro": "Centro",
+        "city": "Rio de Janeiro",
+        "state": "RJ",
+        "latitude": -22.9068,
+        "longitude": -43.1729,
+    },
+    {
+        "name": "Aline Drumond",
+        "email": "seed.aline.drumond@rentalspouse.local",
+        "phone": "(31) 99101-1023",
+        "bio": "Marcenaria, montagem de móveis, pintura e limpeza residencial com raio máximo de 100 km na Grande Belo Horizonte.",
+        "service_radius_km": 100.0,
+        "specialties": ["Marcenaria", "Montagem de Móveis", "Pintura", "Limpeza"],
+        "cep": "30140071",
+        "logradouro": "Rua dos Aimorés",
+        "numero": "1200",
+        "bairro": "Funcionários",
+        "city": "Belo Horizonte",
+        "state": "MG",
+        "latitude": -19.9167,
+        "longitude": -43.9345,
+    },
+]
+
+
+def seed_demo_professionals(db: Session) -> int:
+    """Insere profissionais de demonstração distribuídos por distância de forma idempotente."""
+    emails = [item["email"] for item in DEMO_PROFESSIONALS]
+    existing = {
+        row[0]
+        for row in db.query(models.Professional.email)
+        .filter(models.Professional.email.in_(emails))
+        .all()
+    }
+    created = 0
+    for item in DEMO_PROFESSIONALS:
+        if item["email"] in existing:
+            continue
+        db.add(
+            models.Professional(
+                **item,
+                is_active=True,
+                email_verificado=True,
+                approval_status=models.ProfessionalApprovalStatus.APPROVED.value,
+            )
+        )
+        created += 1
+    if created:
+        db.commit()
+        logger.info("Seed de %d profissionais de demonstração concluído.", created)
+    return created
