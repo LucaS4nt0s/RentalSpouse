@@ -15,6 +15,7 @@ test('AppHeader unifica navegação por perfil, menu mobile responsivo e rota /m
   // Links por perfil
   assert.match(source, /\/minha-conta/, 'AppHeader deve apontar Minha Conta para /minha-conta');
   assert.match(source, /\/cliente\/orcamentos/, 'AppHeader deve conter link de orçamentos do cliente');
+  assert.match(source, /\/cliente\/agendamentos/, 'AppHeader deve conter link de agendamentos do cliente');
   assert.match(source, /\/profissional\/orcamentos/, 'AppHeader deve conter link de orçamentos do profissional');
   assert.match(source, /\/profissional\/documentos/, 'AppHeader deve conter link de documentos do profissional');
   assert.match(source, /\/admin\/moderacao/, 'AppHeader deve conter link de moderação do admin');
