@@ -1,3 +1,6 @@
+const withAlpha = (token) =>
+  `color-mix(in srgb, var(${token}) calc(<alpha-value> * 100%), transparent)`;
+
 module.exports = {
   darkMode: 'class',
   content: [
@@ -7,19 +10,21 @@ module.exports = {
   ],
   theme: {
     extend: {
+      // `withAlpha` faz os modificadores de opacidade (ex.: bg-rental-surface/95,
+      // bg-rental-primary/10) funcionarem com tokens em variáveis CSS.
       colors: {
         rental: {
-          bg: 'var(--rs-bg)',
-          surface: 'var(--rs-surface)',
-          surface2: 'var(--rs-surface-2)',
-          border: 'var(--rs-border)',
-          muted: 'var(--rs-text-muted)',
-          sand: 'var(--rs-accent)',
-          gold: 'var(--rs-primary)',
-          primary: 'var(--rs-primary)',
-          ink: 'var(--rs-text)',
-          error: 'var(--rs-error)',
-          success: 'var(--rs-success)',
+          bg: withAlpha('--rs-bg'),
+          surface: withAlpha('--rs-surface'),
+          surface2: withAlpha('--rs-surface-2'),
+          border: withAlpha('--rs-border'),
+          muted: withAlpha('--rs-text-muted'),
+          sand: withAlpha('--rs-accent'),
+          gold: withAlpha('--rs-primary'),
+          primary: withAlpha('--rs-primary'),
+          ink: withAlpha('--rs-text'),
+          error: withAlpha('--rs-error'),
+          success: withAlpha('--rs-success'),
         },
       },
       borderRadius: {

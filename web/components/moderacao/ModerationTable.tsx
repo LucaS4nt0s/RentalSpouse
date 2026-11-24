@@ -268,7 +268,7 @@ export const ModerationTable: React.FC<ModerationTableProps> = ({
         <div className="overflow-x-auto futuristic-scrollbar">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-rental-border bg-rental-surface2/60 text-[11px] font-bold text-rental-muted uppercase tracking-wider">
+              <tr className="border-b border-rental-border bg-rental-surface2/60 text-[11px] font-bold text-rental-muted">
                 <th className="py-3.5 px-4 sm:px-6">Profissional</th>
                 <th className="py-3.5 px-4 hidden md:table-cell">Localização</th>
                 <th className="py-3.5 px-4">Submissão / Fila</th>
@@ -309,9 +309,6 @@ export const ModerationTable: React.FC<ModerationTableProps> = ({
                 <tr>
                   <td colSpan={6} className="py-16 px-4 text-center">
                     <div className="max-w-md mx-auto space-y-3">
-                      <div className="h-12 w-12 mx-auto rounded-2xl bg-rental-primary/10 text-rental-primary flex items-center justify-center">
-                        <FileCheck2 className="h-6 w-6" />
-                      </div>
                       <h4 className="text-sm font-bold text-rental-ink">
                         Nenhum profissional encontrado
                       </h4>
@@ -329,7 +326,6 @@ export const ModerationTable: React.FC<ModerationTableProps> = ({
                           }}
                           className="px-3.5 py-1.5 rounded-xl border border-rental-border text-rental-primary font-bold text-xs hover:bg-rental-surface2 transition-colors inline-flex items-center gap-1.5"
                         >
-                          <Filter className="h-3.5 w-3.5" />
                           Ver todos os profissionais
                         </button>
                       )}
@@ -390,7 +386,6 @@ export const ModerationTable: React.FC<ModerationTableProps> = ({
                       {/* Localização */}
                       <td className="py-3.5 px-4 hidden md:table-cell text-rental-muted">
                         <div className="flex items-center gap-1">
-                          <MapPin className="h-3 w-3 shrink-0 text-rental-muted" />
                           <span className="truncate max-w-[130px]">
                             {prof.city || '—'}{prof.state ? `/${prof.state}` : ''}
                           </span>
@@ -403,7 +398,6 @@ export const ModerationTable: React.FC<ModerationTableProps> = ({
                           {formatDate(prof.documents_submitted_at || prof.created_at)}
                         </div>
                         <div className="text-[11px] text-rental-muted flex items-center gap-1">
-                          <Clock className="h-3 w-3 shrink-0" />
                           <span>{getRelativeWaitTime(prof.documents_submitted_at)}</span>
                         </div>
                       </td>
@@ -450,17 +444,14 @@ export const ModerationTable: React.FC<ModerationTableProps> = ({
                         >
                           {isApproved ? (
                             <>
-                              <CheckCircle2 className="h-3 w-3" />
                               Aprovado
                             </>
                           ) : isRejected ? (
                             <>
-                              <AlertCircle className="h-3 w-3" />
                               Rejeitado
                             </>
                           ) : (
                             <>
-                              <Clock className="h-3 w-3" />
                               Pendente
                             </>
                           )}

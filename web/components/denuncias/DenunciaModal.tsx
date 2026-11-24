@@ -170,9 +170,6 @@ export function DenunciaModal({ professional, onClose }: DenunciaModalProps) {
     if (!isAuthenticated) {
       return (
         <div className="py-4 text-center space-y-4">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-            <Lock className="h-7 w-7" />
-          </div>
           <div className="space-y-2">
             <h3 className="text-lg font-bold text-rental-ink">Entre para denunciar</h3>
             <p className="text-sm text-rental-muted leading-relaxed">
@@ -205,9 +202,6 @@ export function DenunciaModal({ professional, onClose }: DenunciaModalProps) {
     if (!ehCliente) {
       return (
         <div className="py-4 text-center space-y-4">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-rental-primary/10 text-rental-primary flex items-center justify-center">
-            <ShieldAlert className="h-7 w-7" />
-          </div>
           <div className="space-y-2">
             <h3 className="text-lg font-bold text-rental-ink">Recurso exclusivo de clientes</h3>
             <p className="text-sm text-rental-muted leading-relaxed">
@@ -335,7 +329,6 @@ export function DenunciaModal({ professional, onClose }: DenunciaModalProps) {
         {/* Bloqueio: denúncia já em aberto */}
         {jaDenunciado && (
           <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 flex items-start gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <span>
               Você já possui uma denúncia em aberto contra este profissional. Aguarde a
               análise da equipe antes de registrar outra.
@@ -349,7 +342,6 @@ export function DenunciaModal({ professional, onClose }: DenunciaModalProps) {
             role="alert"
             className="rounded-2xl border border-[var(--rs-error)]/40 bg-[var(--rs-error)]/10 p-3 text-xs text-[var(--rs-error)] flex items-start gap-2"
           >
-            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <span>{submitError}</span>
           </div>
         )}
@@ -358,7 +350,6 @@ export function DenunciaModal({ professional, onClose }: DenunciaModalProps) {
         {error && (
           <div className="rounded-2xl border border-[var(--rs-error)]/40 bg-[var(--rs-error)]/10 p-3 text-xs text-[var(--rs-error)] flex items-center justify-between gap-3">
             <span className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
               <span>{error}</span>
             </span>
             <button
@@ -393,7 +384,6 @@ export function DenunciaModal({ professional, onClose }: DenunciaModalProps) {
               </>
             ) : (
               <>
-                <Send className="h-4 w-4" />
                 <span>Registrar Denúncia</span>
               </>
             )}

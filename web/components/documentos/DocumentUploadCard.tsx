@@ -187,7 +187,6 @@ export const DocumentUploadCard: React.FC<DocumentUploadCardProps> = ({
       {/* Alerta de Erro de Validação */}
       {validationError && (
         <div className="mb-4 rounded-xl border border-[var(--rs-error)]/30 bg-[var(--rs-error)]/10 p-3 text-xs text-[var(--rs-error)] flex items-start gap-2 animate-fadeIn">
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
           <span className="flex-1">{validationError}</span>
         </div>
       )}
@@ -228,7 +227,6 @@ export const DocumentUploadCard: React.FC<DocumentUploadCardProps> = ({
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-rental-primary hover:underline py-1"
               >
-                <Download className="h-3.5 w-3.5" />
                 <span>Visualizar / Baixar</span>
               </a>
             ) : (

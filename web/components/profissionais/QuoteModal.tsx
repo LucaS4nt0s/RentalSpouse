@@ -317,7 +317,6 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
 
             {errorMessage && (
               <div className="mt-4 flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-600 dark:text-red-400">
-                <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{errorMessage}</span>
               </div>
             )}
@@ -392,7 +391,6 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold text-rental-ink flex items-center gap-1.5">
-                    <ImageIcon className="h-3.5 w-3.5 text-rental-primary" />
                     Fotos do problema (opcional):
                   </label>
                   <span className="text-[11px] text-rental-muted">
@@ -455,11 +453,9 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
               {/* Informações de Proteção de Contato */}
               <div className="flex items-center justify-between gap-3 text-xs text-rental-muted pt-1 border-t border-rental-border/40">
                 <span className="flex items-center gap-1" title="Contato protegido">
-                  <Phone className="h-3.5 w-3.5 text-rental-primary" />
                   {maskPhone(professional.phone)}
                 </span>
                 <span className="flex items-center gap-1" title="Contato protegido">
-                  <Mail className="h-3.5 w-3.5 text-rental-primary" />
                   {maskEmail(professional.email)}
                 </span>
               </div>
@@ -486,7 +482,6 @@ export function QuoteModal({ professional, onClose }: QuoteModalProps) {
                     </>
                   ) : (
                     <>
-                      <Send className="h-4 w-4" />
                       <span>Enviar Solicitação</span>
                     </>
                   )}

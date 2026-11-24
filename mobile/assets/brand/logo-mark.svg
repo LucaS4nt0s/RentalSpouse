@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="RentalSpouse">
+  <!-- Esquadro-Casa (Joiner's Roof) · RentalSpouse
+       Cumeeira a 45° exatos; o recorte interno é o mordente de uma chave fixa /
+       encaixe arquitetônico; o bloco azul é o "esquadro" de quem faz o serviço. -->
+  <path fill="#0E1B2E" fill-rule="evenodd" d="M12 1.5 22.5 12v10.5h-21V12L12 1.5Zm-3 21V15l3-3 3 3v7.5H9Z"/>
+  <rect x="12.75" y="19.5" width="2.25" height="3" fill="#1D4ED8"/>
+</svg>

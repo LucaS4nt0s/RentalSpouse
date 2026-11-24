@@ -9,12 +9,12 @@ import {
   CheckCircle2,
   Mail,
   ShieldCheck,
-  Zap,
 } from 'lucide-react';
 import { ThemeToggle } from '../../components/ui/ThemeToggle';
 import { Button } from '../../components/ui/Button';
 import { TextInput } from '../../components/ui/TextInput';
 import { validateEmail } from '../../utils/validators';
+import { BrandMark } from '../../components/brand/BrandMark';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
@@ -90,17 +90,12 @@ export default function EsqueciSenhaPage() {
         </Link>
 
         <div className="mt-6 flex items-center gap-2">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-rental-primary text-white">
-            <Zap className="h-5 w-5" />
-          </span>
+          <BrandMark size={30} className="text-rental-ink" />
           <span className="text-lg font-extrabold tracking-tight">RentalSpouse</span>
         </div>
 
         {mensagemSucesso ? (
           <div className="mt-8 text-center animate-fadeIn">
-            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-500/20 border-2 border-emerald-500 text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="h-10 w-10" />
-            </div>
             <h1 className="mt-5 text-2xl sm:text-3xl font-extrabold tracking-tight">
               Verifique seu e-mail
             </h1>
@@ -109,7 +104,6 @@ export default function EsqueciSenhaPage() {
             </p>
             <div className="mt-6 rounded-2xl border border-rental-border bg-rental-surface2 p-4 text-left text-xs text-rental-muted">
               <div className="flex items-start gap-2">
-                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-rental-primary" />
                 <span>
                   Por segurança, o link expira em poucos minutos e só pode ser usado uma
                   vez. Se não encontrar o e-mail, confira a pasta de spam ou lixo
@@ -125,9 +119,6 @@ export default function EsqueciSenhaPage() {
           </div>
         ) : (
           <div className="mt-8">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rental-primary/10 text-rental-primary">
-              <Mail className="h-7 w-7" />
-            </div>
             <h1 className="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight">
               Esqueceu sua senha?
             </h1>
@@ -141,7 +132,6 @@ export default function EsqueciSenhaPage() {
                 className="mt-5 flex items-start gap-3 rounded-xl border border-[var(--rs-error)]/30 bg-[var(--rs-error)]/10 p-3.5 text-xs text-[var(--rs-error)] animate-fadeIn"
                 role="alert"
               >
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                 <span className="font-semibold">{serverError}</span>
               </div>
             )}
@@ -150,7 +140,7 @@ export default function EsqueciSenhaPage() {
               <div>
                 <label
                   htmlFor="recuperacao-email"
-                  className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-rental-muted"
+                  className="mb-1.5 block text-xs font-bold text-rental-muted"
                 >
                   E-mail
                 </label>
@@ -166,13 +156,11 @@ export default function EsqueciSenhaPage() {
                   disabled={isLoading}
                   autoComplete="email"
                   placeholder="voce@exemplo.com"
-                  leftIcon={<Mail className="h-4 w-4" />}
                   hasError={Boolean(fieldError)}
                   className="h-12"
                 />
                 {fieldError && (
                   <div className="mt-1 flex items-center gap-1.5 text-xs text-[var(--rs-error)] animate-fadeIn">
-                    <AlertCircle className="h-3.5 w-3.5" />
                     <span>{fieldError}</span>
                   </div>
                 )}

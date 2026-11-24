@@ -70,7 +70,6 @@ export const FilterActionBar: React.FC<FilterActionBarProps> = ({
         <div className="sm:w-64 rounded-xl glass-input px-3 py-2 flex flex-col gap-1">
           <div className="flex items-center justify-between gap-2 text-xs">
             <span className="inline-flex items-center gap-1.5 font-medium text-rental-muted">
-              <Radar className="h-3.5 w-3.5 text-rental-primary shrink-0" />
               <span>Distância</span>
             </span>
             <div className="flex items-center gap-1.5">
@@ -141,7 +140,6 @@ export const FilterActionBar: React.FC<FilterActionBarProps> = ({
             onClick={onClearAllFilters}
             className="inline-flex items-center gap-1.5 rounded-lg border border-rental-border bg-rental-surface px-2.5 py-1.5 text-xs font-semibold text-rental-muted hover:text-rental-primary hover:border-rental-primary/40 transition-colors"
           >
-            <RotateCcw className="h-3 w-3" />
             <span>Limpar filtros</span>
           </button>
         )}

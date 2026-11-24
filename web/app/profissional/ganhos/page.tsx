@@ -101,9 +101,6 @@ export default function ProfissionalGanhosPage() {
     return (
       <main className="min-h-screen bg-rental-bg text-rental-ink flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full rounded-3xl border border-rental-border bg-rental-surface p-8 text-center space-y-5 shadow-panel">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-            <Lock className="h-7 w-7" />
-          </div>
           <div className="space-y-2">
             <h1 className="text-xl font-extrabold text-rental-ink">Acesso Restrito ao Prestador</h1>
             <p className="text-sm text-rental-muted leading-relaxed">
@@ -143,7 +140,6 @@ export default function ProfissionalGanhosPage() {
               </Link>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-rental-ink tracking-tight flex items-center gap-2.5">
-              <Wallet className="h-7 w-7 text-emerald-500" />
               Painel de Ganhos e Finanças
             </h1>
             <p className="text-xs sm:text-sm text-rental-muted">
@@ -156,21 +152,18 @@ export default function ProfissionalGanhosPage() {
               href="/profissional/orcamentos"
               className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
             >
-              <Briefcase className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Orçamentos</span>
             </Link>
             <Link
               href="/profissional/agenda"
               className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
             >
-              <Calendar className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Minha Agenda</span>
             </Link>
             <Link
               href="/profissional/documentos"
               className="inline-flex items-center gap-1.5 rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:border-rental-primary/40 hover:text-rental-primary"
             >
-              <FileCheck2 className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Meus Documentos</span>
             </Link>
             <Button
@@ -207,7 +200,6 @@ export default function ProfissionalGanhosPage() {
               variant="secondary"
               size="sm"
               onClick={carregarResumo}
-              leftIcon={<RefreshCw className="h-4 w-4" />}
             >
               Tentar novamente
             </Button>
@@ -219,7 +211,7 @@ export default function ProfissionalGanhosPage() {
               {/* Faturamento Total */}
               <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/5 p-5 space-y-2 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
                     Faturamento Total
                   </span>
                   <DollarSign className="h-4 w-4 text-emerald-500" />
@@ -236,7 +228,7 @@ export default function ProfissionalGanhosPage() {
               {/* Ganhos no Mês Atual */}
               <div className="rounded-3xl border border-blue-500/30 bg-blue-500/5 p-5 space-y-2 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
                     Ganhos no Mês
                   </span>
                   <Calendar className="h-4 w-4 text-blue-500" />
@@ -252,7 +244,7 @@ export default function ProfissionalGanhosPage() {
               {/* Ganhos na Semana Atual */}
               <div className="rounded-3xl border border-rental-primary/30 bg-rental-primary/5 p-5 space-y-2 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-rental-primary">
+                  <span className="text-xs font-bold text-rental-primary">
                     Ganhos na Semana
                   </span>
                   <TrendingUp className="h-4 w-4 text-rental-primary" />
@@ -268,7 +260,7 @@ export default function ProfissionalGanhosPage() {
               {/* Ticket Médio */}
               <div className="rounded-3xl border border-rental-border bg-rental-surface p-5 space-y-2 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-rental-muted">
+                  <span className="text-xs font-bold text-rental-muted">
                     Ticket Médio
                   </span>
                   <Receipt className="h-4 w-4 text-amber-500" />
@@ -300,9 +292,6 @@ export default function ProfissionalGanhosPage() {
 
               {!resumo || resumo.total_atendimentos_pagos === 0 || resumo.pagamentos_recentes.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-rental-border bg-rental-surface2/20 p-10 text-center space-y-3">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500">
-                    <Wallet className="h-6 w-6" />
-                  </div>
                   <h3 className="text-sm sm:text-base font-bold text-rental-ink">
                     Nenhum pagamento recebido ainda
                   </h3>
@@ -311,7 +300,7 @@ export default function ProfissionalGanhosPage() {
                   </p>
                   <div className="pt-2">
                     <Link href="/profissional/orcamentos">
-                      <Button variant="primary" size="sm" leftIcon={<Briefcase className="h-3.5 w-3.5" />}>
+                      <Button variant="primary" size="sm">
                         Ver Orçamentos Recebidos
                       </Button>
                     </Link>
@@ -321,7 +310,7 @@ export default function ProfissionalGanhosPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="border-b border-rental-border text-[11px] font-bold uppercase tracking-wider text-rental-muted">
+                      <tr className="border-b border-rental-border text-[11px] font-bold text-rental-muted">
                         <th className="py-3 pr-4">Cliente</th>
                         <th className="py-3 px-3">Orçamento</th>
                         <th className="py-3 px-3">Método</th>
@@ -335,7 +324,6 @@ export default function ProfissionalGanhosPage() {
                         <tr key={pgto.id} className="hover:bg-rental-surface2/30 transition-colors">
                           <td className="py-3.5 pr-4">
                             <div className="flex items-center gap-2 font-semibold text-rental-ink">
-                              <User className="h-3.5 w-3.5 text-rental-primary shrink-0" />
                               <span>{pgto.cliente_nome || 'Cliente da Plataforma'}</span>
                             </div>
                           </td>
@@ -345,12 +333,10 @@ export default function ProfissionalGanhosPage() {
                           <td className="py-3.5 px-3">
                             {pgto.metodo === 'pix' ? (
                               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                                <QrCode className="h-3 w-3" />
                                 PIX
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-[11px] font-bold text-blue-600 dark:text-blue-400">
-                                <CreditCard className="h-3 w-3" />
                                 Cartão
                               </span>
                             )}
@@ -360,7 +346,6 @@ export default function ProfissionalGanhosPage() {
                           </td>
                           <td className="py-3.5 px-3">
                             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-bold text-emerald-500">
-                              <CheckCircle2 className="h-3 w-3" />
                               Aprovado
                             </span>
                           </td>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
+  <style>
+    .ink { fill: #0E1B2E; }
+    .accent { fill: #1D4ED8; }
+    @media (prefers-color-scheme: dark) {
+      .ink { fill: #F8FAFC; }
+      .accent { fill: #3B82F6; }
+    }
+  </style>
+  <path class="ink" fill-rule="evenodd" d="M12 1.5 22.5 12v10.5h-21V12L12 1.5Zm-3 21V15l3-3 3 3v7.5H9Z"/>
+  <rect class="accent" x="12.75" y="19.5" width="2.25" height="3"/>
+</svg>

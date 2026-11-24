@@ -220,9 +220,6 @@ export default function ClienteAgendamentosPage() {
     return (
       <main className="min-h-screen bg-rental-bg text-rental-ink flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full rounded-3xl border border-rental-border bg-rental-surface p-8 text-center space-y-5 shadow-panel animate-fadeIn">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-rental-primary/10 text-rental-primary flex items-center justify-center">
-            <Lock className="h-7 w-7" />
-          </div>
           <div className="space-y-2">
             <h1 className="text-xl font-extrabold text-rental-ink">
               Acesse seus Agendamentos
@@ -259,7 +256,6 @@ export default function ClienteAgendamentosPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-rental-border/60">
             <div>
               <h1 className="text-xl sm:text-2xl font-black text-rental-ink tracking-tight flex items-center gap-2.5">
-                <Calendar className="h-6 w-6 text-rental-primary" />
                 <span>Meus Agendamentos</span>
               </h1>
               <p className="text-xs text-rental-muted mt-0.5">
@@ -289,7 +285,6 @@ export default function ClienteAgendamentosPage() {
                 <Button
                   variant="primary"
                   size="sm"
-                  leftIcon={<Plus className="h-4 w-4" />}
                   className="text-xs font-bold"
                 >
                   Novo Agendamento
@@ -305,7 +300,7 @@ export default function ClienteAgendamentosPage() {
           >
             <div className="rounded-2xl border border-rental-border bg-rental-surface p-4 space-y-1 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-rental-muted uppercase tracking-wider">
+                <span className="text-xs font-bold text-rental-muted">
                   Total
                 </span>
                 <Calendar className="h-4 w-4 text-rental-primary" />
@@ -320,7 +315,7 @@ export default function ClienteAgendamentosPage() {
 
             <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-1 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-emerald-500 uppercase tracking-wider">
+                <span className="text-xs font-bold text-emerald-500">
                   Agendados
                 </span>
                 <CalendarCheck2 className="h-4 w-4 text-emerald-500" />
@@ -335,7 +330,7 @@ export default function ClienteAgendamentosPage() {
 
             <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-1 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-blue-500 uppercase tracking-wider">
+                <span className="text-xs font-bold text-blue-500">
                   Concluídos
                 </span>
                 <CheckCircle2 className="h-4 w-4 text-blue-500" />
@@ -350,7 +345,7 @@ export default function ClienteAgendamentosPage() {
 
             <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-4 space-y-1 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-red-500 uppercase tracking-wider">
+                <span className="text-xs font-bold text-red-500">
                   Cancelados
                 </span>
                 <Ban className="h-4 w-4 text-red-500" />
@@ -393,7 +388,6 @@ export default function ClienteAgendamentosPage() {
               className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs text-emerald-600 dark:text-emerald-400 flex items-center justify-between gap-3"
             >
               <div className="flex items-center gap-2 font-semibold">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
                 <span>{feedbackBanner}</span>
               </div>
               <button
@@ -423,23 +417,18 @@ export default function ClienteAgendamentosPage() {
               className="rounded-2xl border border-[var(--rs-error)]/40 bg-[var(--rs-error)]/10 p-6 text-xs text-[var(--rs-error)] flex flex-col sm:flex-row sm:items-center justify-between gap-4"
             >
               <div className="flex items-center gap-2.5 font-semibold">
-                <AlertCircle className="h-5 w-5 shrink-0" />
                 <span>{error}</span>
               </div>
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={carregarAgendamentos}
-                leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
               >
                 Tentar novamente
               </Button>
             </section>
           ) : agendamentosFiltrados.length === 0 ? (
             <section className="rounded-3xl border border-dashed border-rental-border bg-rental-surface p-10 text-center space-y-4">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rental-primary/10 text-rental-primary">
-                <Calendar className="h-6 w-6" />
-              </div>
               <div className="space-y-1">
                 <h2 className="text-base font-extrabold text-rental-ink">
                   {activeTab === 'todos'
@@ -480,9 +469,6 @@ export default function ClienteAgendamentosPage() {
                     className="flex flex-col justify-between gap-3 rounded-2xl border border-rental-border bg-rental-surface p-4 sm:p-5 text-xs shadow-sm sm:flex-row sm:items-center"
                   >
                     <div className="flex items-start gap-3">
-                      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rental-primary/10 text-rental-primary">
-                        <Clock className="h-4 w-4" />
-                      </span>
                       <div className="space-y-1">
                         <p className="text-sm font-bold capitalize text-rental-ink">
                           {formatarDataCompleta(dataIso)} · {hIni} às {hFim}
@@ -492,7 +478,6 @@ export default function ClienteAgendamentosPage() {
                             href={`/profissionais/${ag.professional_id}/agendar`}
                             className="inline-flex items-center gap-1.5 font-semibold text-rental-ink hover:text-rental-primary hover:underline"
                           >
-                            <User className="h-3.5 w-3.5 shrink-0 text-rental-primary" />
                             <span>{nomeProf}</span>
                           </Link>
                           <span>Reserva #{ag.id}</span>
@@ -501,7 +486,6 @@ export default function ClienteAgendamentosPage() {
                               href="/cliente/orcamentos"
                               className="inline-flex items-center gap-1 font-semibold text-rental-primary hover:underline"
                             >
-                              <Briefcase className="h-3 w-3 shrink-0" />
                               <span>Orçamento #{ag.orcamento_id}</span>
                             </Link>
                           )}

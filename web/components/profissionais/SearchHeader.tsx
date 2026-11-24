@@ -18,7 +18,7 @@ export const SearchHeader: React.FC<SearchHeaderProps> = ({
     <div className="w-full text-center sm:text-left">
       <div className="max-w-3xl">
         <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-rental-ink">
-          Encontre Profissionais Qualificados
+          Encontre profissionais qualificados
         </h1>
         <p className="mt-2 text-sm sm:text-base text-rental-muted leading-relaxed">
           Eletricistas, encanadores, montadores e mais profissionais verificados para o seu lar.
