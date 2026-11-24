@@ -27,6 +27,7 @@ import { Select } from '../../components/ui/Select';
 import { SpecialtiesChips } from '../../components/ui/SpecialtiesChips';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useAddressLookup } from '../../hooks/useAddressLookup';
 import { VALID_UFS } from '../../utils/validators';
 import { cleanDigits, maskCEP, maskPhone } from '../../utils/formatters';
 
@@ -106,10 +107,26 @@ export default function MinhaContaPage() {
     message: string;
   } | null>(null);
 
+  const {
+    isLoading: isLoadingCep,
+    error: cepLookupError,
+    syncCep,
+  } = useAddressLookup(cep, {
+    onSuccess: (result) => {
+      setLogradouro(result.logradouro);
+      setBairro(result.bairro);
+      setCidade(result.cidade);
+      setEstado(result.estado_uf);
+      setCity(result.cidade);
+      setStateUf(result.estado_uf);
+    },
+  });
+
   const populateForm = useCallback((data: ProfileResponse) => {
     setProfile(data);
     setName(data.name || data.nome || '');
     setDataNascimento(data.data_nascimento || '');
+    syncCep(data.cep || '');
     setCep(data.cep ? maskCEP(data.cep) : '');
     setLogradouro(data.logradouro || '');
     setNumero(data.numero || '');
@@ -123,7 +140,7 @@ export default function MinhaContaPage() {
     setSpecialties(Array.isArray(data.specialties) ? data.specialties : []);
     setCity(data.city || '');
     setStateUf(data.state || '');
-  }, []);
+  }, [syncCep]);
 
   const fetchProfile = useCallback(async () => {
     if (!token) return;
@@ -649,14 +666,26 @@ export default function MinhaContaPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-6 gap-4">
                   <div className="sm:col-span-2">
-                    <FormFieldWrapper id="conta-cep" label="CEP" required>
+                    <FormFieldWrapper
+                      id="conta-cep"
+                      label="CEP"
+                      required
+                      hint="Busca automática"
+                      error={cepLookupError || undefined}
+                    >
                       <TextInput
                         id="conta-cep"
                         value={cep}
                         onChange={(e) => setCep(maskCEP(e.target.value))}
                         placeholder="00000-000"
                         maxLength={9}
+                        hasError={Boolean(cepLookupError)}
                         disabled={isSavingProfile}
+                        rightIcon={
+                          isLoadingCep ? (
+                            <RefreshCw className="h-4 w-4 animate-spin text-rental-primary" />
+                          ) : undefined
+                        }
                       />
                     </FormFieldWrapper>
                   </div>
@@ -779,14 +808,25 @@ export default function MinhaContaPage() {
                   </div>
 
                   <div className="sm:col-span-2">
-                    <FormFieldWrapper id="conta-prof-cep" label="CEP">
+                    <FormFieldWrapper
+                      id="conta-prof-cep"
+                      label="CEP"
+                      hint="Busca automática"
+                      error={cepLookupError || undefined}
+                    >
                       <TextInput
                         id="conta-prof-cep"
                         value={cep}
                         onChange={(e) => setCep(maskCEP(e.target.value))}
                         placeholder="00000-000"
                         maxLength={9}
+                        hasError={Boolean(cepLookupError)}
                         disabled={isSavingProfile}
+                        rightIcon={
+                          isLoadingCep ? (
+                            <RefreshCw className="h-4 w-4 animate-spin text-rental-primary" />
+                          ) : undefined
+                        }
                       />
                     </FormFieldWrapper>
                   </div>

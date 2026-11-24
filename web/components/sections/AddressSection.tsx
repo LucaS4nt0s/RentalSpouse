@@ -48,10 +48,10 @@ export const AddressSection: React.FC<AddressSectionProps> = ({
   // Hook assíncrono com busca de CEP, debounce e foco automático
   const { isLoading: isLoadingCep, error: cepLookupError } = useAddressLookup(data.cep, {
     onSuccess: (result: AddressResult) => {
-      if (result.logradouro) onChange('logradouro', result.logradouro);
-      if (result.bairro) onChange('bairro', result.bairro);
-      if (result.cidade) onChange('cidade', result.cidade);
-      if (result.estado_uf) onChange('estado_uf', result.estado_uf);
+      onChange('logradouro', result.logradouro);
+      onChange('bairro', result.bairro);
+      onChange('cidade', result.cidade);
+      onChange('estado_uf', result.estado_uf);
 
       // Foco automático no campo Número após resposta do CEP
       setTimeout(() => {

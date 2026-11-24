@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { cleanDigits } from '../utils/formatters';
 
 export interface AddressResult {
@@ -35,6 +35,9 @@ export function useAddressLookup(cepValue: string, options?: UseAddressLookupOpt
     // Só dispara quando tem exatamente 8 dígitos e é diferente do último consultado
     if (digits.length !== 8) {
       setError(null);
+      if (lastSearchedCep !== '') {
+        setLastSearchedCep('');
+      }
       return;
     }
 
@@ -84,9 +87,14 @@ export function useAddressLookup(cepValue: string, options?: UseAddressLookupOpt
     return () => clearTimeout(timer);
   }, [cepValue, lastSearchedCep]);
 
+  const syncCep = useCallback((knownCep: string) => {
+    setLastSearchedCep(cleanDigits(knownCep));
+  }, []);
+
   return {
     isLoading,
     error,
     resetError: () => setError(null),
+    syncCep,
   };
 }

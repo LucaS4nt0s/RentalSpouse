@@ -382,6 +382,16 @@ def update_me(
             cliente.estado = payload.estado
         elif payload.state is not None:
             cliente.estado = payload.state
+        if payload.latitude is not None or payload.longitude is not None:
+            if payload.latitude is not None:
+                cliente.latitude = payload.latitude
+            if payload.longitude is not None:
+                cliente.longitude = payload.longitude
+        elif payload.model_fields_set & {
+            "cep", "logradouro", "numero", "bairro", "cidade", "city", "estado", "state"
+        }:
+            cliente.latitude = None
+            cliente.longitude = None
 
     elif current_user.role == models.UserRole.PROFESSIONAL.value:
         if prof is None:
@@ -420,6 +430,16 @@ def update_me(
             prof.state = payload.state
         elif payload.estado is not None:
             prof.state = payload.estado
+        if payload.latitude is not None or payload.longitude is not None:
+            if payload.latitude is not None:
+                prof.latitude = payload.latitude
+            if payload.longitude is not None:
+                prof.longitude = payload.longitude
+        elif payload.model_fields_set & {
+            "cep", "logradouro", "numero", "bairro", "cidade", "city", "estado", "state"
+        }:
+            prof.latitude = None
+            prof.longitude = None
         prof.update_normalized_fields()
 
     else:
