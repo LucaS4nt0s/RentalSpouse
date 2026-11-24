@@ -551,9 +551,7 @@ export default function AdminDenunciasPage() {
         await loadDenuncias(adminToken);
       } catch (err) {
         setErroDecisao(
-          err instanceof Error
-            ? err.message
-            : 'Não foi possível registrar a decisão da moderação.',
+          mensagemErro(err, 'Não foi possível registrar a decisão da moderação.'),
         );
       } finally {
         setIsModerando(false);
