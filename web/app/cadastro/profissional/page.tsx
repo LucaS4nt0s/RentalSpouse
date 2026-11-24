@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { traduzirMensagemErro } from '../../../services/apiError';
 import {
   PersonalInfoSection,
   PersonalInfoData,
@@ -181,7 +182,7 @@ export default function CadastroProfissionalPage() {
     detail.forEach((item) => {
       const loc = item.loc ?? [];
       const field = loc[loc.length - 1];
-      const message = item.msg || 'Valor inválido.';
+      const message = traduzirMensagemErro(item.msg || 'Valor inválido.');
       switch (field) {
         case 'nome_completo':
         case 'nome':

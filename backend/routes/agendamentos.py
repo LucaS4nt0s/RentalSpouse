@@ -502,6 +502,23 @@ def criar_agendamento(
     return agendamento
 
 
+def _normalizar_status_agendamento(status_filtro: Optional[str]) -> Optional[str]:
+    """Valida e normaliza o filtro opcional de status (`agendado`, `cancelado`, `concluido`)."""
+    if status_filtro is None:
+        return None
+    normalizado = status_filtro.strip().lower()
+    status_aceitos = [valor.value for valor in models.AgendamentoStatus]
+    if normalizado not in status_aceitos:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Status '{status_filtro}' inválido. "
+                f"Valores aceitos: {', '.join(status_aceitos)}."
+            ),
+        )
+    return normalizado
+
+
 @router.get(
     URL_MEUS_AGENDAMENTOS,
     response_model=List[schemas.AgendamentoRead],
@@ -527,18 +544,9 @@ def listar_meus_agendamentos(
         models.Agendamento.cliente_id == cliente.id
     )
 
-    if status_filtro is not None:
-        normalizado = status_filtro.strip().lower()
-        status_aceitos = [valor.value for valor in models.AgendamentoStatus]
-        if normalizado not in status_aceitos:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    f"Status '{status_filtro}' inválido. "
-                    f"Valores aceitos: {', '.join(status_aceitos)}."
-                ),
-            )
-        consulta = consulta.filter(models.Agendamento.status == normalizado)
+    status_normalizado = _normalizar_status_agendamento(status_filtro)
+    if status_normalizado is not None:
+        consulta = consulta.filter(models.Agendamento.status == status_normalizado)
 
     return (
         consulta.order_by(
@@ -737,6 +745,48 @@ def concluir_agendamento(
         db.commit()
         db.refresh(agendamento)
 
+        cliente_alvo = (
+            agendamento.cliente
+            or db.query(models.Cliente)
+            .filter(models.Cliente.id == agendamento.cliente_id)
+            .first()
+        )
+        prof_alvo = (
+            agendamento.professional
+            or db.query(models.Professional)
+            .filter(models.Professional.id == agendamento.professional_id)
+            .first()
+        )
+        if cliente_alvo and cliente_alvo.email:
+            nome_prof = prof_alvo.name if prof_alvo and prof_alvo.name else "O profissional"
+            data_formatada = agendamento.data_hora_inicio.strftime("%d/%m/%Y às %H:%M")
+            mensagem_notif = (
+                f"{nome_prof} concluiu o atendimento de {data_formatada}. "
+                "Você já pode avaliar o serviço realizado!"
+            )
+            try:
+                registrar_e_enviar_notificacao(
+                    db=db,
+                    user_email=cliente_alvo.email,
+                    titulo="Atendimento Concluído",
+                    mensagem=mensagem_notif,
+                    tipo="agendamento_concluido",
+                    referencia_id=agendamento.id,
+                    payload_extra={
+                        "agendamento_id": agendamento.id,
+                        "professional_id": agendamento.professional_id,
+                        "professional_name": nome_prof,
+                        "data_hora_inicio": agendamento.data_hora_inicio.isoformat(),
+                        "data_hora_fim": agendamento.data_hora_fim.isoformat(),
+                    },
+                )
+            except Exception as e:
+                logger.warning(
+                    "Falha ao enviar notificação de conclusão para o cliente #%s: %s",
+                    agendamento.cliente_id,
+                    e,
+                )
+
     return agendamento
 
 
@@ -746,8 +796,8 @@ def concluir_agendamento(
     summary="Listar agendamentos recebidos pelo profissional",
     description=(
         "Lista os agendamentos recebidos pelo profissional autenticado (issue #95), "
-        "ordenados por `data_hora_inicio`. Filtro opcional por `status` "
-        "(`agendado`, `cancelado`, `concluido`)."
+        "ordenados por `data_hora_inicio`. Filtros opcionais por `status` "
+        "(`agendado`, `cancelado`, `concluido`) e janela de datas (`data_inicio`, `data_fim`)."
     ),
 )
 def listar_agendamentos_recebidos(
@@ -756,30 +806,43 @@ def listar_agendamentos_recebidos(
         alias="status",
         description="Filtra pelo status do agendamento.",
     ),
+    data_inicio: Optional[date] = Query(
+        None,
+        description="Filtra agendamentos a partir desta data (YYYY-MM-DD).",
+    ),
+    data_fim: Optional[date] = Query(
+        None,
+        description="Filtra agendamentos até esta data, inclusive (YYYY-MM-DD).",
+    ),
     skip: int = Query(0, ge=0, description="Quantidade de registros a ignorar."),
     limit: int = Query(50, ge=1, le=100, description="Máximo de registros retornados."),
     profissional: models.Professional = Depends(get_current_professional),
     db: Session = Depends(get_db),
 ):
     """Lista os agendamentos recebidos pelo profissional dono do token."""
+    if data_inicio and data_fim and data_fim < data_inicio:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="`data_fim` deve ser igual ou posterior a `data_inicio`.",
+        )
+
     consulta = (
-        db.query(models.Agendamento, models.Cliente.nome)
+        db.query(models.Agendamento, models.Cliente.nome, models.Cliente.email)
         .outerjoin(models.Cliente, models.Cliente.id == models.Agendamento.cliente_id)
         .filter(models.Agendamento.professional_id == profissional.id)
     )
 
-    if status_filtro is not None:
-        normalizado = status_filtro.strip().lower()
-        status_aceitos = [valor.value for valor in models.AgendamentoStatus]
-        if normalizado not in status_aceitos:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    f"Status '{status_filtro}' inválido. "
-                    f"Valores aceitos: {', '.join(status_aceitos)}."
-                ),
-            )
-        consulta = consulta.filter(models.Agendamento.status == normalizado)
+    status_normalizado = _normalizar_status_agendamento(status_filtro)
+    if status_normalizado is not None:
+        consulta = consulta.filter(models.Agendamento.status == status_normalizado)
+
+    if data_inicio:
+        inicio_dt = datetime.combine(data_inicio, time.min)
+        consulta = consulta.filter(models.Agendamento.data_hora_inicio >= inicio_dt)
+
+    if data_fim:
+        fim_dt = datetime.combine(data_fim + timedelta(days=1), time.min)
+        consulta = consulta.filter(models.Agendamento.data_hora_inicio < fim_dt)
 
     linhas = (
         consulta.order_by(
@@ -792,9 +855,10 @@ def listar_agendamentos_recebidos(
     )
 
     resultado: List[schemas.AgendamentoRecebidoRead] = []
-    for agendamento, cliente_nome in linhas:
+    for agendamento, cliente_nome, cliente_email in linhas:
         item = schemas.AgendamentoRecebidoRead.model_validate(agendamento)
         item.cliente_nome = cliente_nome
+        item.cliente_email = cliente_email
         resultado.append(item)
     return resultado
 

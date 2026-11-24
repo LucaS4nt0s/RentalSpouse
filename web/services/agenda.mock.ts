@@ -152,14 +152,54 @@ export function listarMeusAgendamentosMock(
 
 export function listarAgendamentosRecebidosMock(
   statusFiltro?: AgendamentoStatus,
-): Array<Agendamento & { cliente_nome?: string | null }> {
-  const lista = carregarAgendamentosMock().map((ag) => ({
+  opcoes?: { dataInicio?: string; dataFim?: string; skip?: number; limit?: number },
+): Array<
+  Agendamento & { cliente_nome?: string | null; cliente_email?: string | null }
+> {
+  let lista = carregarAgendamentosMock().map((ag) => ({
     ...ag,
     cliente_nome: `Cliente #${ag.cliente_id}`,
+    cliente_email: `cliente.${ag.cliente_id}@exemplo.com`,
   }));
-  return statusFiltro
-    ? lista.filter((ag) => ag.status === statusFiltro)
-    : lista;
+  if (statusFiltro) {
+    lista = lista.filter((ag) => ag.status === statusFiltro);
+  }
+  if (opcoes?.dataInicio) {
+    lista = lista.filter(
+      (ag) => ag.data_hora_inicio.slice(0, 10) >= opcoes.dataInicio!,
+    );
+  }
+  if (opcoes?.dataFim) {
+    lista = lista.filter(
+      (ag) => ag.data_hora_inicio.slice(0, 10) <= opcoes.dataFim!,
+    );
+  }
+  const skip = opcoes?.skip ?? 0;
+  const limit = opcoes?.limit ?? lista.length;
+  return lista.slice(skip, skip + limit);
+}
+
+export function concluirAgendamentoMock(agendamentoId: number): Agendamento {
+  const atuais = carregarAgendamentosMock();
+  const index = atuais.findIndex((ag) => ag.id === agendamentoId);
+  if (index === -1) {
+    throw new ApiError(404, 'Agendamento não encontrado.');
+  }
+
+  const ag = atuais[index];
+  if (ag.status === 'cancelado') {
+    throw new ApiError(409, 'Não é possível concluir um agendamento cancelado.');
+  }
+
+  const atualizado: Agendamento = {
+    ...ag,
+    status: 'concluido',
+  };
+
+  const novaLista = [...atuais];
+  novaLista[index] = atualizado;
+  salvarAgendamentosMock(novaLista);
+  return atualizado;
 }
 
 export function cancelarAgendamentoMock(

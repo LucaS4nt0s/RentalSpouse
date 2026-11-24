@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 import models
 from schemas import ClienteCreate, ClienteRead
-from security import hash_senha
+from security import hash_senha, verificar_email_disponivel
 import verificacao
 
 router = APIRouter(prefix="/api/clientes", tags=["Clientes"])
@@ -31,17 +31,12 @@ def cadastrar_cliente(
     - Persiste os dados e o endereço estruturado no banco relacional.
     - Emite o token de verificação e agenda o envio do e-mail de confirmação.
     """
-    # 1. Verificar unicidade de e-mail
-    cliente_existente_email = (
-        db.query(models.Cliente)
-        .filter(models.Cliente.email == cliente_in.email)
-        .first()
+    # 1. Verificar unicidade cross-table de e-mail (clientes, professionals e users)
+    email_normalizado = verificar_email_disponivel(
+        db,
+        cliente_in.email,
+        detail="E-mail já cadastrado na plataforma.",
     )
-    if cliente_existente_email:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="E-mail já cadastrado na plataforma.",
-        )
 
     # 2. Verificar unicidade de CPF
     cliente_existente_cpf = (
@@ -58,7 +53,7 @@ def cadastrar_cliente(
     # 3. Criar entidade no banco com senha hasheada
     db_cliente = models.Cliente(
         nome=cliente_in.nome,
-        email=cliente_in.email,
+        email=email_normalizado,
         cpf=cliente_in.cpf,
         data_nascimento=cliente_in.data_nascimento,
         senha_hash=hash_senha(cliente_in.senha),

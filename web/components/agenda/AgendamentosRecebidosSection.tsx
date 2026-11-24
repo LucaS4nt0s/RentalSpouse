@@ -1,12 +1,15 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
   AlertCircle,
+  Briefcase,
   CalendarCheck2,
   CheckCircle2,
   Clock,
   Loader2,
+  Mail,
   RefreshCw,
   User,
 } from 'lucide-react';
@@ -19,6 +22,7 @@ import {
   formatarDataCompleta,
   listarAgendamentosRecebidos,
 } from '../../services/agenda';
+import { mensagemErro } from '../../services/apiError';
 
 export interface AgendamentosRecebidosSectionProps {
   token: string;
@@ -33,6 +37,37 @@ const FILTROS: Array<{ valor: FiltroStatus; label: string }> = [
   { valor: 'cancelado', label: 'Cancelados' },
 ];
 
+const STATUS_LABELS: Record<string, string> = {
+  agendado: 'Agendado',
+  concluido: 'Concluído',
+  cancelado: 'Cancelado',
+};
+
+function ordenarAgendamentosRecebidos(
+  lista: AgendamentoRecebido[],
+  filtro: FiltroStatus,
+): AgendamentoRecebido[] {
+  const compararAsc = (a: AgendamentoRecebido, b: AgendamentoRecebido) =>
+    a.data_hora_inicio.localeCompare(b.data_hora_inicio) || a.id - b.id;
+  const compararDesc = (a: AgendamentoRecebido, b: AgendamentoRecebido) =>
+    b.data_hora_inicio.localeCompare(a.data_hora_inicio) || b.id - a.id;
+
+  if (filtro === 'agendado') {
+    return [...lista].sort(compararAsc);
+  }
+  if (filtro === 'concluido' || filtro === 'cancelado') {
+    return [...lista].sort(compararDesc);
+  }
+
+  const agendados = lista
+    .filter((ag) => ag.status === 'agendado')
+    .sort(compararAsc);
+  const historico = lista
+    .filter((ag) => ag.status !== 'agendado')
+    .sort(compararDesc);
+  return [...agendados, ...historico];
+}
+
 export function AgendamentosRecebidosSection({
   token,
 }: AgendamentosRecebidosSectionProps) {
@@ -40,31 +75,51 @@ export function AgendamentosRecebidosSection({
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('todos');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [confirmandoId, setConfirmandoId] = useState<number | null>(null);
   const [concluindoId, setConcluindoId] = useState<number | null>(null);
   const [acaoErro, setAcaoErro] = useState<string | null>(null);
   const [acaoSucesso, setAcaoSucesso] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
   const carregar = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     try {
       setIsLoading(true);
       setError(null);
       const statusParam = filtroStatus === 'todos' ? undefined : filtroStatus;
       const lista = await listarAgendamentosRecebidos(token, statusParam);
+      if (requestId !== requestIdRef.current) return;
       setAgendamentos(lista);
     } catch (err: unknown) {
+      if (requestId !== requestIdRef.current) return;
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Não foi possível carregar os agendamentos recebidos.',
+        mensagemErro(
+          err,
+          'Não foi possível carregar os agendamentos recebidos.',
+        ),
       );
     } finally {
-      setIsLoading(false);
+      if (requestId === requestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [token, filtroStatus]);
 
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  const agendamentosOrdenados = useMemo(
+    () => ordenarAgendamentosRecebidos(agendamentos, filtroStatus),
+    [agendamentos, filtroStatus],
+  );
+
+  const handleAtualizar = () => {
+    setAcaoSucesso(null);
+    setAcaoErro(null);
+    setConfirmandoId(null);
+    carregar();
+  };
 
   const handleConcluir = async (agendamentoId: number) => {
     try {
@@ -84,12 +139,11 @@ export function AgendamentosRecebidosSection({
       setAcaoSucesso(`Atendimento #${agendamentoId} marcado como concluído.`);
     } catch (err: unknown) {
       setAcaoErro(
-        err instanceof Error
-          ? err.message
-          : 'Não foi possível concluir o atendimento.',
+        mensagemErro(err, 'Não foi possível concluir o atendimento.'),
       );
     } finally {
       setConcluindoId(null);
+      setConfirmandoId(null);
     }
   };
 
@@ -118,7 +172,7 @@ export function AgendamentosRecebidosSection({
 
         <button
           type="button"
-          onClick={carregar}
+          onClick={handleAtualizar}
           disabled={isLoading}
           className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-xl border border-rental-border px-3 py-1.5 text-xs font-semibold text-rental-ink transition-colors hover:bg-rental-surface2 disabled:opacity-50"
         >
@@ -135,10 +189,12 @@ export function AgendamentosRecebidosSection({
             <button
               key={f.valor}
               type="button"
+              aria-pressed={ativo}
               onClick={() => {
                 setFiltroStatus(f.valor);
                 setAcaoSucesso(null);
                 setAcaoErro(null);
+                setConfirmandoId(null);
               }}
               className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
                 ativo
@@ -154,14 +210,20 @@ export function AgendamentosRecebidosSection({
 
       {/* Banners de feedback de ação */}
       {acaoSucesso && (
-        <div className="flex items-center gap-2 rounded-xl border border-rental-success/30 bg-rental-success/10 p-3 text-xs text-rental-success">
+        <div
+          role="status"
+          className="flex items-center gap-2 rounded-xl border border-rental-success/30 bg-rental-success/10 p-3 text-xs text-rental-success"
+        >
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           <span>{acaoSucesso}</span>
         </div>
       )}
 
       {acaoErro && (
-        <div className="flex items-center gap-2 rounded-xl border border-[var(--rs-error)]/40 bg-[var(--rs-error)]/10 p-3 text-xs text-[var(--rs-error)]">
+        <div
+          role="alert"
+          className="flex items-center gap-2 rounded-xl border border-[var(--rs-error)]/40 bg-[var(--rs-error)]/10 p-3 text-xs text-[var(--rs-error)]"
+        >
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{acaoErro}</span>
         </div>
@@ -178,30 +240,35 @@ export function AgendamentosRecebidosSection({
           ))}
         </div>
       ) : error ? (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-[var(--rs-error)]/40 bg-[var(--rs-error)]/10 p-4 text-xs text-[var(--rs-error)]">
+        <div
+          role="alert"
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-[var(--rs-error)]/40 bg-[var(--rs-error)]/10 p-4 text-xs text-[var(--rs-error)]"
+        >
           <div className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4 shrink-0" />
             <span>{error}</span>
           </div>
           <button
             type="button"
-            onClick={carregar}
+            onClick={handleAtualizar}
             className="font-bold text-rental-primary hover:underline self-start sm:self-auto"
           >
             Tentar novamente
           </button>
         </div>
-      ) : agendamentos.length === 0 ? (
+      ) : agendamentosOrdenados.length === 0 ? (
         <div className="rounded-xl border border-dashed border-rental-border bg-rental-surface2/30 p-6 text-center text-xs text-rental-muted">
           Nenhum agendamento encontrado para este filtro.
         </div>
       ) : (
         <ul className="space-y-2.5">
-          {agendamentos.map((ag) => {
+          {agendamentosOrdenados.map((ag) => {
             const dataIso = extrairDataIso(ag.data_hora_inicio);
             const hIni = extrairHoraCurta(ag.data_hora_inicio);
             const hFim = extrairHoraCurta(ag.data_hora_fim);
             const emConclusao = concluindoId === ag.id;
+            const emConfirmacao = confirmandoId === ag.id;
+            const statusLabel = STATUS_LABELS[ag.status] ?? ag.status;
 
             return (
               <li
@@ -210,16 +277,33 @@ export function AgendamentosRecebidosSection({
               >
                 <div className="flex items-start gap-3">
                   <Clock className="h-4 w-4 text-rental-primary shrink-0 mt-0.5" />
-                  <div className="space-y-0.5">
+                  <div className="space-y-1">
                     <p className="font-bold capitalize text-rental-ink">
                       {formatarDataCompleta(dataIso)} · {hIni} às {hFim}
                     </p>
-                    <p className="flex items-center gap-1.5 text-rental-muted">
-                      <User className="h-3.5 w-3.5 shrink-0" />
-                      <span>
-                        {ag.cliente_nome || `Cliente #${ag.cliente_id}`} · Reserva #{ag.id}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-rental-muted">
+                      <span className="inline-flex items-center gap-1.5">
+                        <User className="h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          {ag.cliente_nome || `Cliente #${ag.cliente_id}`} · Reserva #{ag.id}
+                        </span>
                       </span>
-                    </p>
+                      {ag.cliente_email && (
+                        <span className="inline-flex items-center gap-1">
+                          <Mail className="h-3 w-3 shrink-0" />
+                          <span>{ag.cliente_email}</span>
+                        </span>
+                      )}
+                      {ag.orcamento_id && (
+                        <Link
+                          href="/profissional/orcamentos"
+                          className="inline-flex items-center gap-1 font-semibold text-rental-primary hover:underline"
+                        >
+                          <Briefcase className="h-3 w-3 shrink-0" />
+                          <span>Orçamento #{ag.orcamento_id}</span>
+                        </Link>
+                      )}
+                    </div>
                     {ag.status === 'cancelado' && ag.motivo_cancelamento && (
                       <p className="text-[11px] italic text-rental-muted">
                         Motivo do cancelamento: {ag.motivo_cancelamento}
@@ -228,7 +312,7 @@ export function AgendamentosRecebidosSection({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 self-start sm:self-auto">
+                <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase ${
                       ag.status === 'cancelado'
@@ -238,29 +322,54 @@ export function AgendamentosRecebidosSection({
                         : 'bg-rental-success/15 text-rental-success'
                     }`}
                   >
-                    {ag.status}
+                    {statusLabel}
                   </span>
 
-                  {ag.status === 'agendado' && (
-                    <button
-                      type="button"
-                      onClick={() => handleConcluir(ag.id)}
-                      disabled={emConclusao}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-rental-primary px-3 py-1.5 text-xs font-bold text-[var(--rs-primary-text)] transition-opacity hover:opacity-90 disabled:opacity-50"
-                    >
-                      {emConclusao ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          <span>Concluindo...</span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          <span>Concluir atendimento</span>
-                        </>
-                      )}
-                    </button>
-                  )}
+                  {ag.status === 'agendado' &&
+                    (emConfirmacao ? (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleConcluir(ag.id)}
+                          disabled={emConclusao}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-rental-primary px-3 py-1.5 text-xs font-bold text-[var(--rs-primary-text)] transition-opacity hover:opacity-90 disabled:opacity-50"
+                        >
+                          {emConclusao ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              <span>Concluindo...</span>
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              <span>Confirmar conclusão</span>
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmandoId(null)}
+                          disabled={emConclusao}
+                          className="rounded-lg border border-rental-border px-2.5 py-1.5 text-xs font-semibold text-rental-muted transition-colors hover:bg-rental-surface hover:text-rental-ink disabled:opacity-50"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAcaoErro(null);
+                          setAcaoSucesso(null);
+                          setConfirmandoId(ag.id);
+                        }}
+                        disabled={emConclusao}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-rental-primary px-3 py-1.5 text-xs font-bold text-[var(--rs-primary-text)] transition-opacity hover:opacity-90 disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        <span>Concluir atendimento</span>
+                      </button>
+                    ))}
                 </div>
               </li>
             );

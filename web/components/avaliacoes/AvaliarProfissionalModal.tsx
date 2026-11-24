@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   AlertTriangle,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { createAvaliacao } from '../../services/avaliacoes';
+import { mensagemErro } from '../../services/apiError';
 import {
   AVALIACAO_COMENTARIO_MAX_CARACTERES,
   AVALIACAO_COMENTARIO_MIN_CARACTERES,
@@ -130,7 +132,7 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, isLoading, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
   const comentarioLimpo = comentario.trim();
   const comentarioValido =
@@ -175,7 +177,7 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
       const status = typeof err === 'object' && err !== null && 'status' in err
         ? (err as { status: number }).status
         : 0;
-      const message = err instanceof Error ? err.message : 'Falha ao enviar avaliação.';
+      const message = mensagemErro(err, 'Falha ao enviar avaliação.');
 
       if (status === 409 || message.toLowerCase().includes('já foi avaliado') || message.toLowerCase().includes('já registrou')) {
         setIsConflictError(true);
@@ -188,9 +190,10 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
     }
   };
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh' }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="avaliar-modal-title"
@@ -391,6 +394,7 @@ export const AvaliarProfissionalModal: React.FC<AvaliarProfissionalModalProps> =
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
