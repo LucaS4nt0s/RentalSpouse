@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { getAdminDenunciasResumo } from '../../services/denuncias';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { NotificationBell } from '../notificacoes/NotificationBell';
 import { BrandMark } from '../brand/BrandMark';
@@ -14,22 +15,27 @@ export interface AppHeaderProps {
   onOpenAgendamentos?: () => void;
   /** Callback customizado de logout (ex.: painel admin com estado local adicional) */
   onCustomLogout?: () => void;
+  /** Quantidade opcional de denúncias pendentes para exibir no badge do painel admin */
+  pendingDenunciasCount?: number;
 }
 
 interface NavItem {
   href: string;
   label: string;
   onClick?: () => void;
+  badge?: number;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenAgendamentos,
   onCustomLogout,
+  pendingDenunciasCount,
 }) => {
   const pathname = usePathname();
-  const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const { user, token, isAuthenticated, isLoading, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const [fetchedPendingCount, setFetchedPendingCount] = useState<number | undefined>(undefined);
 
   const role =
     user?.role === 'admin' || user?.tipo === 'admin'
@@ -39,6 +45,33 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       : isAuthenticated
       ? 'client'
       : 'guest';
+
+  useEffect(() => {
+    if (role !== 'admin' || !token) {
+      setFetchedPendingCount(undefined);
+      return;
+    }
+    if (typeof pendingDenunciasCount === 'number') {
+      return;
+    }
+
+    const controller = new AbortController();
+    getAdminDenunciasResumo(token, controller.signal)
+      .then((resumo) => {
+        if (!controller.signal.aborted) {
+          setFetchedPendingCount(resumo.pendentes ?? 0);
+        }
+      })
+      .catch(() => {
+        // Falha silenciosa no cabeçalho para não interromper a navegação
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [role, token, pendingDenunciasCount]);
+
+  const effectivePendingCount = pendingDenunciasCount ?? fetchedPendingCount;
 
   const firstName = (user?.nome || user?.name || 'Minha Conta').split(' ')[0];
 
@@ -75,7 +108,11 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
     if (role === 'admin') {
       return [
         { href: '/admin/moderacao', label: 'Moderação' },
-        { href: '/admin/denuncias', label: 'Denúncias' },
+        {
+          href: '/admin/denuncias',
+          label: 'Denúncias',
+          badge: effectivePendingCount,
+        },
         { href: '/cadastro/admin', label: 'Administradores' },
       ];
     }
@@ -140,6 +177,11 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                 }`}
               >
                 <span>{item.label}</span>
+                {typeof item.badge === 'number' && item.badge > 0 && (
+                  <span className="ml-0.5 inline-flex min-w-[18px] items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                    {item.badge > 99 ? '99+' : item.badge}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -265,9 +307,14 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                   href={item.href}
                   aria-current={pathname === item.href ? 'page' : undefined}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex min-h-[44px] items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-rental-ink hover:bg-rental-surface2"
+                  className="flex min-h-[44px] items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-rental-ink hover:bg-rental-surface2"
                 >
                   <span>{item.label}</span>
+                  {typeof item.badge === 'number' && item.badge > 0 && (
+                    <span className="inline-flex min-w-[20px] items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                  )}
                 </Link>
               );
             })}

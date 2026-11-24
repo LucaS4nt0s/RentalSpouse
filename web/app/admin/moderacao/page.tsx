@@ -15,6 +15,7 @@ import {
   Sparkles,
   AlertTriangle,
   Users,
+  Flag,
 } from 'lucide-react';
 import {
   useAuth,
@@ -423,7 +424,14 @@ export default function AdminModerationPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href="/admin/denuncias"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-rental-border bg-rental-surface hover:bg-rental-surface2 text-xs font-bold text-rental-ink transition-colors shadow-sm"
+                >
+                  <Flag className="h-4 w-4 text-amber-500" />
+                  Denúncias de Usuários
+                </Link>
                 <Link
                   href="/cadastro/admin"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-rental-border bg-rental-surface hover:bg-rental-surface2 text-xs font-bold text-rental-ink transition-colors shadow-sm"

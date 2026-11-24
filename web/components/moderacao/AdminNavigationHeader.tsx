@@ -9,10 +9,17 @@ interface AdminNavigationHeaderProps {
     email?: string;
   } | null;
   onLogout?: () => void;
+  pendingDenunciasCount?: number;
 }
 
 export const AdminNavigationHeader: React.FC<AdminNavigationHeaderProps> = ({
   onLogout,
+  pendingDenunciasCount,
 }) => {
-  return <AppHeader onCustomLogout={onLogout} />;
+  return (
+    <AppHeader
+      onCustomLogout={onLogout}
+      pendingDenunciasCount={pendingDenunciasCount}
+    />
+  );
 };
