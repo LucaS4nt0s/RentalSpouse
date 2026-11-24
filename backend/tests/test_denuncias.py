@@ -18,6 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import models
+import schemas
 from security import create_access_token, hash_senha
 
 URL_DENUNCIAS = "/api/denuncias"
@@ -92,10 +93,14 @@ def criar_cliente(client: TestClient, db_session, email: str, base_cpf: str) -> 
     return cliente
 
 
-def criar_profissional(client: TestClient, email: str) -> dict:
-    """Cria um profissional ativo pelo endpoint público."""
+def criar_profissional(
+    client: TestClient, email: str, senha: str | None = None
+) -> dict:
+    """Cria um profissional ativo pelo endpoint público (senha opcional para login)."""
     payload = dict(SAMPLE_PROF)
     payload["email"] = email
+    if senha:
+        payload["password"] = senha
     resposta = client.post("/api/professionals", json=payload)
     assert resposta.status_code == 201, resposta.text
     return resposta.json()
@@ -852,3 +857,348 @@ class TestDenunciasAdminListagemEResumo:
         )
         assert resp_sub.status_code == 200
         assert resp_sub.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Decisão de moderação (issue #99, Fatia 2)
+# ---------------------------------------------------------------------------
+
+URL_ADMIN_MODERAR = "/api/admin/denuncias/{id}/moderar"
+URL_ADMINS_ALIAS_MODERAR = "/api/admins/denuncias/{id}/moderar"
+URL_DENUNCIAS_ADMIN_MODERAR = "/api/denuncias/admin/{id}/moderar"
+
+PARECER_VALIDO = "Relato confirmado pelo histórico de atendimento e mensagens."
+SENHA_PROFISSIONAL = "SenhaForte@2026"
+
+ACOES_VALIDAS = [
+    "banimento",
+    "aprovar_banimento",
+    "suspender_profissional",
+    "arquivamento",
+    "arquivar",
+    "rejeitar",
+    "reativar_profissional",
+]
+
+
+def montar_cenario(client: TestClient, db_session, sufixo: str = "unico"):
+    """
+    Monta admin + cliente + profissional + denúncia pendente.
+
+    Devolve `(admin, cliente, professional_resp, denuncia_resp)`.
+    """
+    admin = criar_admin_usuario(db_session, email=f"admin.{sufixo}@rentalspouse.com")
+    cliente = criar_cliente(client, db_session, f"cliente.{sufixo}@exemplo.com", "987654321")
+    profissional = criar_profissional(
+        client, f"profissional.{sufixo}@exemplo.com", senha=SENHA_PROFISSIONAL
+    )
+    # Profissional aprovado: é o estado em que ele aparece no diretório público,
+    # o que torna a busca de `GET /api/professionals` uma prova válida do ban.
+    profissional_db = db_session.get(models.Professional, profissional["id"])
+    profissional_db.approval_status = models.ProfessionalApprovalStatus.APPROVED.value
+    db_session.commit()
+    resp_denuncia = client.post(
+        URL_DENUNCIAS,
+        json=payload_denuncia(profissional["id"]),
+        headers=cabecalho(cliente.email),
+    )
+    assert resp_denuncia.status_code == 201, resp_denuncia.text
+    return admin, cliente, profissional, resp_denuncia.json()
+
+
+def moderar(client: TestClient, denuncia_id: int, admin_email: str, **payload) -> object:
+    """Dispara o PATCH de moderação com o token do administrador informado."""
+    corpo = {"acao": "arquivar", "parecer": PARECER_VALIDO}
+    corpo.update(payload)
+    return client.patch(
+        URL_ADMIN_MODERAR.format(id=denuncia_id),
+        json=corpo,
+        headers=cabecalho(admin_email, models.UserRole.ADMIN.value),
+    )
+
+
+class TestModeracaoDenuncias:
+    """Cobertura de `PATCH /api/admin/denuncias/{id}/moderar` (issue #99, Fatia 2)."""
+
+    @pytest.mark.parametrize(
+        "url_template",
+        [URL_ADMIN_MODERAR, URL_ADMINS_ALIAS_MODERAR, URL_DENUNCIAS_ADMIN_MODERAR],
+    )
+    def test_exige_autenticacao_e_bloqueia_nao_admin(
+        self, client: TestClient, db_session, url_template: str
+    ):
+        admin, cliente, profissional, denuncia = montar_cenario(client, db_session)
+        url = url_template.format(id=denuncia["id"])
+        corpo = {"acao": "arquivar", "parecer": PARECER_VALIDO}
+
+        assert client.patch(url, json=corpo).status_code == 401
+
+        resp_cliente = client.patch(
+            url, json=corpo, headers=cabecalho(cliente.email, models.UserRole.CLIENT.value)
+        )
+        assert resp_cliente.status_code == 403
+
+        resp_prof = client.patch(
+            url,
+            json=corpo,
+            headers=cabecalho(profissional["email"], models.UserRole.PROFESSIONAL.value),
+        )
+        assert resp_prof.status_code == 403
+
+        admin_inativo = criar_admin_usuario(
+            db_session, email="admin.inativo.moderacao@rentalspouse.com", is_active=False
+        )
+        resp_inativo = client.patch(
+            url,
+            json=corpo,
+            headers=cabecalho(admin_inativo.email, models.UserRole.ADMIN.value),
+        )
+        assert resp_inativo.status_code == 401
+
+        # Nenhuma tentativa bloqueada pode ter decidido a denúncia.
+        denuncia_db = db_session.get(models.Denuncia, denuncia["id"])
+        db_session.refresh(denuncia_db)
+        assert denuncia_db.status == models.DenunciaStatus.PENDENTE.value
+
+    def test_denuncia_inexistente_retorna_404(self, client: TestClient, db_session):
+        admin = criar_admin_usuario(db_session)
+        resp = moderar(client, 999999, admin.email)
+        assert resp.status_code == 404
+        assert "não encontrada" in resp.json()["detail"].lower()
+
+    def test_payload_invalido_retorna_422(self, client: TestClient, db_session):
+        admin, _, _, denuncia = montar_cenario(client, db_session)
+
+        acao_invalida = moderar(client, denuncia["id"], admin.email, acao="explodir_plataforma")
+        assert acao_invalida.status_code == 422
+
+        parecer_curto = moderar(client, denuncia["id"], admin.email, parecer="curto")
+        assert parecer_curto.status_code == 422
+
+        sem_parecer = client.patch(
+            URL_ADMIN_MODERAR.format(id=denuncia["id"]),
+            json={"acao": "arquivar"},
+            headers=cabecalho(admin.email, models.UserRole.ADMIN.value),
+        )
+        assert sem_parecer.status_code == 422
+
+    @pytest.mark.parametrize("acao", ACOES_VALIDAS)
+    def test_aceita_todos_os_aliases_de_acao(
+        self, client: TestClient, db_session, acao: str
+    ):
+        """Valida no schema que cada alias da issue é aceito e normalizado."""
+        payload = schemas.DenunciaModerarPayload(acao=acao, parecer=PARECER_VALIDO)
+        assert payload.acao in {
+            models.DenunciaModeracaoAcao.BANIMENTO.value,
+            models.DenunciaModeracaoAcao.ARQUIVAMENTO.value,
+            models.DenunciaModeracaoAcao.REATIVACAO.value,
+        }
+
+    def test_arquivamento_mantem_profissional_ativo_e_notifica_cliente(
+        self, client: TestClient, db_session
+    ):
+        admin, cliente, profissional, denuncia = montar_cenario(client, db_session)
+
+        resp = moderar(client, denuncia["id"], admin.email, acao="rejeitar")
+        assert resp.status_code == 200, resp.text
+        corpo = resp.json()
+
+        assert corpo["status"] == models.DenunciaStatus.ARQUIVADA.value
+        assert corpo["moderacao_acao"] == models.DenunciaModeracaoAcao.ARQUIVAMENTO.value
+        assert corpo["moderacao_parecer"] == PARECER_VALIDO
+        assert corpo["moderado_em"] is not None
+        assert corpo["moderado_por_nome"] == admin.name
+        assert corpo["professional_is_active"] is True
+
+        db_session.expire_all()
+        profissional_db = db_session.get(models.Professional, profissional["id"])
+        assert profissional_db.is_active is True
+
+        notificacao = (
+            db_session.query(models.Notificacao)
+            .filter(
+                models.Notificacao.user_email == cliente.email,
+                models.Notificacao.tipo == "denuncia_moderada",
+                models.Notificacao.referencia_id == denuncia["id"],
+            )
+            .first()
+        )
+        assert notificacao is not None
+        assert "arquivada" in notificacao.mensagem.lower()
+
+        resumo = client.get(
+            URL_ADMIN_RESUMO,
+            headers=cabecalho(admin.email, models.UserRole.ADMIN.value),
+        )
+        assert resumo.status_code == 200
+        assert resumo.json()["rejeitadas"] == 1
+        assert resumo.json()["resolvidas_banimento"] == 0
+
+    def test_banimento_desativa_contas_bloqueia_login_e_oculta_da_busca(
+        self, client: TestClient, db_session
+    ):
+        admin, cliente, profissional, denuncia = montar_cenario(client, db_session)
+
+        # Login inicial cria a linha sincronizada em `users`.
+        login_antes = client.post(
+            "/api/auth/login",
+            json={"email": profissional["email"], "password": SENHA_PROFISSIONAL},
+        )
+        assert login_antes.status_code == 200, login_antes.text
+
+        busca_antes = client.get("/api/professionals")
+        assert busca_antes.status_code == 200
+        assert profissional["id"] in [item["id"] for item in busca_antes.json()]
+
+        resp = moderar(
+            client,
+            denuncia["id"],
+            admin.email,
+            acao="suspender_profissional",
+            parecer="Denúncia procedente: cobrança indevida confirmada no histórico.",
+        )
+        assert resp.status_code == 200, resp.text
+        corpo = resp.json()
+        assert corpo["status"] == models.DenunciaStatus.RESOLVIDA.value
+        assert corpo["moderacao_acao"] == models.DenunciaModeracaoAcao.BANIMENTO.value
+        assert corpo["professional_is_active"] is False
+
+        db_session.expire_all()
+        profissional_db = db_session.get(models.Professional, profissional["id"])
+        assert profissional_db.is_active is False
+
+        conta_db = (
+            db_session.query(models.User)
+            .filter(models.User.email == profissional["email"])
+            .first()
+        )
+        assert conta_db is not None
+        assert conta_db.is_active is False
+
+        busca_depois = client.get("/api/professionals")
+        assert busca_depois.status_code == 200
+        assert profissional["id"] not in [item["id"] for item in busca_depois.json()]
+
+        login_depois = client.post(
+            "/api/auth/login",
+            json={"email": profissional["email"], "password": SENHA_PROFISSIONAL},
+        )
+        assert login_depois.status_code == 401
+        assert login_depois.json()["detail"] == "Conta desativada"
+
+        notificacao = (
+            db_session.query(models.Notificacao)
+            .filter(
+                models.Notificacao.user_email == cliente.email,
+                models.Notificacao.tipo == "denuncia_moderada",
+                models.Notificacao.referencia_id == denuncia["id"],
+            )
+            .first()
+        )
+        assert notificacao is not None
+        assert "procedente" in notificacao.mensagem.lower()
+
+        resumo = client.get(
+            URL_ADMIN_RESUMO,
+            headers=cabecalho(admin.email, models.UserRole.ADMIN.value),
+        )
+        assert resumo.json()["resolvidas_banimento"] == 1
+
+    def test_reativacao_reverte_banimento_e_devolve_denuncia_para_analise(
+        self, client: TestClient, db_session
+    ):
+        admin, _, profissional, denuncia = montar_cenario(client, db_session)
+
+        banimento = moderar(client, denuncia["id"], admin.email, acao="banimento")
+        assert banimento.status_code == 200, banimento.text
+        assert banimento.json()["professional_is_active"] is False
+
+        resp = moderar(
+            client,
+            denuncia["id"],
+            admin.email,
+            acao="reativar_profissional",
+            parecer="Revisão de recurso aceita: as provas apresentadas são insuficientes.",
+        )
+        assert resp.status_code == 200, resp.text
+        corpo = resp.json()
+
+        assert corpo["professional_is_active"] is True
+        assert corpo["status"] == models.DenunciaStatus.EM_ANALISE.value
+        assert corpo["moderacao_acao"] == models.DenunciaModeracaoAcao.REATIVACAO.value
+
+        db_session.expire_all()
+        profissional_db = db_session.get(models.Professional, profissional["id"])
+        assert profissional_db.is_active is True
+
+        conta_db = (
+            db_session.query(models.User)
+            .filter(models.User.email == profissional["email"])
+            .first()
+        )
+        assert conta_db is not None
+        assert conta_db.is_active is True
+
+        busca = client.get("/api/professionals")
+        assert profissional["id"] in [item["id"] for item in busca.json()]
+
+        login = client.post(
+            "/api/auth/login",
+            json={"email": profissional["email"], "password": SENHA_PROFISSIONAL},
+        )
+        assert login.status_code == 200, login.text
+
+        notificacao_prof = (
+            db_session.query(models.Notificacao)
+            .filter(
+                models.Notificacao.user_email == profissional["email"],
+                models.Notificacao.tipo == "conta_reativada",
+                models.Notificacao.referencia_id == denuncia["id"],
+            )
+            .first()
+        )
+        assert notificacao_prof is not None
+
+    def test_decisao_repetida_retorna_409(self, client: TestClient, db_session):
+        admin, _, _, denuncia = montar_cenario(client, db_session)
+
+        primeira = moderar(client, denuncia["id"], admin.email, acao="arquivar")
+        assert primeira.status_code == 200
+
+        segunda = moderar(client, denuncia["id"], admin.email, acao="banimento")
+        assert segunda.status_code == 409
+
+    def test_reativacao_sem_banimento_retorna_409(self, client: TestClient, db_session):
+        admin, _, _, denuncia = montar_cenario(client, db_session)
+
+        pendente = moderar(client, denuncia["id"], admin.email, acao="reativar")
+        assert pendente.status_code == 409
+
+        arquivamento = moderar(client, denuncia["id"], admin.email, acao="arquivar")
+        assert arquivamento.status_code == 200
+
+        apos_arquivar = moderar(client, denuncia["id"], admin.email, acao="reativar")
+        assert apos_arquivar.status_code == 409
+
+    def test_banimento_registra_auditoria_no_banco(
+        self, client: TestClient, db_session
+    ):
+        admin, _, _, denuncia = montar_cenario(client, db_session)
+
+        resp = moderar(client, denuncia["id"], admin.email, acao="aprovar_banimento")
+        assert resp.status_code == 200, resp.text
+
+        db_session.expire_all()
+        denuncia_db = db_session.get(models.Denuncia, denuncia["id"])
+        assert denuncia_db.moderado_por_id == admin.id
+        assert denuncia_db.moderacao_parecer == PARECER_VALIDO
+        assert denuncia_db.moderado_em is not None
+
+        listagem = client.get(
+            URL_ADMIN_DENUNCIAS,
+            headers=cabecalho(admin.email, models.UserRole.ADMIN.value),
+        )
+        assert listagem.status_code == 200
+        item = next(x for x in listagem.json() if x["id"] == denuncia["id"])
+        assert item["moderado_por_nome"] == admin.name
+        assert item["moderacao_acao"] == models.DenunciaModeracaoAcao.BANIMENTO.value

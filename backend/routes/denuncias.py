@@ -7,16 +7,21 @@ O autor é sempre derivado do token (`get_current_cliente` em
 spoofing de autoria por construção — e o alvo é validado na tabela
 `professionals`.
 
-Escopo desta entrega (visão do cliente):
+Escopo desta entrega:
 
-- `POST /api/denuncias`    -> registra a denúncia (motivo catalogado + relato);
-- `GET  /api/denuncias/me` -> lista as denúncias do próprio cliente.
+- visão do cliente: `POST /api/denuncias` (registra) e `GET /api/denuncias/me`
+  (lista as próprias denúncias);
+- visão do administrador (issues #23 / #99): `GET /api/admin/denuncias`
+  (listagem com filtros), `GET /api/admin/denuncias/resumo` (contadores) e
+  `PATCH /api/admin/denuncias/{id}/moderar` (arquivar, banir/suspender ou
+  reativar o profissional, com parecer e auditoria).
 
-A análise/moderação (painel do administrador, banimento) pertence à issue #23:
-a denúncia nasce com `status = "pendente"` e nenhuma transição de status é
-exposta por este módulo.
+O cliente nunca transiciona status; toda decisão administrativa passa pelo
+endpoint de moderação, que exige papel `admin`.
 """
 
+from datetime import datetime, timezone
+import logging
 from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -27,7 +32,10 @@ import models
 import schemas
 from client_access import get_current_cliente
 from database import get_db
+from routes.notificacoes import registrar_e_enviar_notificacao
 from security import get_current_admin
+
+logger = logging.getLogger("rentalspouse.denuncias")
 
 router = APIRouter(prefix="/api/denuncias", tags=["Denúncias"])
 admin_router = APIRouter(prefix="/api/admin/denuncias", tags=["Moderação de Denúncias"])
@@ -175,6 +183,7 @@ def _denuncia_admin_read(
     cliente: Optional[models.Cliente],
     professional: Optional[models.Professional],
     total_por_profissional: int,
+    moderador_nome: Optional[str] = None,
 ) -> schemas.DenunciaAdminRead:
     """Serializa uma denúncia enriquecida para o painel administrativo."""
     return schemas.DenunciaAdminRead(
@@ -193,6 +202,50 @@ def _denuncia_admin_read(
         professional_is_active=bool(professional.is_active) if professional else False,
         professional_total_denuncias=total_por_profissional,
         total_denuncias_profissional=total_por_profissional,
+        moderacao_acao=denuncia.moderacao_acao,
+        moderacao_parecer=denuncia.moderacao_parecer,
+        moderado_em=denuncia.moderado_em,
+        moderado_por_id=denuncia.moderado_por_id,
+        moderado_por_nome=moderador_nome,
+    )
+
+
+def _obter_denuncia_admin(
+    db: Session,
+    denuncia_id: int,
+    moderador_nome: Optional[str] = None,
+) -> Optional[schemas.DenunciaAdminRead]:
+    """Carrega uma denúncia já enriquecida para a resposta da decisão de moderação."""
+    linha = (
+        db.query(models.Denuncia, models.Cliente, models.Professional)
+        .outerjoin(models.Cliente, models.Cliente.id == models.Denuncia.cliente_id)
+        .outerjoin(
+            models.Professional, models.Professional.id == models.Denuncia.professional_id
+        )
+        .filter(models.Denuncia.id == denuncia_id)
+        .first()
+    )
+    if linha is None:
+        return None
+
+    denuncia, cliente, professional = linha
+    total = (
+        db.query(func.count(models.Denuncia.id))
+        .filter(models.Denuncia.professional_id == denuncia.professional_id)
+        .scalar()
+        or 0
+    )
+
+    if moderador_nome is None and denuncia.moderado_por_id:
+        moderador = (
+            db.query(models.User)
+            .filter(models.User.id == denuncia.moderado_por_id)
+            .first()
+        )
+        moderador_nome = moderador.name if moderador else None
+
+    return _denuncia_admin_read(
+        denuncia, cliente, professional, int(total), moderador_nome
     )
 
 
@@ -310,12 +363,27 @@ def _executar_listagem_denuncias_admin(
         )
         totais_por_prof = {int(pid): int(qtd) for pid, qtd in contagens}
 
+    moderador_ids = {
+        denuncia.moderado_por_id
+        for denuncia, _, _ in linhas
+        if denuncia.moderado_por_id is not None
+    }
+    nomes_moderadores: dict[int, str] = {}
+    if moderador_ids:
+        moderadores = (
+            db.query(models.User.id, models.User.name)
+            .filter(models.User.id.in_(moderador_ids))
+            .all()
+        )
+        nomes_moderadores = {int(uid): nome for uid, nome in moderadores}
+
     return [
         _denuncia_admin_read(
             denuncia,
             cliente,
             professional,
             totais_por_prof.get(denuncia.professional_id, 0),
+            nomes_moderadores.get(denuncia.moderado_por_id),
         )
         for denuncia, cliente, professional in linhas
     ]
@@ -383,3 +451,212 @@ def listar_denuncias_admin(
         skip=skip,
         limit=limit,
     )
+
+
+# ---------------------------------------------------------------------------
+# Decisão de moderação: arquivar, banir/suspender e reativar (issue #99, Fatia 2)
+# ---------------------------------------------------------------------------
+
+
+def _garantir_denuncia_em_aberto(denuncia: models.Denuncia) -> None:
+    """Recusa (409) uma nova decisão sobre denúncia que já possui decisão registrada."""
+    if denuncia.status not in models.DENUNCIA_STATUS_EM_ABERTO:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Esta denúncia já possui uma decisão registrada "
+                f"(situação atual: {denuncia.status}). Reative o profissional "
+                "para reabrir a análise antes de aplicar outra decisão."
+            ),
+        )
+
+
+def _sincronizar_conta_do_profissional(
+    db: Session, professional: models.Professional, ativa: bool
+) -> None:
+    """
+    Alinha `users.is_active` ao estado do profissional.
+
+    O login consulta primeiro a tabela `users`; manter as duas linhas coerentes
+    garante que o bloqueio (e a reversão) valha tanto para quem já tem conta
+    sincronizada quanto para quem autentica direto pela tabela `professionals`.
+    """
+    conta = (
+        db.query(models.User)
+        .filter(models.User.email == professional.email)
+        .first()
+    )
+    if conta is not None:
+        conta.is_active = ativa
+
+
+def _notificar_moderacao(
+    db: Session,
+    denuncia: models.Denuncia,
+    destinatario: Optional[str],
+    titulo: str,
+    mensagem: str,
+    tipo: str,
+) -> None:
+    """Notifica o interessado após a decisão, sem deixar falha de notificação quebrar a resposta."""
+    if not destinatario:
+        return
+    try:
+        registrar_e_enviar_notificacao(
+            db=db,
+            user_email=destinatario,
+            titulo=titulo,
+            mensagem=mensagem,
+            tipo=tipo,
+            referencia_id=denuncia.id,
+        )
+    except Exception:  # pragma: no cover - resiliência de notificação
+        db.rollback()
+        logger.exception(
+            "Falha ao notificar a decisão da denúncia %s para %s",
+            denuncia.id,
+            destinatario,
+        )
+
+
+@admin_router.patch(
+    "/{denuncia_id}/moderar",
+    response_model=schemas.DenunciaAdminRead,
+    summary="Aplicar decisão de moderação a uma denúncia",
+    description=(
+        "Decide uma denúncia em aberto. `banimento` marca `resolvida`, desativa "
+        "`professionals.is_active` e `users.is_active` (removendo o profissional "
+        "da busca pública e bloqueando o login). `arquivamento` marca "
+        "`arquivada` e mantém o profissional ativo. `reativacao` reverte um "
+        "banimento anterior, reabilitando a conta e devolvendo a denúncia para "
+        "análise."
+    ),
+    responses={
+        403: {"description": "Usuário autenticado não é administrador."},
+        404: {"description": "Denúncia (ou profissional denunciado) não encontrada."},
+        409: {"description": "Denúncia já decidida ou sem banimento a reverter."},
+    },
+)
+@admins_alias_router.patch(
+    "/{denuncia_id}/moderar",
+    response_model=schemas.DenunciaAdminRead,
+    include_in_schema=False,
+)
+@router.patch(
+    "/admin/{denuncia_id}/moderar",
+    response_model=schemas.DenunciaAdminRead,
+    include_in_schema=False,
+)
+def moderar_denuncia(
+    denuncia_id: int,
+    payload: schemas.DenunciaModerarPayload,
+    db: Session = Depends(get_db),
+    current_admin: models.User = Depends(get_current_admin),
+):
+    """
+    Aplica a decisão administrativa e registra parecer, autor e data.
+
+    O cliente autor é notificado em toda decisão (procedente ou arquivada); na
+    reversão, o profissional é avisado de que a conta voltou a ficar ativa.
+    """
+    denuncia = (
+        db.query(models.Denuncia)
+        .filter(models.Denuncia.id == denuncia_id)
+        .first()
+    )
+    if denuncia is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Denúncia não encontrada.",
+        )
+
+    professional = (
+        db.query(models.Professional)
+        .filter(models.Professional.id == denuncia.professional_id)
+        .first()
+    )
+    if professional is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profissional denunciado não encontrado.",
+        )
+
+    cliente = (
+        db.query(models.Cliente)
+        .filter(models.Cliente.id == denuncia.cliente_id)
+        .first()
+    )
+
+    acao = payload.acao
+    agora = datetime.now(timezone.utc)
+
+    if acao == models.DenunciaModeracaoAcao.BANIMENTO.value:
+        _garantir_denuncia_em_aberto(denuncia)
+        professional.is_active = False
+        _sincronizar_conta_do_profissional(db, professional, ativa=False)
+        denuncia.status = models.DenunciaStatus.RESOLVIDA.value
+        titulo_notificacao = "Denúncia considerada procedente"
+        mensagem_notificacao = (
+            f"Analisamos a sua denúncia #{denuncia.id} e consideramos o relato "
+            "procedente. O profissional denunciado foi suspenso da plataforma."
+        )
+    elif acao == models.DenunciaModeracaoAcao.ARQUIVAMENTO.value:
+        _garantir_denuncia_em_aberto(denuncia)
+        denuncia.status = models.DenunciaStatus.ARQUIVADA.value
+        titulo_notificacao = "Denúncia arquivada"
+        mensagem_notificacao = (
+            f"Analisamos a sua denúncia #{denuncia.id} e, após revisão da equipe "
+            "de moderação, ela foi arquivada. Obrigado por contribuir com a "
+            "segurança da plataforma."
+        )
+    else:  # reativação
+        if (
+            denuncia.status != models.DenunciaStatus.RESOLVIDA.value
+            or denuncia.moderacao_acao != models.DenunciaModeracaoAcao.BANIMENTO.value
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Só é possível reativar o profissional de uma denúncia "
+                    "resolvida por banimento ainda não revertido."
+                ),
+            )
+        professional.is_active = True
+        _sincronizar_conta_do_profissional(db, professional, ativa=True)
+        # A decisão foi revertida: a denúncia volta para a fila de análise.
+        denuncia.status = models.DenunciaStatus.EM_ANALISE.value
+
+    denuncia.moderacao_acao = acao
+    denuncia.moderacao_parecer = payload.parecer
+    denuncia.moderado_em = agora
+    denuncia.moderado_por_id = current_admin.id
+
+    db.commit()
+    db.refresh(denuncia)
+
+    if acao == models.DenunciaModeracaoAcao.REATIVACAO.value:
+        _notificar_moderacao(
+            db,
+            denuncia,
+            professional.email,
+            "Conta reativada na RentalSpouse",
+            (
+                "A suspensão da sua conta foi revertida pela equipe de "
+                f"moderação após revisão da denúncia #{denuncia.id}. Seu perfil "
+                "voltou a ficar visível na busca de profissionais."
+            ),
+            "conta_reativada",
+        )
+    else:
+        _notificar_moderacao(
+            db,
+            denuncia,
+            cliente.email if cliente else None,
+            titulo_notificacao,
+            mensagem_notificacao,
+            "denuncia_moderada",
+        )
+
+    resposta = _obter_denuncia_admin(db, denuncia.id, current_admin.name)
+    assert resposta is not None  # a denúncia acabou de ser persistida
+    return resposta

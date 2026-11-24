@@ -3,6 +3,7 @@ import {
   DenunciaAdminItem,
   DenunciaAdminResumo,
   DenunciaCreatePayload,
+  DenunciaModerarPayload,
   denunciaEmAberto,
 } from '../types/denuncias';
 
@@ -79,6 +80,7 @@ export async function createDenunciaMock(
 
 /** Limpa o estado mock (útil em desenvolvimento/demonstrações). */
 export function resetMockDenunciasState(): void {
+  moderacaoOverrides.clear();
   saveDenuncias([]);
 }
 
@@ -111,10 +113,33 @@ const DEFAULT_ADMIN_SEED_DENUNCIAS: DenunciaAdminItem[] = [
   },
 ];
 
+interface ModeracaoMockOverride {
+  status: string;
+  moderacao_acao: string;
+  moderacao_parecer: string;
+  moderado_em: string;
+  moderado_por_nome: string;
+  professional_is_active: boolean;
+}
+
+/**
+ * Decisões aplicadas em memória no modo mock (Fatia 2).
+ *
+ * O estado do painel admin é derivado das denúncias mock/seed, então a decisão
+ * precisa ficar à parte para que a lista, o resumo e o modal reflitam o mesmo
+ * resultado sem backend.
+ */
+const moderacaoOverrides = new Map<number, ModeracaoMockOverride>();
+
+function aplicarModeracaoMock(item: DenunciaAdminItem): DenunciaAdminItem {
+  const override = moderacaoOverrides.get(item.id);
+  return override ? { ...item, ...override } : item;
+}
+
 function getAdminDenunciasBase(): DenunciaAdminItem[] {
   const clientDenuncias = loadDenuncias();
   if (clientDenuncias.length === 0) {
-    return DEFAULT_ADMIN_SEED_DENUNCIAS;
+    return DEFAULT_ADMIN_SEED_DENUNCIAS.map(aplicarModeracaoMock);
   }
 
   const counts = new Map<number, number>();
@@ -124,7 +149,7 @@ function getAdminDenunciasBase(): DenunciaAdminItem[] {
 
   return clientDenuncias.map((item) => {
     const total = counts.get(item.professional_id) ?? 1;
-    return {
+    return aplicarModeracaoMock({
       id: item.id,
       motivo: item.motivo,
       descricao: item.descricao,
@@ -140,7 +165,7 @@ function getAdminDenunciasBase(): DenunciaAdminItem[] {
       professional_is_active: true,
       professional_total_denuncias: total,
       total_denuncias_profissional: total,
-    };
+    });
   });
 }
 
@@ -200,4 +225,56 @@ export async function getAdminDenunciasResumoMock(): Promise<DenunciaAdminResumo
     rejeitadas,
     arquivadas: rejeitadas,
   };
+}
+
+/**
+ * Aplica a decisão de moderação no modo mock, reproduzindo as regras do
+ * backend (409 para denúncia já decidida, reativação só de banimento ativo).
+ */
+export async function moderarDenunciaMock(
+  denunciaId: number,
+  payload: DenunciaModerarPayload,
+): Promise<DenunciaAdminItem> {
+  await delay(350);
+
+  const item = getAdminDenunciasBase().find((d) => d.id === denunciaId);
+  if (!item) {
+    throw new Error('Denúncia não encontrada.');
+  }
+
+  const agora = new Date().toISOString();
+
+  if (payload.acao === 'reativacao') {
+    if (item.status !== 'resolvida' || item.moderacao_acao !== 'banimento') {
+      throw new Error(
+        'Só é possível reativar o profissional de uma denúncia resolvida por banimento ainda não revertido.',
+      );
+    }
+    const reativacao: ModeracaoMockOverride = {
+      status: 'em_analise',
+      moderacao_acao: 'reativacao',
+      moderacao_parecer: payload.parecer,
+      moderado_em: agora,
+      moderado_por_nome: 'Moderador (mock)',
+      professional_is_active: true,
+    };
+    moderacaoOverrides.set(denunciaId, reativacao);
+    return { ...item, ...reativacao };
+  }
+
+  if (item.status !== 'pendente' && item.status !== 'em_analise') {
+    throw new Error('Esta denúncia já possui uma decisão registrada.');
+  }
+
+  const banimento = payload.acao === 'banimento';
+  const decisao: ModeracaoMockOverride = {
+    status: banimento ? 'resolvida' : 'arquivada',
+    moderacao_acao: payload.acao,
+    moderacao_parecer: payload.parecer,
+    moderado_em: agora,
+    moderado_por_nome: 'Moderador (mock)',
+    professional_is_active: banimento ? false : item.professional_is_active,
+  };
+  moderacaoOverrides.set(denunciaId, decisao);
+  return { ...item, ...decisao };
 }
