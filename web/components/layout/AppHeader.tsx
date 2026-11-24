@@ -58,7 +58,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         { href: '/profissionais', label: 'Buscar profissionais' },
         { href: '/cliente/orcamentos', label: 'Meus orçamentos' },
         {
-          href: '/profissionais',
+          href: '/cliente/agendamentos',
           label: 'Meus agendamentos',
           onClick: onOpenAgendamentos,
         },

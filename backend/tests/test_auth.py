@@ -605,3 +605,52 @@ class TestMinhaContaEndpoints:
             json={"email": "troca.senha@exemplo.com", "senha": "SenhaNovaForte456"},
         )
         assert login_novo.status_code == 200
+
+    def test_patch_me_alteracao_de_cep_invalida_coordenadas_antigas(self, client: TestClient):
+        """Ao atualizar CEP/endereço sem novas coordenadas em PATCH /api/auth/me, limpa lat/lon antigas."""
+        cadastrar_cliente_auxiliar(
+            client,
+            email="geo.cliente@exemplo.com",
+            senha="SenhaForte123",
+            verificado=True,
+        )
+        db = SessionLocal()
+        try:
+            cli = db.query(models.Cliente).filter(models.Cliente.email == "geo.cliente@exemplo.com").first()
+            cli.latitude = -23.5505
+            cli.longitude = -46.6333
+            db.commit()
+        finally:
+            db.close()
+
+        login_res = client.post(
+            "/api/auth/login",
+            json={"email": "geo.cliente@exemplo.com", "senha": "SenhaForte123"},
+        )
+        headers = {"Authorization": f"Bearer {login_res.json()['access_token']}"}
+
+        patch_res = client.patch(
+            "/api/auth/me",
+            headers=headers,
+            json={
+                "cep": "20040-020",
+                "logradouro": "Rua da Assembleia",
+                "numero": "10",
+                "bairro": "Centro",
+                "cidade": "Rio de Janeiro",
+                "estado": "RJ",
+            },
+        )
+        assert patch_res.status_code == 200
+        dados = patch_res.json()
+        assert dados["cep"] == "20040020"
+        assert dados["cidade"] == "Rio de Janeiro"
+        assert dados["estado"] == "RJ"
+
+        db = SessionLocal()
+        try:
+            cli = db.query(models.Cliente).filter(models.Cliente.email == "geo.cliente@exemplo.com").first()
+            assert cli.latitude is None
+            assert cli.longitude is None
+        finally:
+            db.close()

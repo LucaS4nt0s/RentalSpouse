@@ -822,17 +822,17 @@ class TestProfessionalRadiusAndCombinedFilters:
     ):
         from routes.professionals import seed_demo_professionals
 
-        assert seed_demo_professionals(db_session) == 15
+        assert seed_demo_professionals(db_session) == 23
         assert seed_demo_professionals(db_session) == 0
 
         resp_20 = client.get("/api/professionals/search?max_distance_km=20&limit=50").json()
-        assert resp_20["total"] == 10
+        assert resp_20["total"] == 11
         distances = [item["distance_km"] for item in resp_20["items"]]
         assert all(d is not None and d <= 20.0 for d in distances)
         assert distances == sorted(distances)
 
         resp_100 = client.get("/api/professionals/search?max_distance_km=100&limit=50").json()
-        assert resp_100["total"] == 15
+        assert resp_100["total"] == 19
 
 
 

@@ -27,6 +27,7 @@ import { Select } from '../../components/ui/Select';
 import { SpecialtiesChips } from '../../components/ui/SpecialtiesChips';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useAddressLookup } from '../../hooks/useAddressLookup';
 import { VALID_UFS } from '../../utils/validators';
 import { cleanDigits, maskCEP, maskPhone } from '../../utils/formatters';
 
@@ -106,10 +107,26 @@ export default function MinhaContaPage() {
     message: string;
   } | null>(null);
 
+  const {
+    isLoading: isLoadingCep,
+    error: cepLookupError,
+    syncCep,
+  } = useAddressLookup(cep, {
+    onSuccess: (result) => {
+      setLogradouro(result.logradouro);
+      setBairro(result.bairro);
+      setCidade(result.cidade);
+      setEstado(result.estado_uf);
+      setCity(result.cidade);
+      setStateUf(result.estado_uf);
+    },
+  });
+
   const populateForm = useCallback((data: ProfileResponse) => {
     setProfile(data);
     setName(data.name || data.nome || '');
     setDataNascimento(data.data_nascimento || '');
+    syncCep(data.cep || '');
     setCep(data.cep ? maskCEP(data.cep) : '');
     setLogradouro(data.logradouro || '');
     setNumero(data.numero || '');
@@ -123,7 +140,7 @@ export default function MinhaContaPage() {
     setSpecialties(Array.isArray(data.specialties) ? data.specialties : []);
     setCity(data.city || '');
     setStateUf(data.state || '');
-  }, []);
+  }, [syncCep]);
 
   const fetchProfile = useCallback(async () => {
     if (!token) return;
@@ -185,21 +202,35 @@ export default function MinhaContaPage() {
 
     if (role === 'client') {
       const cleanCepDigits = cleanDigits(cep);
-      if (cleanCepDigits && cleanCepDigits.length !== 8) {
+      if (cleanCepDigits.length !== 8) {
         setFeedbackBanner({
           type: 'error',
           message: 'O CEP deve conter exatamente 8 dígitos numéricos.',
         });
         return;
       }
-      if (cleanCepDigits) payload.cep = cleanCepDigits;
+      if (
+        !logradouro.trim() ||
+        !numero.trim() ||
+        !bairro.trim() ||
+        !cidade.trim() ||
+        !estado.trim()
+      ) {
+        setFeedbackBanner({
+          type: 'error',
+          message:
+            'Preencha todos os campos obrigatórios de endereço (CEP, logradouro, número, bairro, cidade e UF).',
+        });
+        return;
+      }
+      payload.cep = cleanCepDigits;
       if (dataNascimento) payload.data_nascimento = dataNascimento;
-      if (logradouro.trim()) payload.logradouro = logradouro.trim();
-      if (numero.trim()) payload.numero = numero.trim();
+      payload.logradouro = logradouro.trim();
+      payload.numero = numero.trim();
       payload.complemento = complemento.trim() || null;
-      if (bairro.trim()) payload.bairro = bairro.trim();
-      if (cidade.trim()) payload.cidade = cidade.trim();
-      if (estado.trim()) payload.estado = estado.trim().toUpperCase();
+      payload.bairro = bairro.trim();
+      payload.cidade = cidade.trim();
+      payload.estado = estado.trim().toUpperCase();
     } else if (role === 'professional') {
       if (bio.trim().length < 10) {
         setFeedbackBanner({
@@ -228,10 +259,10 @@ export default function MinhaContaPage() {
         return;
       }
       if (cleanProfCep) payload.cep = cleanProfCep;
-      if (logradouro.trim()) payload.logradouro = logradouro.trim();
-      if (numero.trim()) payload.numero = numero.trim();
+      payload.logradouro = logradouro.trim() || null;
+      payload.numero = numero.trim() || null;
       payload.complemento = complemento.trim() || null;
-      if (bairro.trim()) payload.bairro = bairro.trim();
+      payload.bairro = bairro.trim() || null;
       if (city.trim()) payload.city = city.trim();
       if (stateUf.trim()) payload.state = stateUf.trim().toUpperCase();
     }
@@ -634,14 +665,26 @@ export default function MinhaContaPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-6 gap-4">
                   <div className="sm:col-span-2">
-                    <FormFieldWrapper id="conta-cep" label="CEP" required>
+                    <FormFieldWrapper
+                      id="conta-cep"
+                      label="CEP"
+                      required
+                      hint="Busca automática"
+                      error={cepLookupError || undefined}
+                    >
                       <TextInput
                         id="conta-cep"
                         value={cep}
                         onChange={(e) => setCep(maskCEP(e.target.value))}
                         placeholder="00000-000"
                         maxLength={9}
+                        hasError={Boolean(cepLookupError)}
                         disabled={isSavingProfile}
+                        rightIcon={
+                          isLoadingCep ? (
+                            <RefreshCw className="h-4 w-4 animate-spin text-rental-primary" />
+                          ) : undefined
+                        }
                       />
                     </FormFieldWrapper>
                   </div>
@@ -763,14 +806,25 @@ export default function MinhaContaPage() {
                   </div>
 
                   <div className="sm:col-span-2">
-                    <FormFieldWrapper id="conta-prof-cep" label="CEP">
+                    <FormFieldWrapper
+                      id="conta-prof-cep"
+                      label="CEP"
+                      hint="Busca automática"
+                      error={cepLookupError || undefined}
+                    >
                       <TextInput
                         id="conta-prof-cep"
                         value={cep}
                         onChange={(e) => setCep(maskCEP(e.target.value))}
                         placeholder="00000-000"
                         maxLength={9}
+                        hasError={Boolean(cepLookupError)}
                         disabled={isSavingProfile}
+                        rightIcon={
+                          isLoadingCep ? (
+                            <RefreshCw className="h-4 w-4 animate-spin text-rental-primary" />
+                          ) : undefined
+                        }
                       />
                     </FormFieldWrapper>
                   </div>

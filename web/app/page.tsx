@@ -24,6 +24,7 @@ interface Shortcut {
 /** Atalhos por perfil: substituem a fileira de botões com o mesmo peso visual (Lei de Hick). */
 const CLIENT_SHORTCUTS: Shortcut[] = [
   { href: '/cliente/orcamentos', title: 'Meus orçamentos', description: 'Acompanhe respostas e estimativas' },
+  { href: '/cliente/agendamentos', title: 'Meus agendamentos', description: 'Horários marcados e cancelamentos' },
   { href: '/minha-conta', title: 'Minha conta', description: 'Dados pessoais e endereço' },
 ];
 
