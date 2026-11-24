@@ -245,6 +245,11 @@ def _montar_perfil_usuario(current_user: models.User, db: Session) -> UserRead:
                     "bio": prof.bio,
                     "service_radius_km": prof.service_radius_km,
                     "specialties": list(prof.specialties or []),
+                    "cep": prof.cep,
+                    "logradouro": prof.logradouro,
+                    "numero": prof.numero,
+                    "complemento": prof.complemento,
+                    "bairro": prof.bairro,
                     "city": prof.city,
                     "state": prof.state,
                     "approval_status": prof.approval_status,
@@ -397,17 +402,25 @@ def update_me(
             prof.service_radius_km = payload.service_radius_km
         if payload.specialties is not None:
             prof.specialties = payload.specialties
-            prof.normalized_specialties = models.normalize_text(" ".join(payload.specialties))
+        if payload.cep is not None:
+            prof.cep = payload.cep
+        if payload.logradouro is not None:
+            prof.logradouro = payload.logradouro
+        if payload.numero is not None:
+            prof.numero = payload.numero
+        if "complemento" in payload.model_fields_set:
+            prof.complemento = payload.complemento
+        if payload.bairro is not None:
+            prof.bairro = payload.bairro
         if payload.city is not None:
             prof.city = payload.city
-            prof.normalized_city = models.normalize_text(payload.city)
         elif payload.cidade is not None:
             prof.city = payload.cidade
-            prof.normalized_city = models.normalize_text(payload.cidade)
         if payload.state is not None:
             prof.state = payload.state
         elif payload.estado is not None:
             prof.state = payload.estado
+        prof.update_normalized_fields()
 
     else:
         # Administrador (models.User)

@@ -41,11 +41,9 @@ function ProfissionaisSearchContent() {
     hasActiveFilters,
   } = useUrlFilters();
 
-  // Estados locais para inputs com debounce de 350ms (requisito PRD)
+  // Estado local para busca textual com debounce de 350ms (requisito PRD); cidade é instantânea
   const [searchInput, setSearchInput] = useState<string>(q);
-  const [cityInput, setCityInput] = useState<string>(city);
   const debouncedSearch = useDebounce(searchInput, 350);
-  const debouncedCity = useDebounce(cityInput, 350);
 
   // Modal de Perfil Detalhado do Profissional (issue #96)
   const [profileTarget, setProfileTarget] = useState<Professional | null>(null);
@@ -67,25 +65,15 @@ function ProfissionaisSearchContent() {
     }
   }, [debouncedSearch, q, setQ]);
 
-  useEffect(() => {
-    if (debouncedCity !== city) {
-      setCity(debouncedCity);
-    }
-  }, [debouncedCity, city, setCity]);
-
-  // Se a URL mudou externamente (ex: botão limpar filtros), atualiza inputs locais
+  // Se a URL mudou externamente (ex: botão limpar filtros), atualiza input local
   useEffect(() => {
     setSearchInput(q);
   }, [q]);
 
-  useEffect(() => {
-    setCityInput(city);
-  }, [city]);
-
   // Hook central de busca e gestão dos 3 estados
   const { data, isLoading, isRetrying, error, isEmpty, detectedSuggestion, retry } = useProfessionalsSearch({
     specialty,
-    city: debouncedCity,
+    city,
     state,
     q: debouncedSearch,
     radius,
@@ -97,11 +85,10 @@ function ProfissionaisSearchContent() {
 
   useEffect(() => {
     setVisibleCount(12);
-  }, [specialty, debouncedCity, state, debouncedSearch, radius, orderBy]);
+  }, [specialty, city, state, debouncedSearch, radius, orderBy]);
 
   const handleClearAll = () => {
     setSearchInput('');
-    setCityInput('');
     clearFilters();
   };
 
@@ -174,8 +161,8 @@ function ProfissionaisSearchContent() {
 
         {/* Seção 3: Barra de Ações e Filtros Secundários */}
         <FilterActionBar
-          city={cityInput}
-          onCityChange={setCityInput}
+          city={city}
+          onCityChange={setCity}
           radius={radius}
           onRadiusChange={setRadius}
           orderBy={orderBy}

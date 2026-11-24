@@ -136,6 +136,8 @@ class ContaUpdateRequest(BaseModel):
     specialties: Optional[List[str]] = None
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, min_length=2, max_length=2)
+    latitude: Optional[float] = Field(None, ge=-90.0, le=90.0)
+    longitude: Optional[float] = Field(None, ge=-180.0, le=180.0)
 
     # Alteração opcional de senha
     senha_atual: Optional[str] = Field(None, max_length=128)
@@ -608,8 +610,27 @@ class ProfessionalBase(BaseModel):
     bio: str = Field(..., min_length=10, max_length=2000, description="Biografia detalhada e apresentação aos clientes")
     service_radius_km: float = Field(..., ge=1.0, description="Raio de atendimento em km (mínimo 1 km)")
     specialties: List[str] = Field(..., min_length=1, description="Lista de especialidades do profissional")
+    cep: Optional[str] = Field(None, max_length=9, description="CEP do profissional")
+    logradouro: Optional[str] = Field(None, max_length=255, description="Logradouro do profissional")
+    numero: Optional[str] = Field(None, max_length=50, description="Número do endereço")
+    complemento: Optional[str] = Field(None, max_length=255, description="Complemento do endereço")
+    bairro: Optional[str] = Field(None, max_length=100, description="Bairro do profissional")
     city: Optional[str] = Field(None, max_length=100, description="Cidade base do profissional")
     state: Optional[str] = Field(None, min_length=2, max_length=2, description="Sigla do estado (ex: SP)")
+    latitude: Optional[float] = Field(None, ge=-90.0, le=90.0, description="Latitude opcional")
+    longitude: Optional[float] = Field(None, ge=-180.0, le=180.0, description="Longitude opcional")
+
+    @field_validator("cep")
+    @classmethod
+    def validate_cep_optional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        digits = "".join(filter(str.isdigit, str(v)))
+        if not digits:
+            return None
+        if len(digits) != 8:
+            raise ValueError("O CEP deve conter exatamente 8 dígitos numéricos.")
+        return digits
 
     @field_validator("name")
     @classmethod
@@ -670,9 +691,12 @@ class ProfessionalCreate(ProfessionalBase):
                     data["service_radius_km"] = data["raio_atendimento_km"]
                 elif "raio_atendimento" in data:
                     data["service_radius_km"] = data["raio_atendimento"]
-            # endereco -> city / state
+            # endereco -> cep / logradouro / numero / complemento / bairro / city / state
             if "endereco" in data and isinstance(data["endereco"], dict):
                 end = data["endereco"]
+                for campo in ("cep", "logradouro", "numero", "complemento", "bairro"):
+                    if campo not in data and campo in end:
+                        data[campo] = end[campo]
                 if "city" not in data and "cidade" in end:
                     data["city"] = end["cidade"]
                 if "state" not in data:
@@ -704,9 +728,28 @@ class ProfessionalUpdate(BaseModel):
     bio: Optional[str] = Field(None, min_length=10, max_length=2000)
     service_radius_km: Optional[float] = Field(None, ge=1.0)
     specialties: Optional[List[str]] = Field(None, min_length=1)
+    cep: Optional[str] = Field(None, max_length=9)
+    logradouro: Optional[str] = Field(None, max_length=255)
+    numero: Optional[str] = Field(None, max_length=50)
+    complemento: Optional[str] = Field(None, max_length=255)
+    bairro: Optional[str] = Field(None, max_length=100)
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, min_length=2, max_length=2)
+    latitude: Optional[float] = Field(None, ge=-90.0, le=90.0)
+    longitude: Optional[float] = Field(None, ge=-180.0, le=180.0)
     is_active: Optional[bool] = None
+
+    @field_validator("cep")
+    @classmethod
+    def validate_cep_optional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        digits = "".join(filter(str.isdigit, str(v)))
+        if not digits:
+            return None
+        if len(digits) != 8:
+            raise ValueError("O CEP deve conter exatamente 8 dígitos numéricos.")
+        return digits
 
     @field_validator("name", "email", "bio", "service_radius_km", "specialties", "is_active", mode="before")
     @classmethod
@@ -775,6 +818,7 @@ class ProfessionalRead(ProfessionalBase):
     approved_at: Optional[datetime] = None
     average_rating: Optional[float] = Field(None, description="Nota média de avaliações (1.0 a 5.0) ou None se não avaliado")
     reviews_count: int = Field(0, description="Total de avaliações recebidas")
+    distance_km: Optional[float] = Field(None, description="Distância em km entre o endereço do cliente e o profissional")
     created_at: datetime
     updated_at: datetime
 
@@ -798,12 +842,14 @@ class ProfessionalPublicRead(BaseModel):
     bio: str
     service_radius_km: float
     specialties: List[str]
+    bairro: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
     is_active: bool
     approval_status: str
     average_rating: Optional[float] = Field(None, description="Nota média de avaliações (1.0 a 5.0) ou None se não avaliado")
     reviews_count: int = Field(0, description="Total de avaliações recebidas")
+    distance_km: Optional[float] = Field(None, description="Distância em km entre o endereço do cliente e o profissional")
     created_at: datetime
     updated_at: datetime
 
@@ -1038,6 +1084,7 @@ class ProfessionalModerationReviewRead(BaseModel):
     bio: str
     service_radius_km: float
     specialties: List[str]
+    bairro: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
     is_active: bool

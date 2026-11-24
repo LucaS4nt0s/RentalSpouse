@@ -50,6 +50,8 @@ def migrate_columns_and_indexes(engine: Engine) -> None:
             ("verificacao_token_hash", "VARCHAR(64)"),
             ("verificacao_expira_em", "TIMESTAMP"),
             ("verificacao_enviada_em", "TIMESTAMP"),
+            ("latitude", "FLOAT"),
+            ("longitude", "FLOAT"),
         ]
         with engine.begin() as conn:
             for col_name, col_type in cliente_cols_to_add:
@@ -90,6 +92,13 @@ def migrate_columns_and_indexes(engine: Engine) -> None:
         ("normalized_city", "VARCHAR(100)"),
         ("normalized_specialties", "TEXT"),
         ("normalized_search", "TEXT"),
+        ("cep", "VARCHAR(8)"),
+        ("logradouro", "VARCHAR(255)"),
+        ("numero", "VARCHAR(50)"),
+        ("complemento", "VARCHAR(255)"),
+        ("bairro", "VARCHAR(100)"),
+        ("latitude", "FLOAT"),
+        ("longitude", "FLOAT"),
     ]
 
     with engine.begin() as conn:
@@ -257,8 +266,10 @@ def backfill_normalized_fields(session_factory: Callable[[], Session], batch_siz
                 db.query(models.Professional)
                 .filter(
                     (models.Professional.normalized_search.is_(None))
+                    | (models.Professional.normalized_search == "")
                     | (models.Professional.normalized_city.is_(None))
                     | (models.Professional.normalized_specialties.is_(None))
+                    | (models.Professional.normalized_specialties == "")
                 )
                 .limit(batch_size)
                 .all()

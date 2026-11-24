@@ -817,6 +817,23 @@ class TestProfessionalRadiusAndCombinedFilters:
         resp_zero = client.get("/api/professionals?min_radius_km=0")
         assert resp_zero.status_code == 422
 
+    def test_max_distance_km_filters_and_sorts_and_seed_is_idempotent(
+        self, client: TestClient, db_session
+    ):
+        from routes.professionals import seed_demo_professionals
+
+        assert seed_demo_professionals(db_session) == 15
+        assert seed_demo_professionals(db_session) == 0
+
+        resp_20 = client.get("/api/professionals/search?max_distance_km=20&limit=50").json()
+        assert resp_20["total"] == 10
+        distances = [item["distance_km"] for item in resp_20["items"]]
+        assert all(d is not None and d <= 20.0 for d in distances)
+        assert distances == sorted(distances)
+
+        resp_100 = client.get("/api/professionals/search?max_distance_km=100&limit=50").json()
+        assert resp_100["total"] == 15
+
 
 
 
