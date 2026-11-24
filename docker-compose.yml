@@ -24,7 +24,8 @@ services:
     container_name: rentalspouse_backend
     restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://rentalspouse:rentalspouse_secret@db:5432/rentalspouse_db}
       # Configuração do e-mail transacional (verificação de conta).
@@ -41,7 +42,9 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
       SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
-      JWT_SECRET: ${JWT_SECRET:-rentalspouse_dev_secret_key_change_in_production_123456789}
+      # Em desenvolvimento sem .env, security.py usa fallback e registra aviso de segurança;
+      # defina um JWT_SECRET forte ao publicar em produção.
+      JWT_SECRET: ${JWT_SECRET:-}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
       PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-sandbox_mock}
@@ -57,7 +60,14 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/hello', timeout=3)"]
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - |
+          import urllib.request
+          with urllib.request.urlopen('http://localhost:8000/api/hello', timeout=3) as resp:
+              assert resp.status == 200
       interval: 10s
       timeout: 5s
       retries: 5

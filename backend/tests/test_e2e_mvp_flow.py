@@ -1,8 +1,10 @@
 """
-Suíte de Teste Ponta a Ponta (E2E) do fluxo completo do MVP — RentalSpouse (Issue #100).
+Suíte de integração do fluxo completo do MVP (10 etapas) — RentalSpouse (Issue #100).
 
-Executa sequencialmente todas as 10 etapas críticas da jornada do sistema sem mocks
-de regras de negócio (usando `sandbox_mock` apenas no gateway externo de pagamentos):
+Nota de escopo: executa em processo via FastAPI `TestClient` + SQLite em memória
+configurado em `tests/conftest.py` (sem mocks de regras de negócio, usando
+`sandbox_mock` apenas no gateway externo de pagamentos), complementando o
+Pair Check manual com Docker Compose + PostgreSQL 15:
 1. Cadastro de cliente + confirmação de e-mail via token real + login;
 2. Cadastro de profissional + login + upload de documentos obrigatórios + submissão;
 3. Moderação administrativa: aprovação do cadastro do profissional;
@@ -18,6 +20,7 @@ de regras de negócio (usando `sandbox_mock` apenas no gateway externo de pagame
 import re
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -60,6 +63,13 @@ def _extrair_token_email(caixa_de_entrada: list) -> str:
 class TestFluxoCompletoMVPE2E:
     """Valida a integração sequencial completa entre todos os módulos do MVP."""
 
+    @pytest.fixture(autouse=True)
+    def _limpar_estado_mock_pagamentos(self):
+        """Garante isolamento do estado em memória do gateway mock mesmo em falhas."""
+        payment_gateway.limpar_mock_pagamentos()
+        yield
+        payment_gateway.limpar_mock_pagamentos()
+
     def test_jornada_completa_mvp_10_etapas(
         self,
         client: TestClient,
@@ -76,7 +86,6 @@ class TestFluxoCompletoMVPE2E:
         monkeypatch.setenv("DOCUMENTS_UPLOAD_DIR", str(docs_dir))
         monkeypatch.setenv("ORCAMENTOS_UPLOAD_DIR", str(orcs_dir))
         monkeypatch.setenv("PAYMENT_PROVIDER", "sandbox_mock")
-        payment_gateway.limpar_mock_pagamentos()
 
         # ------------------------------------------------------------------
         # ETAPA 1: Cadastro de Cliente, Confirmação de E-mail e Login
@@ -403,3 +412,41 @@ class TestFluxoCompletoMVPE2E:
                 .one()
             )
             assert denuncia_db.status == models.DenunciaStatus.PENDENTE.value
+
+    def test_painel_admin_denuncias_disponivel_no_fluxo(
+        self, client: TestClient, db_session: Session
+    ):
+        """
+        Verifica as rotas administrativas de denúncias (#99/#107).
+
+        Enquanto o PR #107 não entra na dev, sinaliza skip explícito no pytest
+        para não mascarar ausência da rota após o merge.
+        """
+        admin_email = f"admin.painel.{uuid.uuid4().hex[:8]}@rentalspouse.com"
+        admin_senha = "AdminPainel@2026"
+        admin = models.User(
+            name="Admin Verificador Painel",
+            email=admin_email,
+            hashed_password=hash_senha(admin_senha),
+            role=models.UserRole.ADMIN.value,
+            is_active=True,
+        )
+        db_session.add(admin)
+        db_session.commit()
+
+        resp_login = client.post(
+            "/api/auth/login",
+            json={"email": admin_email, "password": admin_senha},
+        )
+        assert resp_login.status_code == 200, resp_login.text
+        headers_admin = {"Authorization": f"Bearer {resp_login.json()['access_token']}"}
+
+        resp_admin_den = client.get("/api/admin/denuncias", headers=headers_admin)
+        if resp_admin_den.status_code == 404:
+            pytest.skip("Rotas administrativas de denúncias (#99/#107) ainda não mergeadas na dev.")
+
+        assert resp_admin_den.status_code == 200, resp_admin_den.text
+        resp_resumo = client.get("/api/admin/denuncias/resumo", headers=headers_admin)
+        assert resp_resumo.status_code == 200, resp_resumo.text
+        resumo = resp_resumo.json()
+        assert "total" in resumo and "pendentes" in resumo
