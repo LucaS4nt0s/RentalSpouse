@@ -89,7 +89,7 @@ export const PasswordStrengthMeter: React.FC<PasswordStrengthMeterProps> = ({
       {/* Checklist Interativo dos 5 Critérios */}
       {showChecklist && (
         <div className="flex flex-col gap-2 pt-1 border-t border-slate-200 dark:border-white/[0.06]">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#16263F] dark:text-[#64748B]">
+          <span className="text-[11px] font-bold text-[#16263F] dark:text-[#64748B]">
             Requisitos de Segurança Obrigatórios
           </span>
 

@@ -194,9 +194,6 @@ export default function ClienteOrcamentosPage() {
     return (
       <main className="min-h-screen bg-rental-bg text-rental-ink flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full rounded-3xl border border-rental-border bg-rental-surface p-8 text-center space-y-5 shadow-panel animate-fadeIn">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-rental-primary/10 text-rental-primary flex items-center justify-center">
-            <Lock className="h-7 w-7" />
-          </div>
           <div className="space-y-2">
             <h1 className="text-xl font-extrabold text-rental-ink">Acesse seus Orçamentos</h1>
             <p className="text-sm text-rental-muted leading-relaxed">
@@ -232,28 +229,24 @@ export default function ClienteOrcamentosPage() {
       case 'respondido':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/15 px-3 py-1 text-xs font-bold text-blue-500">
-            <Clock className="h-3.5 w-3.5" />
             Estimativa Enviada
           </span>
         );
       case 'aceito':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold text-emerald-500">
-            <CheckCircle2 className="h-3.5 w-3.5" />
             Confirmado / Aceito
           </span>
         );
       case 'recusado':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 px-3 py-1 text-xs font-bold text-rose-500">
-            <XCircle className="h-3.5 w-3.5" />
             Recusado
           </span>
         );
       case 'cancelado':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-500/15 px-3 py-1 text-xs font-bold text-slate-500 dark:text-slate-300">
-            <Ban className="h-3.5 w-3.5" />
             Cancelado
           </span>
         );
@@ -287,10 +280,9 @@ export default function ClienteOrcamentosPage() {
                 <Button
                   variant="primary"
                   size="sm"
-                  leftIcon={<Sparkles className="h-4 w-4" />}
                   className="text-xs font-bold"
                 >
-                  Solicitar Novo Orçamento
+                  Pedir novo orçamento
                 </Button>
               </Link>
             </div>
@@ -298,14 +290,13 @@ export default function ClienteOrcamentosPage() {
 
         {/* Resumo / Métricas Rápidas */}
         <section aria-label="Resumo das solicitações" className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-          <div className="rounded-2xl border border-rental-border bg-rental-surface p-4 space-y-1.5 shadow-sm">
+          <div className="rounded-2xl border border-rental-border bg-rental-surface p-4 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-rental-muted uppercase tracking-wider">
+              <span className="text-xs font-semibold text-rental-muted">
                 Total Solicitado
               </span>
-              <FileCheck2 className="h-4 w-4 text-rental-primary" />
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-rental-ink">
+            <div className="text-2xl sm:text-3xl font-bold text-rental-ink">
               {contadores.total}
             </div>
             <span className="text-[11px] text-rental-muted block truncate">
@@ -313,14 +304,13 @@ export default function ClienteOrcamentosPage() {
             </span>
           </div>
 
-          <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-1.5 shadow-sm">
+          <div className="rounded-2xl border border-rental-border bg-rental-surface p-4 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-blue-500 uppercase tracking-wider">
+              <span className="text-xs font-semibold text-rental-muted">
                 Estimativas
               </span>
-              <DollarSign className="h-4 w-4 text-blue-500" />
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-blue-500">
+            <div className="text-2xl sm:text-3xl font-bold text-rental-ink">
               {contadores.respondidos}
             </div>
             <span className="text-[11px] text-rental-muted block truncate">
@@ -328,14 +318,13 @@ export default function ClienteOrcamentosPage() {
             </span>
           </div>
 
-          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-1.5 shadow-sm">
+          <div className="rounded-2xl border border-rental-border bg-rental-surface p-4 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-emerald-500 uppercase tracking-wider">
+              <span className="text-xs font-semibold text-rental-muted">
                 Confirmados
               </span>
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-emerald-500">
+            <div className="text-2xl sm:text-3xl font-bold text-rental-ink">
               {contadores.aceitos}
             </div>
             <span className="text-[11px] text-rental-muted block truncate">
@@ -343,14 +332,13 @@ export default function ClienteOrcamentosPage() {
             </span>
           </div>
 
-          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-1.5 shadow-sm">
+          <div className="rounded-2xl border border-rental-border bg-rental-surface p-4 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-amber-500 uppercase tracking-wider">
+              <span className="text-xs font-semibold text-rental-muted">
                 Em Análise
               </span>
-              <Clock className="h-4 w-4 text-amber-500" />
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-amber-500">
+            <div className="text-2xl sm:text-3xl font-bold text-rental-ink">
               {contadores.pendentes}
             </div>
             <span className="text-[11px] text-rental-muted block truncate">
@@ -415,7 +403,6 @@ export default function ClienteOrcamentosPage() {
         {feedbackBanner && (
           <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs text-emerald-600 dark:text-emerald-400 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 font-semibold">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
               <span>{feedbackBanner}</span>
             </div>
             <button
@@ -433,7 +420,7 @@ export default function ClienteOrcamentosPage() {
         {error && (
           <div className="rounded-2xl border border-[var(--rs-error)]/30 bg-[var(--rs-error)]/10 p-4 text-xs text-[var(--rs-error)] flex items-center justify-between gap-3">
             <span>{error}</span>
-            <Button variant="secondary" size="sm" onClick={carregarOrcamentos} leftIcon={<RefreshCw className="h-3.5 w-3.5" />}>
+            <Button variant="secondary" size="sm" onClick={carregarOrcamentos}>
               Tentar novamente
             </Button>
           </div>
@@ -449,9 +436,6 @@ export default function ClienteOrcamentosPage() {
         ) : orcamentosFiltrados.length === 0 ? (
           /* Estado Vazio */
           <div className="rounded-3xl border border-dashed border-rental-border bg-rental-surface/50 p-10 sm:p-14 text-center space-y-4 shadow-sm animate-fadeIn">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rental-primary/10 text-rental-primary">
-              <MessageSquare className="h-7 w-7" />
-            </div>
             <div className="max-w-md mx-auto space-y-1.5">
               <h3 className="text-base sm:text-lg font-bold text-rental-ink">
                 Nenhum orçamento encontrado
@@ -476,8 +460,8 @@ export default function ClienteOrcamentosPage() {
                 </Button>
               )}
               <Link href="/profissionais">
-                <Button variant="primary" size="md" leftIcon={<Sparkles className="h-4 w-4" />}>
-                  Buscar Profissionais Disponíveis
+                <Button variant="secondary" size="md">
+                  Buscar profissionais
                 </Button>
               </Link>
             </div>
@@ -518,7 +502,6 @@ export default function ClienteOrcamentosPage() {
                           </span>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-rental-muted mt-0.5">
-                          <Clock className="h-3 w-3" />
                           <span>
                             Solicitado em {new Date(orcamento.criado_em).toLocaleDateString('pt-BR')} às{' '}
                             {new Date(orcamento.criado_em).toLocaleTimeString('pt-BR', {
@@ -533,7 +516,6 @@ export default function ClienteOrcamentosPage() {
                     <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
                       {isPago && (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold text-emerald-500 border border-emerald-500/25">
-                          <Receipt className="h-3.5 w-3.5" />
                           Pago • Comprovante Disponível
                         </span>
                       )}
@@ -550,8 +532,7 @@ export default function ClienteOrcamentosPage() {
                     {/* Galeria de Fotos Anexadas */}
                     {hasPhotos && (
                       <div className="pt-1">
-                        <span className="text-[11px] font-bold text-rental-muted uppercase tracking-wider flex items-center gap-1 mb-2">
-                          <ImageIcon className="h-3.5 w-3.5 text-rental-primary" />
+                        <span className="text-[11px] font-bold text-rental-muted flex items-center gap-1 mb-2">
                           Fotos do Problema ({orcamento.fotos.length})
                         </span>
                         <div className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-none">
@@ -588,7 +569,6 @@ export default function ClienteOrcamentosPage() {
                     <div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4 space-y-2">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                         <div className="flex items-center gap-2 text-blue-500 font-extrabold text-xs sm:text-sm">
-                          <DollarSign className="h-4 w-4" />
                           <span>Estimativa de Valor Recebida</span>
                         </div>
                         {orcamento.valor_estimado && (
@@ -612,7 +592,6 @@ export default function ClienteOrcamentosPage() {
                     <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 space-y-2">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                         <div className="flex items-center gap-2 text-emerald-500 font-extrabold text-xs sm:text-sm">
-                          <CheckCircle2 className="h-4 w-4" />
                           <span>Orçamento Aceito pelo Prestador!</span>
                         </div>
                         {orcamento.valor_estimado && (
@@ -623,7 +602,6 @@ export default function ClienteOrcamentosPage() {
                       </div>
                       {orcamento.data_prevista && (
                         <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                          <Calendar className="h-3.5 w-3.5" />
                           <span>Previsão de Atendimento: {new Date(orcamento.data_prevista).toLocaleString('pt-BR')}</span>
                         </div>
                       )}
@@ -641,7 +619,6 @@ export default function ClienteOrcamentosPage() {
                   {isRecusado && (
                     <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 space-y-1.5">
                       <div className="flex items-center gap-2 text-rose-500 font-extrabold text-xs sm:text-sm">
-                        <XCircle className="h-4 w-4" />
                         <span>Solicitação Recusada pelo Prestador</span>
                       </div>
                       {orcamento.motivo_recusa && (
@@ -660,7 +637,6 @@ export default function ClienteOrcamentosPage() {
                   {isCancelado && (
                     <div className="rounded-2xl border border-slate-500/30 bg-slate-500/10 p-4 space-y-1.5">
                       <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 font-extrabold text-xs sm:text-sm">
-                        <Ban className="h-4 w-4" />
                         <span>Solicitação Cancelada por Você</span>
                       </div>
                       {(orcamento.justificativa_recusa || orcamento.motivo_recusa) && (
@@ -712,7 +688,6 @@ export default function ClienteOrcamentosPage() {
                               setSelectedInitialAction('cancelar_cliente');
                               setSelectedOrcamentoId(orcamento.id);
                             }}
-                            leftIcon={<Ban className="h-3.5 w-3.5" />}
                             className="font-bold text-xs"
                           >
                             Recusar / Cancelar
@@ -728,7 +703,6 @@ export default function ClienteOrcamentosPage() {
                             setSelectedInitialAction('cancelar_cliente');
                             setSelectedOrcamentoId(orcamento.id);
                           }}
-                          leftIcon={<Ban className="h-3.5 w-3.5" />}
                           className="font-bold text-xs"
                         >
                           Cancelar Solicitação
@@ -740,7 +714,6 @@ export default function ClienteOrcamentosPage() {
                           <Button
                             variant="secondary"
                             size="sm"
-                            leftIcon={<Calendar className="h-3.5 w-3.5" />}
                             className="font-bold text-xs"
                           >
                             Agendar Horário
@@ -753,7 +726,6 @@ export default function ClienteOrcamentosPage() {
                           variant="secondary"
                           size="sm"
                           onClick={() => setCheckoutOrcamento(orcamento)}
-                          leftIcon={<Receipt className="h-3.5 w-3.5 text-emerald-500" />}
                           className="font-bold text-xs border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
                         >
                           Ver Comprovante Digital
@@ -765,7 +737,6 @@ export default function ClienteOrcamentosPage() {
                             variant="primary"
                             size="sm"
                             onClick={() => setCheckoutOrcamento(orcamento)}
-                            leftIcon={<CreditCard className="h-3.5 w-3.5" />}
                             className="font-bold text-xs"
                           >
                             Pagar com Mercado Pago

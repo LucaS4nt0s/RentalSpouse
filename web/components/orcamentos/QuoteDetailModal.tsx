@@ -355,28 +355,24 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
       case 'aceito':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold text-emerald-500">
-            <CheckCircle2 className="h-3.5 w-3.5" />
             Confirmado / Aceito
           </span>
         );
       case 'respondido':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/15 px-3 py-1 text-xs font-bold text-blue-500">
-            <Clock className="h-3.5 w-3.5" />
             Estimativa Enviada
           </span>
         );
       case 'recusado':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 px-3 py-1 text-xs font-bold text-rose-500">
-            <XCircle className="h-3.5 w-3.5" />
             Orçamento Recusado
           </span>
         );
       case 'cancelado':
         return (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-500/15 px-3 py-1 text-xs font-bold text-slate-500 dark:text-slate-300">
-            <Ban className="h-3.5 w-3.5" />
             Cancelado pelo Cliente
           </span>
         );
@@ -435,7 +431,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
             <div className="py-8 text-center space-y-4">
               <AlertCircle className="mx-auto h-10 w-10 text-[var(--rs-error)]" />
               <p className="text-sm text-rental-muted">{error || 'Não foi possível carregar os dados.'}</p>
-              <Button variant="secondary" size="sm" onClick={carregarDetalhes} leftIcon={<RefreshCw className="h-4 w-4" />}>
+              <Button variant="secondary" size="sm" onClick={carregarDetalhes}>
                 Tentar novamente
               </Button>
             </div>
@@ -445,8 +441,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Cartão do Profissional Destinatário */}
                 <div className="rounded-2xl border border-rental-border bg-rental-surface2/30 p-4 space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-rental-muted flex items-center gap-1.5">
-                    <Briefcase className="h-3.5 w-3.5 text-rental-primary shrink-0" />
+                  <span className="text-xs font-bold text-rental-muted flex items-center gap-1.5">
                     Profissional Destinatário
                   </span>
                   <div className="text-xs space-y-1">
@@ -461,19 +456,16 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
 
                 {/* Cartão do Cliente Solicitante */}
                 <div className="rounded-2xl border border-rental-border bg-rental-surface2/30 p-4 space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-rental-muted flex items-center gap-1.5">
-                    <User className="h-3.5 w-3.5 text-rental-primary shrink-0" />
+                  <span className="text-xs font-bold text-rental-muted flex items-center gap-1.5">
                     Cliente Solicitante
                   </span>
                   <div className="text-xs space-y-1 text-rental-ink">
                     <div className="font-semibold text-rental-ink">{orcamento.cliente_nome}</div>
                     <div className="flex items-center gap-1.5 text-rental-muted truncate">
-                      <Mail className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{orcamento.cliente_email}</span>
                     </div>
                     {orcamento.cliente_telefone && (
                       <div className="flex items-center gap-1.5 text-rental-muted">
-                        <Phone className="h-3.5 w-3.5 shrink-0" />
                         <span>{orcamento.cliente_telefone}</span>
                       </div>
                     )}
@@ -483,7 +475,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
 
               {/* Data da Solicitação */}
               <div className="flex items-center gap-2 text-xs text-rental-muted px-1">
-                <Clock className="h-4 w-4 shrink-0 text-rental-primary" />
                 <span>
                   Solicitado em {new Date(orcamento.criado_em).toLocaleString('pt-BR')}
                 </span>
@@ -491,7 +482,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
 
               {/* Descrição do Problema */}
               <div className="space-y-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-rental-muted">
+                <span className="text-xs font-bold text-rental-muted">
                   Descrição do Problema / Serviço
                 </span>
                 <div className="rounded-2xl border border-rental-border bg-rental-surface p-4 text-sm text-rental-ink leading-relaxed whitespace-pre-wrap">
@@ -502,8 +493,7 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
               {/* Fotos Anexadas */}
               {orcamento.fotos && orcamento.fotos.length > 0 && (
                 <div className="space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-rental-muted flex items-center gap-1.5">
-                    <ImageIcon className="h-4 w-4 text-rental-primary" />
+                  <span className="text-xs font-bold text-rental-muted flex items-center gap-1.5">
                     Fotos Anexadas ({orcamento.fotos.length})
                   </span>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -539,7 +529,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                   <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-emerald-500 font-extrabold text-sm">
-                        <CheckCircle2 className="h-5 w-5" />
                         <span>Orçamento Confirmado</span>
                       </div>
                       {orcamento.valor_estimado && (
@@ -550,7 +539,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                     </div>
                     {orcamento.data_prevista && (
                       <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                        <Calendar className="h-4 w-4" />
                         <span>Previsão de Atendimento: {new Date(orcamento.data_prevista).toLocaleString('pt-BR')}</span>
                       </div>
                     )}
@@ -574,7 +562,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             type="button"
                             variant="primary"
                             size="sm"
-                            leftIcon={<CreditCard className="h-3.5 w-3.5" />}
                             onClick={() => onOpenCheckout(orcamento)}
                           >
                             Pagar / Ver Comprovante
@@ -587,7 +574,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             type="button"
                             variant="secondary"
                             size="sm"
-                            leftIcon={<Calendar className="h-3.5 w-3.5" />}
                           >
                             Agendar Horário com este Orçamento
                           </Button>
@@ -601,7 +587,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                 {orcamento.status === 'recusado' && (
                   <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-5 space-y-3">
                     <div className="flex items-center gap-2 text-rose-500 font-extrabold text-sm">
-                      <XCircle className="h-5 w-5" />
                       <span>Orçamento Recusado pelo Prestador</span>
                     </div>
                     {orcamento.motivo_recusa && (
@@ -627,7 +612,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                 {orcamento.status === 'cancelado' && (
                   <div className="rounded-2xl border border-slate-500/30 bg-slate-500/10 p-5 space-y-3">
                     <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 font-extrabold text-sm">
-                      <Ban className="h-5 w-5" />
                       <span>Solicitação Cancelada pelo Cliente</span>
                     </div>
                     {(orcamento.justificativa_recusa || orcamento.motivo_recusa) && (
@@ -651,7 +635,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                   <div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-5 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-blue-500 font-extrabold text-sm">
-                        <Clock className="h-5 w-5" />
                         <span>Estimativa Enviada — Aguardando Decisão do Cliente</span>
                       </div>
                       {orcamento.valor_estimado && (
@@ -675,7 +658,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                 {orcamento.status === 'pendente' && !isProfessional && (
                   <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 space-y-2">
                     <div className="flex items-center gap-2 text-amber-500 font-extrabold text-sm">
-                      <Clock className="h-5 w-5" />
                       <span>Aguardando Análise do Profissional</span>
                     </div>
                     <p className="text-xs text-rental-ink/80 leading-relaxed">
@@ -687,7 +669,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                 {/* Mensagem de Sucesso */}
                 {submitSuccess && (
                   <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 shrink-0" />
                     <span>{submitSuccess}</span>
                   </div>
                 )}
@@ -695,7 +676,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                 {/* Mensagem de Erro Geral de Envio */}
                 {submitError && (
                   <div className="rounded-xl border border-[var(--rs-error)]/40 bg-[var(--rs-error)]/10 p-3 text-xs text-[var(--rs-error)] flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
                     <span>{submitError}</span>
                   </div>
                 )}
@@ -729,7 +709,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                                   setActionMode('aprovar_estimativa');
                                   setSubmitError(null);
                                 }}
-                                leftIcon={<ThumbsUp className="h-4 w-4" />}
                               >
                                 Aprovar Estimativa
                               </Button>
@@ -739,7 +718,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                                   variant="secondary"
                                   size="md"
                                   onClick={() => onOpenCheckout(orcamento)}
-                                  leftIcon={<CreditCard className="h-4 w-4" />}
                                 >
                                   Pagar Agora
                                 </Button>
@@ -751,7 +729,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                                   type="button"
                                   variant="secondary"
                                   size="md"
-                                  leftIcon={<Calendar className="h-4 w-4" />}
                                 >
                                   Agendar Horário
                                 </Button>
@@ -766,7 +743,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                               setActionMode('cancelar_cliente');
                               setSubmitError(null);
                             }}
-                            leftIcon={<Ban className="h-4 w-4" />}
                           >
                             {orcamento.status === 'respondido' ? 'Recusar Proposta / Cancelar' : 'Cancelar Solicitação'}
                           </Button>
@@ -782,7 +758,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                       >
                         <div className="flex items-center justify-between border-b border-rental-border/40 pb-2">
                           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-extrabold text-sm">
-                            <ThumbsUp className="h-5 w-5" />
                             <span>Aprovar Estimativa de Orçamento</span>
                           </div>
                           <button
@@ -831,7 +806,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             variant="primary"
                             size="md"
                             disabled={isSubmitting}
-                            leftIcon={<CheckCircle2 className="h-4 w-4" />}
                           >
                             {isSubmitting ? 'Confirmando...' : 'Confirmar Aprovação'}
                           </Button>
@@ -847,7 +821,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                       >
                         <div className="flex items-center justify-between border-b border-rental-border/40 pb-2">
                           <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-extrabold text-sm">
-                            <Ban className="h-5 w-5" />
                             <span>
                               {orcamento.status === 'respondido'
                                 ? 'Recusar Estimativa / Cancelar Orçamento'
@@ -920,7 +893,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             variant="danger"
                             size="md"
                             disabled={isSubmitting}
-                            leftIcon={<Ban className="h-4 w-4" />}
                           >
                             {isSubmitting ? 'Cancelando...' : 'Confirmar Cancelamento'}
                           </Button>
@@ -957,7 +929,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             variant="primary"
                             size="md"
                             onClick={() => setActionMode('responder')}
-                            leftIcon={<Send className="h-4 w-4" />}
                           >
                             {orcamento.status === 'respondido' ? 'Atualizar Estimativa' : 'Enviar Estimativa'}
                           </Button>
@@ -966,7 +937,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             variant="secondary"
                             size="md"
                             onClick={() => setActionMode('aceitar')}
-                            leftIcon={<ThumbsUp className="h-4 w-4" />}
                           >
                             Aceitar Diretamente
                           </Button>
@@ -975,7 +945,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             variant="danger"
                             size="md"
                             onClick={() => setActionMode('recusar')}
-                            leftIcon={<ThumbsDown className="h-4 w-4" />}
                           >
                             Recusar
                           </Button>
@@ -988,7 +957,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                       <form onSubmit={handleConfirmarAceite} className="space-y-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 sm:p-5">
                         <div className="flex items-center justify-between border-b border-rental-border/40 pb-2">
                           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-extrabold text-sm">
-                            <CheckCircle2 className="h-5 w-5" />
                             <span>Confirmar Aceite da Solicitação</span>
                           </div>
                           <button
@@ -1011,7 +979,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="space-y-1.5">
                             <label className="text-xs font-bold text-rental-ink flex items-center gap-1">
-                              <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
                               Valor Estimado Inicial (R$) (Opcional)
                             </label>
                             <input
@@ -1027,7 +994,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
 
                           <div className="space-y-1.5">
                             <label className="text-xs font-bold text-rental-ink flex items-center gap-1">
-                              <Calendar className="h-3.5 w-3.5 text-emerald-500" />
                               Data / Horário Sugerido (Opcional)
                             </label>
                             <input
@@ -1069,7 +1035,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             variant="primary"
                             size="md"
                             disabled={isSubmitting}
-                            leftIcon={<CheckCircle2 className="h-4 w-4" />}
                           >
                             {isSubmitting ? 'Confirmando...' : 'Confirmar Aceite'}
                           </Button>
@@ -1082,7 +1047,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                       <form onSubmit={handleConfirmarRecusa} className="space-y-4 rounded-2xl border border-rose-500/30 bg-rose-500/5 p-4 sm:p-5">
                         <div className="flex items-center justify-between border-b border-rental-border/40 pb-2">
                           <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-extrabold text-sm">
-                            <XCircle className="h-5 w-5" />
                             <span>Recusar Solicitação de Orçamento</span>
                           </div>
                           <button
@@ -1166,7 +1130,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             variant="danger"
                             size="md"
                             disabled={isSubmitting}
-                            leftIcon={<XCircle className="h-4 w-4" />}
                           >
                             {isSubmitting ? 'Confirmando...' : 'Confirmar Recusa'}
                           </Button>
@@ -1196,7 +1159,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
 
                         <div className="space-y-1.5">
                           <label className="text-xs font-bold text-rental-ink flex items-center gap-1">
-                            <DollarSign className="h-3.5 w-3.5 text-rental-primary" />
                             Valor Estimado (R$) *
                           </label>
                           <input
@@ -1245,7 +1207,6 @@ export const QuoteDetailModal: React.FC<QuoteDetailModalProps> = ({
                             variant="primary"
                             size="md"
                             disabled={isSubmitting}
-                            leftIcon={<Send className="h-4 w-4" />}
                           >
                             {isSubmitting ? 'Enviando...' : 'Enviar Proposta'}
                           </Button>

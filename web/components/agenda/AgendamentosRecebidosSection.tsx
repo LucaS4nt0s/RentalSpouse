@@ -154,9 +154,6 @@ export function AgendamentosRecebidosSection({
     >
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-rental-primary/10 text-rental-primary">
-            <CalendarCheck2 className="h-5 w-5" />
-          </span>
           <div>
             <h2
               id="agendamentos-recebidos-title"
@@ -214,7 +211,6 @@ export function AgendamentosRecebidosSection({
           role="status"
           className="flex items-center gap-2 rounded-xl border border-rental-success/30 bg-rental-success/10 p-3 text-xs text-rental-success"
         >
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
           <span>{acaoSucesso}</span>
         </div>
       )}
@@ -224,7 +220,6 @@ export function AgendamentosRecebidosSection({
           role="alert"
           className="flex items-center gap-2 rounded-xl border border-[var(--rs-error)]/40 bg-[var(--rs-error)]/10 p-3 text-xs text-[var(--rs-error)]"
         >
-          <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{acaoErro}</span>
         </div>
       )}
@@ -245,7 +240,6 @@ export function AgendamentosRecebidosSection({
           className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-[var(--rs-error)]/40 bg-[var(--rs-error)]/10 p-4 text-xs text-[var(--rs-error)]"
         >
           <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0" />
             <span>{error}</span>
           </div>
           <button
@@ -283,14 +277,12 @@ export function AgendamentosRecebidosSection({
                     </p>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-rental-muted">
                       <span className="inline-flex items-center gap-1.5">
-                        <User className="h-3.5 w-3.5 shrink-0" />
                         <span>
                           {ag.cliente_nome || `Cliente #${ag.cliente_id}`} · Reserva #{ag.id}
                         </span>
                       </span>
                       {ag.cliente_email && (
                         <span className="inline-flex items-center gap-1">
-                          <Mail className="h-3 w-3 shrink-0" />
                           <span>{ag.cliente_email}</span>
                         </span>
                       )}
@@ -299,7 +291,6 @@ export function AgendamentosRecebidosSection({
                           href="/profissional/orcamentos"
                           className="inline-flex items-center gap-1 font-semibold text-rental-primary hover:underline"
                         >
-                          <Briefcase className="h-3 w-3 shrink-0" />
                           <span>Orçamento #{ag.orcamento_id}</span>
                         </Link>
                       )}
@@ -341,7 +332,6 @@ export function AgendamentosRecebidosSection({
                             </>
                           ) : (
                             <>
-                              <CheckCircle2 className="h-3.5 w-3.5" />
                               <span>Confirmar conclusão</span>
                             </>
                           )}
@@ -366,7 +356,6 @@ export function AgendamentosRecebidosSection({
                         disabled={emConclusao}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-rental-primary px-3 py-1.5 text-xs font-bold text-[var(--rs-primary-text)] transition-opacity hover:opacity-90 disabled:opacity-50"
                       >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
                         <span>Concluir atendimento</span>
                       </button>
                     ))}

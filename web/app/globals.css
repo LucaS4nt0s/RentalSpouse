@@ -56,6 +56,30 @@
   }
 }
 
+@layer base {
+  /* Foco visível consistente para quem navega por teclado (WCAG 2.4.7) */
+  a:focus-visible,
+  button:focus-visible,
+  [role='button']:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid var(--rs-primary);
+    outline-offset: 2px;
+    border-radius: 0.6rem;
+  }
+
+  /* Respeita quem prefere menos animação (WCAG 2.3.3) */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
 @layer utilities {
   /* Painel / card principal */
   .glass-panel {

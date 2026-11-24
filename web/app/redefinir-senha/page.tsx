@@ -10,13 +10,13 @@ import {
   CheckCircle2,
   Lock,
   ShieldCheck,
-  Zap,
 } from 'lucide-react';
 import { ThemeToggle } from '../../components/ui/ThemeToggle';
 import { Button } from '../../components/ui/Button';
 import { PasswordInput } from '../../components/ui/PasswordInput';
 import { PasswordStrengthMeter } from '../../components/ui/PasswordStrengthMeter';
 import { usePasswordStrength } from '../../hooks/usePasswordStrength';
+import { BrandMark } from '../../components/brand/BrandMark';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
@@ -148,17 +148,12 @@ function RedefinirSenhaContent() {
         </Link>
 
         <div className="mt-6 flex items-center gap-2">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-rental-primary text-white">
-            <Zap className="h-5 w-5" />
-          </span>
+          <BrandMark size={30} className="text-rental-ink" />
           <span className="text-lg font-extrabold tracking-tight">RentalSpouse</span>
         </div>
 
         {sucesso ? (
           <div className="mt-8 text-center animate-fadeIn">
-            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-500/20 border-2 border-emerald-500 text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="h-10 w-10" />
-            </div>
             <h1 className="mt-5 text-2xl sm:text-3xl font-extrabold tracking-tight">
               Senha redefinida!
             </h1>
@@ -176,9 +171,6 @@ function RedefinirSenhaContent() {
           </div>
         ) : !token ? (
           <div className="mt-8 text-center animate-fadeIn">
-            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-rose-500/15 border-2 border-rose-500 text-rose-600 dark:text-rose-400">
-              <AlertCircle className="h-10 w-10" />
-            </div>
             <h1 className="mt-5 text-2xl sm:text-3xl font-extrabold tracking-tight">
               Link incompleto
             </h1>
@@ -194,9 +186,6 @@ function RedefinirSenhaContent() {
           </div>
         ) : (
           <div className="mt-8">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rental-primary/10 text-rental-primary">
-              <Lock className="h-7 w-7" />
-            </div>
             <h1 className="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight">
               Crie uma nova senha
             </h1>
@@ -226,7 +215,7 @@ function RedefinirSenhaContent() {
               <div>
                 <label
                   htmlFor="nova-senha"
-                  className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-rental-muted"
+                  className="mb-1.5 block text-xs font-bold text-rental-muted"
                 >
                   Nova senha
                 </label>
@@ -242,13 +231,11 @@ function RedefinirSenhaContent() {
                   }}
                   disabled={isLoading}
                   placeholder="Digite sua nova senha"
-                  leftIcon={<Lock className="h-4 w-4" />}
                   hasError={Boolean(errors.novaSenha)}
                   className="h-12"
                 />
                 {errors.novaSenha && (
                   <div className="mt-1 flex items-center gap-1.5 text-xs text-[var(--rs-error)] animate-fadeIn">
-                    <AlertCircle className="h-3.5 w-3.5" />
                     <span>{errors.novaSenha}</span>
                   </div>
                 )}
@@ -258,7 +245,7 @@ function RedefinirSenhaContent() {
               <div>
                 <label
                   htmlFor="confirmar-nova-senha"
-                  className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-rental-muted"
+                  className="mb-1.5 block text-xs font-bold text-rental-muted"
                 >
                   Confirmar nova senha
                 </label>
@@ -274,13 +261,11 @@ function RedefinirSenhaContent() {
                   }}
                   disabled={isLoading}
                   placeholder="Repita a nova senha"
-                  leftIcon={<ShieldCheck className="h-4 w-4" />}
                   hasError={Boolean(errors.confirmarSenha)}
                   className="h-12"
                 />
                 {errors.confirmarSenha && (
                   <div className="mt-1 flex items-center gap-1.5 text-xs text-[var(--rs-error)] animate-fadeIn">
-                    <AlertCircle className="h-3.5 w-3.5" />
                     <span>{errors.confirmarSenha}</span>
                   </div>
                 )}

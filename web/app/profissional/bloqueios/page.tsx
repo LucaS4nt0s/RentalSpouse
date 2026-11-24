@@ -37,9 +37,6 @@ export default function ProfissionalBloqueiosPage() {
     return (
       <main className="min-h-screen bg-rental-bg text-rental-ink flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-md w-full rounded-3xl border border-rental-border bg-rental-surface p-8 text-center space-y-5 shadow-panel animate-fadeIn">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-            <Lock className="h-7 w-7" />
-          </div>
           <div className="space-y-2">
             <h1 className="text-xl font-extrabold text-rental-ink">
               Acesso Restrito ao Prestador

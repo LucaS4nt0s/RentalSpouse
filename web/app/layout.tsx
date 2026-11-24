@@ -7,6 +7,9 @@ import { NotificationProvider } from '../context/NotificationContext';
 export const metadata: Metadata = {
   title: 'RentalSpouse — Serviços Residenciais',
   description: 'Plataforma RentalSpouse - Conectando proprietários a serviços residenciais de excelência',
+  icons: {
+    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+  },
 };
 
 export default function RootLayout({
